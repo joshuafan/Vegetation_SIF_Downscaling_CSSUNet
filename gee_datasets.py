@@ -1,3 +1,5 @@
+# DOCUMENTATION APPEARS OUTDATED
+
 import folium
 
 # Import the Earth Engine API and initialize it.
