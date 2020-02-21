@@ -1,24 +1,14 @@
-# DOCUMENTATION APPEARS OUTDATED
-
-import folium
-
-# Import the Earth Engine API and initialize it.
 import ee
-import ee.mapclient
-#from IPython.display import display
 
-# Trigger the authentication flow.
-#ee.Authenticate()
+try:
+    ee.Initialize()
+except Exception as e:
+    ee.Authenticate()
+    ee.Initialize()
 
-# Initialize the library.
-ee.Initialize()
 
 bands = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B10', 'B11']
 print('Hi 1')
-
-# Use Landsat 8 surface reflectance data.
-l8sr = ee.ImageCollection('LANDSAT/LC08/C01/T1_SR')
-print('Got image collection')
 
 # Cloud masking function. Specifically, we mask pixels for which its 'pixel_qa'
 # field has bit 3 (cloud shadow) or bit 5 (cloud) set to 1.
@@ -31,47 +21,51 @@ def maskL8sr(image):
   return image.updateMask(mask).select(bands).divide(10000)
 
 # The image input data is a 2018 cloud-masked median composite.
-cloud_masked_image = l8sr.filterDate('2018-07-01', '2018-07-31').map(maskL8sr).median()
+cloud_masked_image = ee.ImageCollection('LANDSAT/LC08/C01/T1_SR')
+                  .filterDate('2018-08-01', '2018-08-15')
+                  .map(maskL8sr)
+                  .select(bands)
+                  .max()
 print('Masked clouds')
 
 # Clip to the output image to the Iowa state boundary.
-fc = (ee.FeatureCollection('TIGER/2018/States')
-      .filter(ee.Filter().eq('NAME', 'Iowa')))
-print('Got Iowa boundary')
-iowa_image = cloud_masked_image.clipToCollection(fc)
-print('Clipped image')
+#fc = (ee.FeatureCollection('TIGER/2018/States')
+#      .filter(ee.Filter().eq('NAME', 'Iowa')))
+#print('Got Iowa boundary')
+#iowa_image = cloud_masked_image.clipToCollection(fc)
+#print('Clipped image')
 
-# Define the visualization parameters.
-vizParams = {
-  'bands': ['B4', 'B3', 'B2'],
-  'min': 0,
-  'max': 0.5,
-  'gamma': [0.95, 1.1, 1]
-};
+## Define the visualization parameters.
+#vizParams = {
+#  'bands': ['B4', 'B3', 'B2'],
+#  'min': 0,
+#  'max': 0.5,
+#  'gamma': [0.95, 1.1, 1]
+#};
 
 # Center the map and display the image.
-Map.setCenter(-122.1899, 37.5010, 10);  #  San Francisco Bay
-Map.addLayer(image, vizParams, 'false color composite');
+#Map.setCenter(-122.1899, 37.5010, 10);  #  San Francisco Bay
+#Map.addLayer(image, vizParams, 'false color composite');
 
 # Change the following two lines to use your own training data.
-labels = ee.FeatureCollection('GOOGLE/EE/DEMOS/demo_landcover_labels')
-label = 'landcover'
+#labels = ee.FeatureCollection('GOOGLE/EE/DEMOS/demo_landcover_labels')
+#label = 'landcover'
 
 # Sample the image at the points and add a random column.
-sample = iowa_image.sampleRegions(
-  collection=labels, properties=[label], scale=30).randomColumn()
-print('Sampled image')
+#sample = iowa_image.sampleRegions(
+#  collection=labels, properties=[label], scale=30).randomColumn()
+#print('Sampled image')
 
 # Partition the sample approximately 70-30.
-training = sample.filter(ee.Filter.lt('random', 0.7))
-testing = sample.filter(ee.Filter.gte('random', 0.7))
+#training = sample.filter(ee.Filter.lt('random', 0.7))
+#testing = sample.filter(ee.Filter.gte('random', 0.7))
 
-from pprint import pprint
+#from pprint import pprint
 
 # Print the first couple points to verify.
-print('Training full!', training)
-pprint({'training': training.first().getInfo()})
-pprint({'testing': testing.first().getInfo()})
+#print('Training full!', training)
+#pprint({'training': training.first().getInfo()})
+#pprint({'testing': testing.first().getInfo()})
 
 
 # # Use folium to visualize the imagery.

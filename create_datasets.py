@@ -10,9 +10,12 @@ from rasterio.plot import show
 
 # import earthpy as et
 
-REFLECTANCE_FILES = {"2017-07-07": "datasets/GEE_data/44-45N_88-89W_reflectance_max.tif"}
-COVER_FILE = "datasets/CDL/CDL_2019_clip_20200217173819_149334469.tif"  #"datasets/GEE_data/44-45N_88-89W_cdl.tif"
-REPROJECTED_COVER_FILE = "datasets/GEE_data/REPROJECTED_44-45N_88-89W_cdl.tif"
+# REFLECTANCE_FILES = {"2017-07-07": "datasets/GEE_data/44-45N_88-89W_reflectance_max.tif"}
+
+# TODO Change to directory
+REFLECTANCE_FILES = {pd.daterange(start="2018-08-01", end="2018-08-15"): ["datasets/LandsatReflectance/44-45N_88-89W_reflectance_max.tif"]}  # datasets/GEE_data/"}
+COVER_FILE = "datasets/CDL_2019/CDL_2019_clip_20200218171505_325973588.tif"  #CDL_2019_clip_20200217173819_149334469.tif"  #"datasets/GEE_data/44-45N_88-89W_cdl.tif"
+#REPROJECTED_COVER_FILE = "datasets/GEE_data/REPROJECTED_44-45N_88-89W_cdl.tif"
 SIF_FILES = {7: "datasets/TROPOMI_SIF_2018/TROPO_SIF_07-2018.nc",
              8: "datasets/TROPOMI_SIF_2018/TROPO_SIF_08-2018.nc"}
 
@@ -45,6 +48,9 @@ def lat_long_to_index(lat, long, left_bound, top_bound, resolution):
     width_idx = (long - left_bound) / resolution[1]
     return int(height_idx), int(width_idx)
 
+
+# Dataset format: image file name, SIF, date
+dataset_rows = []
 with rio.open(COVER_FILE) as cover_dataset:
     print('COVER DATASET')
     print('Bounds:', cover_dataset.bounds)
@@ -59,7 +65,8 @@ with rio.open(COVER_FILE) as cover_dataset:
     print('ORIGINAL COVER STATS')
     # plot_and_print_covers(cover_dataset.read(1), 'original_covers_corn.png')
 
-    for date, reflectance_file in REFLECTANCE_FILES.items():
+    for date, reflectance_folder in REFLECTANCE_FILES.items():
+        for reflectance_file in reflectance_folder:  # os.path.listdir(reflectance_folder)
         with rio.open(reflectance_file) as reflectance_dataset:
             print('REFLECTANCE DATASET')
             print('Bounds:', reflectance_dataset.bounds)
