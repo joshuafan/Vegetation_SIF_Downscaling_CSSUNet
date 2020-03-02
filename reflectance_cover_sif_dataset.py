@@ -40,39 +40,16 @@ class ReflectanceCoverSIFDataset(Dataset):
 
         current_tile_info = self.tile_info.iloc[idx]
         year, month, day_of_year = utils.parse_date_string(current_tile_info.loc['date'])
-
-        SAMPLE_ID_IDX = 0
-        ORIENTATION_IDX = 4
-        SIZE_IDX = 6
-        ORIENTATION_TO_IMAGE_IDX = {"front": 0,
-                                    "left": 1,
-                                    "right": 2,
-                                    "back": 3,
-                                    "top": 4,
-                                    "bottom": 5}
-
-        folder_path = os.path.join(self.root_dir, str(self.features.iloc[idx].loc['SampleID']))
-        sorted_images = sorted(os.listdir(folder_path))
-
-        which_image_in_folder = ORIENTATION_TO_IMAGE_IDX[self.features.iloc[idx].loc['view']]
-
-        if len(sorted_images) < 6:
-            print("Folder " + folder_path + " had " + str(len(sorted_images)) + " images")
-        if which_image_in_folder >= len(sorted_images):
-            which_image_in_folder = len(sorted_images) - 1
-        img_name = os.path.join(folder_path, sorted_images[which_image_in_folder])
-        image = io.imread(img_name)
-        image = Image.fromarray(image, mode="RGB")
-
-        # landmarks = self.landmarks_frame.iloc[idx, 1:]
-        # landmarks = np.array([landmarks])
-        # landmarks = landmarks.astype('float').reshape(-1, 2)
-
-        if self.transform:
-            image = self.transform(image)
+        tile = np.load(current_tile_info.loc['tile_file'])
+        print("Tile shape", tile.shape)
+        # if self.transform:
+        #     image = self.transform(image)
+        
         sample = {'lon': current_tile_info.loc['lon'],
                   'lat': current_tile_info.loc['lat'],
-                  'current_tile_info.loc["SIF"], 'tile': image, 'SIF': current_tile_info.loc["SIF"]}
-
+                  'year': year,
+                  'day_of_year': day_of_year,
+                  'tile': tile,
+                  'SIF': current_tile_info.loc["SIF"]}
 
         return sample
