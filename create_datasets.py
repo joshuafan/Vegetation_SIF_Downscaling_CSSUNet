@@ -16,8 +16,7 @@ from rasterio.plot import show
 
 
 
-# TODO Change to directory
-REFLECTANCE_FILES = [(pd.date_range(start="2018-08-01", end="2018-08-15"), ["datasets/LandsatReflectance/44-45N_88-89W_reflectance_max.tif"])]  # datasets/GEE_data/"}
+REFLECTANCE_FILES = [(pd.date_range(start="2018-08-16", end="2018-08-31"), "datasets/LandsatReflectance/aug_16")]  # ["datasets/LandsatReflectance/44-45N_88-89W_reflectance_max.tif"])]  # datasets/GEE_data/"}
 COVER_FILE = "datasets/CDL_2019/CDL_2019_big.tif"  # CDL_2019_clip_20200218171505_325973588.tif"  #CDL_2019_clip_20200217173819_149334469.tif"  #"datasets/GEE_data/44-45N_88-89W_cdl.tif"
 OUTPUT_CSV_FILE = "datasets/generated/reflectance_cover_to_sif.csv"
 #REPROJECTED_COVER_FILE = "datasets/GEE_data/REPROJECTED_44-45N_88-89W_cdl.tif"
@@ -58,7 +57,7 @@ def lat_long_to_index(lat, long, dataset_top_bound, dataset_left_bound, resoluti
 
 
 # Dataset format: image file name, SIF, date
-dataset_rows = []
+dataset_rows = ["lon, lat, date, tile_file, SIF"]
 
 # Open crop cover dataset
 with rio.open(COVER_FILE) as cover_dataset:
@@ -84,15 +83,15 @@ with rio.open(COVER_FILE) as cover_dataset:
         month = date_range[0].month
         sif_filename = SIF_FILES[month]
         sif_dataset = xr.open_dataset(sif_filename)
-        sif_array = sif_dataset.dcSIF.sel(time=pd.date_range(start=date_range.date[0], end=date_range.date[-1])) #.mean(dim='time')
+        sif_array = sif_dataset.dcSIF.sel(time=pd.date_range(start=date_range.date[0], end=date_range.date[-1]))
         print("SIF array shape", sif_array.shape)
         sif_array = sif_array.mean(dim='time')
-        print("What is SIF array :O", sif_array)
 
         # If you select a large region, Google Drive breaks the reflectance data into multiple files; loop through
         # all of them.
-        for reflectance_file in reflectance_folder:  # os.path.listdir(reflectance_folder)
-            with rio.open(reflectance_file) as reflectance_dataset:
+        for reflectance_file in os.listdir(reflectance_folder):
+            try:
+                with rio.open(os.path.join(reflectance_folder, reflectance_file)) as reflectance_dataset:
                 print('===================================================')
                 print('REFLECTANCE DATASET')
                 print('Bounds:', reflectance_dataset.bounds)
@@ -166,8 +165,6 @@ with rio.open(COVER_FILE) as cover_dataset:
                 # For each "SIF tile", extract the tile of the reflectance data that maps to it
                 for left_degrees in np.arange(LEFT_BOUND, RIGHT_BOUND, SIF_TILE_DEGREE_SIZE):
                     for bottom_degrees in np.arange(BOTTOM_BOUND, TOP_BOUND, SIF_TILE_DEGREE_SIZE):
-                        print("Left degrees", left_degrees)
-                        print("Bottom degrees", bottom_degrees)
                         right_edge = left_degrees + SIF_TILE_DEGREE_SIZE
                         top_edge = bottom_degrees + SIF_TILE_DEGREE_SIZE
 
@@ -190,17 +187,17 @@ with rio.open(COVER_FILE) as cover_dataset:
                         #                                                                   reflectance_dataset.bounds.top,
                         #                                                                   reflectance_dataset.bounds.left,
                         #                                                                   reflectance_dataset.res)
-                        print("left, bottom = ", left_degrees, bottom_degrees)
                         cover_top_idx = cover_bottom_idx - tile_height_pixels
                         reflectance_top_idx = reflectance_bottom_idx - tile_height_pixels
                         cover_right_idx = cover_left_idx + tile_width_pixels
                         reflectance_right_idx = reflectance_left_idx + tile_width_pixels
-                        print("Cover shape", reprojected_covers.shape)
-                        print("Cover idx: top", cover_top_idx, "bottom", cover_bottom_idx, "left", cover_left_idx,
-                              "right", cover_right_idx)
-                        print("Reflectance shape", reflectance_dataset.shape)
-                        print("Reflectance idx: top", reflectance_top_idx, "bottom", reflectance_bottom_idx,
-                              "left", reflectance_left_idx, "right", reflectance_right_idx)
+                        #print("Cover shape", reprojected_covers.shape)
+                        #print("Cover idx: top", cover_top_idx, "bottom", cover_bottom_idx, "left", cover_left_idx,
+                        #      "right", cover_right_idx)
+                        #print("Reflectance shape", reflectance_dataset.shape)
+                        #print("Reflectance idx: top", reflectance_top_idx, "bottom", reflectance_bottom_idx,
+                        #      "left", reflectance_left_idx, "right", reflectance_right_idx)
+
                         if cover_top_idx < 0 or cover_left_idx < 0 or reflectance_top_idx < 0 or reflectance_left_idx < 0:
                             print("Index was negative!")
                             continue
@@ -216,9 +213,9 @@ with rio.open(COVER_FILE) as cover_dataset:
                         reflectance_tile = reflectance_numpy[:, reflectance_top_idx:reflectance_bottom_idx,
                                                              reflectance_left_idx:reflectance_right_idx]
                         print("Cover tile shape", cover_tile.shape)
-                        print("Nonzeros in cover tile:", np.count_nonzero(cover_tile), "of", (cover_tile.shape[0] * cover_tile.shape[1]))
+                        print("Fraction of nonzeros in cover tile:", np.count_nonzero(cover_tile) / (cover_tile.shape[0] * cover_tile.shape[1]))
                         print("Reflectance tile shape", reflectance_tile.shape)
-                        print("Nonzeros in reflectance tile:", np.count_nonzero(reflectance_tile), "of", (reflectance_tile.shape[0] * reflectance_tile.shape[1] * reflectance_tile.shape[2]))
+                        print("Fraction of nonzeros in reflectance tile:", np.count_nonzero(reflectance_tile) / (reflectance_tile.shape[0] * reflectance_tile.shape[1] * reflectance_tile.shape[2]))
                         assert(cover_tile.shape[0:2] == reflectance_tile.shape[1:3])
                         if np.count_nonzero(cover_tile) / len(cover_tile) < 1 - MAX_MISSING_FRACTION:
                             continue
@@ -231,7 +228,7 @@ with rio.open(COVER_FILE) as cover_dataset:
                             crop_mask[cover_tile == cover_type] = 1.
                             cover_masks.append(crop_mask)
                         cover_masks = np.stack(cover_masks, axis=0)
-                        print("Cover masks shape", cover_masks.shape)
+                        #print("Cover masks shape", cover_masks.shape)
                         reflectance_and_cover_tile = np.concatenate((reflectance_tile, cover_masks), axis=0)
                         np.transpose(reflectance_and_cover_tile, (1, 2, 0))
                         print("Combined tile shape", reflectance_and_cover_tile.shape)
