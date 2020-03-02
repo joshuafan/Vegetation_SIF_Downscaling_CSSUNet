@@ -2,12 +2,10 @@ DOCUMENT_IDS=("1V68AUKVQXGS2ahNb1VEYkcUdF28KnLxc" "1ITiRX8-Xr754rvSrURgJcHD-kgJQ
 mkdir ./tmp
 
 for i in ${!DOCUMENT_IDS[@]}; do
-  rm ./tmp/*
   x=$((${i} / 5))
   y=$((${i} % 5))
   FINAL_DOWNLOADED_FILENAME="datasets/LandsatReflectance/aug_16/corn_belt_reflectance_aug_16_31_2018_box_${x}_${y}.tif"
-  wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=${DOCUMENT_IDS[${i}]}' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=${DOCUMENT_IDS[${i}]}" -O ${FINAL_DOWNLOADED_FILENAME} && rm -rf /tmp/cookies.txt
-
-  #curl -c ./tmp/cookies "https://drive.google.com/uc?export=download&id=${DOCUMENT_IDS[${i}]}" > ./tmp/intermezzo.html
-  #curl -L -b ./tmp/cookies "https://drive.google.com$(cat ./tmp/intermezzo.html | grep -Po 'uc-download-link" [^>]* href="\K[^"]*' | sed 's/\&amp;/\&/g')" > ${FINAL_DOWNLOADED_FILENAME}
+  #wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=${DOCUMENT_IDS[${i}]}' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=${DOCUMENT_IDS[${i}]}" -O ${FINAL_DOWNLOADED_FILENAME} && rm -rf /tmp/cookies.txt
+  curl -c ./tmp/cookies "https://drive.google.com/uc?export=download&id=${DOCUMENT_IDS[${i}]}" > "./tmp/intermezzo_${i}"
+  curl -L -b ./tmp/cookies "https://drive.google.com$(cat ./tmp/intermezzo_${i} | grep -Po 'uc-download-link" [^>]* href="\K[^"]*' | sed 's/\&amp;/\&/g')" > ${FINAL_DOWNLOADED_FILENAME}
 done
