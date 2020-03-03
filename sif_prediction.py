@@ -1,7 +1,11 @@
+import copy
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
+from torch.optim import lr_scheduler
+
+import time
 import torch
 import torchvision
 import torchvision.transforms as transforms
@@ -26,15 +30,13 @@ print("Test samples", len(test_metadata))
 
 # Set up Datasets and Dataloaders
 resize_transform = torchvision.transforms.Resize((224, 224))
-train_dataset = ReflectanceCoverSIFDataset(train_metadata, resize_transform)
-val_dataset = ReflectanceCoverSIFDataset(val_metadata, resize_transform)
-test_dataset = ReflectanceCoverSIFDataset(test_metadata, resize_transform)
-train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=4,
-                                           shuffle=True, num_workers=2)
-val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=4,
-                                           shuffle=True, num_workers=2)
-test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=4,
-                                           shuffle=True, num_workers=2)
+datasets = {'train': ReflectanceCoverSIFDataset(train_metadata, resize_transform),
+            'val': ReflectanceCoverSIFDataset(val_metadata, resize_transform),
+            'test': ReflectanceCoverSIFDataset(test_metadata, resize_transform)}
+dataloaders = {x: torch.utils.data.DataLoader(datasets[x], batch_size=4,
+                                             shuffle=True, num_workers=4)
+              for x in ['train', 'val', 'test']}
+
 
 # Visualize images (RGB bands only)
 # Tile is assumed to be in Pytorch format: CxWxH
@@ -51,37 +53,89 @@ def imshow(tile):
     plt.imshow(np.transpose(img, (1, 2, 0)))
     plt.show()
 
+
+def train_model(model, dataloaders, dataset_sizes, criterion, optimizer, scheduler, device, num_epochs=25):
+    since = time.time()
+
+    best_model_wts = copy.deepcopy(model.state_dict())
+    best_loss = float('inf')
+
+    for epoch in range(num_epochs):
+        print('Epoch {}/{}'.format(epoch, num_epochs - 1))
+        print('-' * 10)
+
+        # Each epoch has a training and validation phase
+        for phase in ['train', 'val']:
+            if phase == 'train':
+                model.train()  # Set model to training mode
+            else:
+                model.eval()   # Set model to evaluate mode
+
+            running_loss = 0.0
+
+            # Iterate over data.
+            for sample in dataloaders[phase]:
+                input_tile = sample['tile'].to(device)
+                true_sif = sample['SIF'].to(device)
+
+                # zero the parameter gradients
+                optimizer.zero_grad()
+
+                # forward
+                # track history if only in train
+                with torch.set_grad_enabled(phase == 'train'):
+                    predicted_sif = model(input_tile)
+                    #_, preds = torch.max(outputs, 1)
+                    loss = criterion(predicted_sif, true_sif)
+
+                    # backward + optimize only if in training phase
+                    if phase == 'train':
+                        loss.backward()
+                        optimizer.step()
+
+                # statistics
+                running_loss += loss.item() * sample.size(0)
+                # running_corrects += torch.sum(preds == labels.data)
+            if phase == 'train':
+                scheduler.step()
+
+            epoch_loss = running_loss / dataset_sizes[phase]
+            #epoch_acc = running_corrects.double() / dataset_sizes[phase]
+
+            print('{} Loss: {:.4f}'.format(
+                phase, epoch_loss))
+
+            # deep copy the model
+            if phase == 'val' and epoch_loss < best_loss:
+                best_loss = epoch_loss
+                best_model_wts = copy.deepcopy(model.state_dict())
+
+        print()
+
+    time_elapsed = time.time() - since
+    print('Training complete in {:.0f}m {:.0f}s'.format(
+        time_elapsed // 60, time_elapsed % 60))
+    print('Best val loss: {:4f}'.format(best_loss))
+
+    # load best model weights
+    model.load_state_dict(best_model_wts)
+    return model
+
+
 # get some random training images
-dataiter = iter(train_loader)
+dataiter = iter(dataloaders['train'])
 samples = dataiter.next()
 for sample in samples:
     imshow(sample['tile'])
 
-resnet_model = resnet.resnet18(input_channels=14)
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+print("Device", device)
+resnet_model = resnet.resnet18(input_channels=14).to(device)
 criterion = nn.MSELoss()
 optimizer = optim.SGD(resnet_model.parameters(), lr=0.001, momentum=0.9)
-for epoch in range(2):  # loop over the dataset multiple times
+dataset_sizes = {x: len(datasets[x]) for x in ['train', 'val', 'test']}
 
-    running_loss = 0.0
-    for i, sample in enumerate(train_loader, 0):
-        # get the inputs; data is a list of [inputs, labels]
-        tile = sample['tile']
-        true_sif = sample['SIF']
-
-        # zero the parameter gradients
-        optimizer.zero_grad()
-
-        # forward + backward + optimize
-        predicted_sif = resnet_model(tile)
-        loss = criterion(predicted_sif, true_sif)
-        loss.backward()
-        optimizer.step()
-
-        # print statistics
-        running_loss += loss.item()
-        if i % 2000 == 1999:    # print every 2000 mini-batches
-            print('[%d, %5d] loss: %.3f' %
-                  (epoch + 1, i + 1, running_loss / 2000))
-            running_loss = 0.0
-
-print('Finished Training')
+# Decay LR by a factor of 0.1 every 7 epochs
+exp_lr_scheduler = lr_scheduler.StepLR(optimizer, step_size=7, gamma=0.1)
+resnet_model = train_model(resnet_model, dataloaders, dataset_sizes, criterion, optimizer, exp_lr_scheduler, device,
+                           num_epochs=25)
