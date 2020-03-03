@@ -4,7 +4,6 @@ import torch
 import pandas as pd
 from skimage import io, transform
 import numpy as np
-import matplotlib.pyplot as plt
 from torch.utils.data import Dataset, DataLoader
 from PIL import Image
 from torchvision import transforms, utils
@@ -19,17 +18,14 @@ warnings.filterwarnings("ignore")
 class ReflectanceCoverSIFDataset(Dataset):
     """Dataset mapping a tile (with reflectance/cover bands) to total SIF"""
 
-    def __init__(self, tile_info_file):  # root_dir, transform=None):
+    def __init__(self, tile_info, transform):  # root_dir, transform=None):
         """
         Args:
-            csv_file (string): Path to the csv file with annotations.
-            root_dir (string): Directory with all the images.
-            transform (callable, optional): Optional transform to be applied
-                on a sample.
+            tile_info_file (string): Pandas dataframe containing metadata for each tile
         """
-        self.tile_info = pd.read_csv(tile_info_file)
+        self.tile_info = tile_info
         #self.root_dir = root_dir
-        #self.transform = transform
+        self.transform = transform
 
     def __len__(self):
         return len(self.features)
@@ -41,15 +37,15 @@ class ReflectanceCoverSIFDataset(Dataset):
         current_tile_info = self.tile_info.iloc[idx]
         year, month, day_of_year = utils.parse_date_string(current_tile_info.loc['date'])
         tile = np.load(current_tile_info.loc['tile_file'])
+
         print("Tile shape", tile.shape)
-        # if self.transform:
-        #     image = self.transform(image)
-        
+        if self.transform:
+            tile = self.transform(tile)
+
         sample = {'lon': current_tile_info.loc['lon'],
                   'lat': current_tile_info.loc['lat'],
                   'year': year,
                   'day_of_year': day_of_year,
                   'tile': tile,
                   'SIF': current_tile_info.loc["SIF"]}
-
         return sample
