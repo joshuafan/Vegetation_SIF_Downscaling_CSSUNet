@@ -6,7 +6,7 @@ from skimage import io, transform
 import numpy as np
 from torch.utils.data import Dataset, DataLoader
 from PIL import Image
-from torchvision import transforms, utils
+from torchvision import transforms
 
 # Ignore warnings
 import warnings
@@ -28,14 +28,14 @@ class ReflectanceCoverSIFDataset(Dataset):
         self.transform = transform
 
     def __len__(self):
-        return len(self.features)
+        return len(self.tile_info)
 
     def __getitem__(self, idx):
         if torch.is_tensor(idx):
             idx = idx.tolist()
 
         current_tile_info = self.tile_info.iloc[idx]
-        year, month, day_of_year = utils.parse_date_string(current_tile_info.loc['date'])
+        year, month, day_of_year = sif_utils.parse_date_string(current_tile_info.loc['date'])
         tile = np.load(current_tile_info.loc['tile_file'])
 
         print("Tile shape", tile.shape)
