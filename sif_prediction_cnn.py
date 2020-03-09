@@ -133,7 +133,7 @@ print("Device", device)
 
 # Read train/val tile metadata
 train_metadata = pd.read_csv(INFO_FILE_TRAIN)
-val_metadata = pd.read_csv(INTO_FILE_VAL)
+val_metadata = pd.read_csv(INFO_FILE_VAL)
 average_sif = train_metadata['SIF'].mean()
 print("Average sif", average_sif)
 print("Train samples", len(train_metadata))
@@ -152,12 +152,12 @@ resnet_model = resnet.resnet18(input_channels=14).to(device)
 if FROM_PRETRAINED:
     resnet_model.load_state_dict(torch.load(TRAINED_MODEL_FILE))
 criterion = nn.MSELoss()
-optimizer = optim.SGD(resnet_model.parameters(), lr=0.0001, momentum=0.9)
+optimizer = optim.SGD(resnet_model.parameters(), lr=1e-4, momentum=0.9)
 dataset_sizes = {'train': len(train_metadata),
                  'val': len(val_metadata)}
 
 # Decay LR by a factor of 0.1 every 7 epochs
-exp_lr_scheduler = lr_scheduler.StepLR(optimizer, step_size=7, gamma=0.1)
+exp_lr_scheduler = lr_scheduler.StepLR(optimizer, step_size=2, gamma=0.1)
 
 # Train model
 print("Starting to train")

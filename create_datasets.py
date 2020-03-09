@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import xarray as xr
 
 from rasterio.plot import show
-
+from sif_utils import lat_long_to_index
 
 
 REFLECTANCE_FILES = [(pd.date_range(start="2018-08-16", end="2018-08-31"), "datasets/LandsatReflectance/aug_16")]  # ["datasets/LandsatReflectance/44-45N_88-89W_reflectance_max.tif"])]  # datasets/GEE_data/"}
@@ -47,11 +47,6 @@ def plot_and_print_covers(covers, filename):
     for crop, count in sorted_crops:
         print(str(crop) + ': ' + str(round((count / total_pixels) * 100, 2)) + '%')
 
-
-def lat_long_to_index(lat, lon, dataset_top_bound, dataset_left_bound, resolution):
-    height_idx = (dataset_top_bound - lat) / resolution
-    width_idx = (lon - dataset_left_bound) / resolution
-    return int(height_idx), int(width_idx)
 
 
 # Dataset format: image file name, SIF, date
@@ -105,11 +100,11 @@ with rio.open(COVER_FILE) as cover_dataset:
 
                     # Resample cover data into target resolution
                     SIF_TILE_DEGREE_SIZE = 0.1
-                    target_res = reflectance_dataset.res[0]  #SIF_TILE_DEGREE_SIZE / TARGET_TILE_SIZE
-                    TARGET_TILE_SIZE = int(SIF_TILE_DEGREE_SIZE / target_res)
+                    target_res = (reflectance_dataset.res[0], reflectance_dataset.res[1])  #SIF_TILE_DEGREE_SIZE / TARGET_TILE_SIZE
+                    TARGET_TILE_SIZE = int(SIF_TILE_DEGREE_SIZE / target_res[0])
                     print("target tile size", TARGET_TILE_SIZE)
-                    cover_height_upscale_factor = cover_dataset.res[0] / target_res  # reflectance_dataset.res[0]
-                    cover_width_upscale_factor = cover_dataset.res[1] / target_res  # reflectance_dataset.res[1]
+                    cover_height_upscale_factor = cover_dataset.res[0] / target_res[0]  # reflectance_dataset.res[0]
+                    cover_width_upscale_factor = cover_dataset.res[1] / target_res[1]  # reflectance_dataset.res[1]
                     print('Upscale factor: height', cover_height_upscale_factor, 'width', cover_width_upscale_factor)
                     reprojected_covers = cover_dataset.read(
                         out_shape=(
@@ -123,16 +118,17 @@ with rio.open(COVER_FILE) as cover_dataset:
                     print('Shape:', reprojected_covers.shape)
 
                     # Resample reflectance data into target resolution
-                    reflectance_height_upscale_factor = reflectance_dataset.res[0] / target_res
-                    reflectance_width_upscale_factor = reflectance_dataset.res[1] / target_res
-                    reprojected_reflectances = reflectance_dataset.read(
-                        out_shape=(
-                            int(reflectance_dataset.height * reflectance_height_upscale_factor),
-                            int(reflectance_dataset.width * reflectance_width_upscale_factor)
-                        ),
-                        resampling=Resampling.bilinear
-                    
-                    )
+                    #reflectance_height_upscale_factor = reflectance_dataset.res[0] / target_res[0]
+                    #reflectance_width_upscale_factor = reflectance_dataset.res[1] / target_res[1]
+                    #reprojected_reflectances = reflectance_dataset.read(
+                    #    out_shape=(
+                    #        int(reflectance_dataset.height * reflectance_height_upscale_factor),
+                    #        int(reflectance_dataset.width * reflectance_width_upscale_factor)
+                    #    ),
+                    #    resampling=Resampling.bilinear
+                    # 
+                    #)
+                    reprojected_reflectances = reflectance_dataset.read()
                     print('REPROJECTED REFLECTANCE DATASET')
                     print('Shape:', reprojected_reflectances.shape)
 
@@ -211,15 +207,17 @@ with rio.open(COVER_FILE) as cover_dataset:
                             reflectance_tile = reprojected_reflectances[:, reflectance_top_idx:reflectance_bottom_idx,
                                                                  reflectance_left_idx:reflectance_right_idx]
                             print("Cover tile shape", cover_tile.shape)
-                            print("Fraction of nonzeros in cover tile:", np.count_nonzero(cover_tile) / (cover_tile.shape[0] * cover_tile.shape[1]))
+                            cover_fraction_nonzero = np.count_nonzero(cover_tile) / (cover_tile.shape[0] * cover_tile.shape[1])
+                            print("Fraction of nonzeros in cover tile:", cover_fraction_nonzero)
                             print("Reflectance tile shape", reflectance_tile.shape)
-                            print("Fraction of nonzeros in reflectance tile:", np.count_nonzero(reflectance_tile) / (reflectance_tile.shape[0] * reflectance_tile.shape[1] * reflectance_tile.shape[2]))
+                            reflectance_fraction_nonzero = np.count_nonzero(reflectance_tile) / (reflectance_tile.shape[0] * reflectance_tile.shape[1] * reflectance_tile.shape[2])
+                            print("Fraction of nonzeros in reflectance tile:", reflectance_fraction_nonzero)
                             assert(cover_tile.shape[0:2] == reflectance_tile.shape[1:3])
 
                             # If too much data is missing, throw this tile out
-                            if np.count_nonzero(cover_tile) / len(cover_tile) < 1 - MAX_MISSING_FRACTION:
+                            if cover_fraction_nonzero < 1 - MAX_MISSING_FRACTION:
                                 continue
-                            if np.count_nonzero(reflectance_tile) / len(reflectance_tile) < 1 - MAX_MISSING_FRACTION:
+                            if reflectance_fraction_nonzero < 1 - MAX_MISSING_FRACTION:
                                 continue
 
                             # Create cover bands (binary masks)
@@ -235,7 +233,7 @@ with rio.open(COVER_FILE) as cover_dataset:
                             reflectance_tile_sum_bands = reflectance_tile.sum(axis=0)
                             missing_reflectance_mask = np.zeros_like(reflectance_tile_sum_bands)
                             missing_reflectance_mask[reflectance_tile_sum_bands == 0] = 1.
-                            print("Missing reflectance mask", missing_reflectance_mask.shape)
+                            #print("Missing reflectance mask", missing_reflectance_mask.shape)
                             masks.append(missing_reflectance_mask)
 
                             # Stack masks on top of each other
@@ -243,8 +241,7 @@ with rio.open(COVER_FILE) as cover_dataset:
 
                             # Stack reflectance bands and masks on top of each other
                             reflectance_and_cover_tile = np.concatenate((reflectance_tile, masks), axis=0)
-                            np.transpose(reflectance_and_cover_tile, (1, 2, 0))
-                            print("Combined tile shape", reflectance_and_cover_tile.shape)
+                            #print("Combined tile shape", reflectance_and_cover_tile.shape)
 
                             # Extract corresponding SIF value
                             center_lat = round(bottom_degrees + SIF_TILE_DEGREE_SIZE / 2, 2)
@@ -257,12 +254,13 @@ with rio.open(COVER_FILE) as cover_dataset:
                             # Write reflectance/cover pixels tile (as Numpy array) to .npy file
                             npy_filename = "datasets/generated/reflectance_lat_" + str(center_lat) + "_lon_" + str(center_lon) + ".npy"
                             np.save(npy_filename, reflectance_and_cover_tile)
-                            print("date", date_range.date[0].isoformat())
+                            #print("date", date_range.date[0].isoformat())
                             dataset_rows.append([center_lon, center_lat, date_range.date[0].isoformat(), npy_filename, total_sif])
 
             except Exception as error:
                 print("Reading reflectance file", reflectance_file, "failed")
                 print(traceback.format_exc())
+
 
 with open(OUTPUT_CSV_FILE, "w") as output_csv_file:
     csv_writer = csv.writer(output_csv_file, delimiter=",", quoting=csv.QUOTE_MINIMAL)
