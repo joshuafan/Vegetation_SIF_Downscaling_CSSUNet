@@ -6,6 +6,7 @@ import copy
 import math
 import matplotlib.pyplot as plt
 import numpy as np
+import os
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from torch.optim import lr_scheduler
@@ -20,9 +21,11 @@ import torch.optim as optim
 
 from reflectance_cover_sif_dataset import ReflectanceCoverSIFDataset
 
-INFO_FILE_TRAIN = "datasets/generated/tile_info_train.csv"
-INFO_FILE_VAL = "datasets/generated/tile_info_val.csv"
+DATASET_DIR = "datasets/dataset_2018-08-01"
+INFO_FILE_TRAIN = os.path.join(DATASET_DIR, "tile_info_train.csv")
+INFO_FILE_VAL = os.path.join(DATASET_DIR, "tile_info_val.csv")
 TRAINED_MODEL_FILE = "models/large_tile_sif_prediction"
+BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
 FROM_PRETRAINED = False
 RGB_BANDS = [1, 2, 3]
 NUM_EPOCHS = 10 
@@ -43,14 +46,24 @@ def imshow(tile):
     plt.show()
 
 
-def train_model(model, dataloaders, dataset_sizes, criterion, optimizer, scheduler, device, average_sif, num_epochs=25):
+# "means" is a list of band averages (+ average SIF at end)
+def train_model(model, dataloaders, dataset_sizes, criterion, optimizer, device, means, stds, num_epochs=25):
     since = time.time()
 
     best_model_wts = copy.deepcopy(model.state_dict())
     best_loss = float('inf')
     train_losses = []
     val_losses = []
-
+    band_means = means[:-1]
+    band_means_batch = None
+    band_stds = stds[:-1]
+    band_stds_batch = None
+    sif_mean = means[-1]
+    sif_std = stds[-1]
+    print('band means', band_means)
+    print('band stds', band_stds)
+    print('SIF mean', sif_mean)
+    print('SIF std', sif_std)
     for epoch in range(num_epochs):
         print('Epoch {}/{}'.format(epoch, num_epochs - 1))
         print('-' * 10)
@@ -66,8 +79,21 @@ def train_model(model, dataloaders, dataset_sizes, criterion, optimizer, schedul
 
             # Iterate over data.
             for sample in dataloaders[phase]:
-                input_tile = sample['tile'].to(device)
-                true_sif = sample['SIF'].to(device)
+                #if band_means_batch is not None:
+                #    print("Band means shape", band_means_batch.shape)
+                #print("Tile shape", sample['tile'].shape)
+                
+                # Recall: sample['tile'] has shape (batch x band x lat x long)
+                batch_size = sample['tile'].shape[0]
+
+                # If batch size changed (or if this is the first time), compute repeated mean/std vectors 
+                if band_means_batch is None or band_means_batch.shape[0] != batch_size:
+                    band_means_batch = torch.tensor(np.repeat(band_means[np.newaxis, :, np.newaxis, np.newaxis], batch_size, axis=0), dtype=torch.float)
+                    band_stds_batch = torch.tensor(np.repeat(band_stds[np.newaxis, :, np.newaxis, np.newaxis], batch_size, axis=0), dtype=torch.float)
+                    print('Now band means shape', band_means_batch.shape)
+                input_tile_standardized = ((sample['tile'] - band_means_batch) / band_stds_batch).to(device)
+                true_sif_non_standardized = sample['SIF'].to(device)
+                true_sif_standardized = ((true_sif_non_standardized - sif_mean) / sif_std).to(device)
 
                 # zero the parameter gradients
                 optimizer.zero_grad()
@@ -75,11 +101,11 @@ def train_model(model, dataloaders, dataset_sizes, criterion, optimizer, schedul
                 # forward
                 # track history if only in train
                 with torch.set_grad_enabled(phase == 'train'):
-                    predicted_sif = model(input_tile).flatten()
+                    predicted_sif_standardized = model(input_tile_standardized).flatten()
                     #_, preds = torch.max(outputs, 1)
-                    #print('Predicted:', predicted_sif)
-                    #print('True:', true_sif)
-                    loss = criterion(predicted_sif, true_sif)
+                    #print('Predicted (standardized):', predicted_sif_standardized)
+                    #print('True (standardized):', true_sif_standardized)
+                    loss = criterion(predicted_sif_standardized, true_sif_standardized)
                     #print("loss", loss)
 
                     # backward + optimize only if in training phase
@@ -88,12 +114,18 @@ def train_model(model, dataloaders, dataset_sizes, criterion, optimizer, schedul
                         optimizer.step()
 
                 # statistics
-                running_loss += loss.item() * len(sample['SIF'])
+                predicted_sif_non_standardized = torch.tensor(predicted_sif_standardized * sif_std + sif_mean, dtype=torch.float).to(device)
+                #print('========================')
+                #print('Predicted', predicted_sif_non_standardized)
+                #print('True', true_sif_non_standardized)
+                non_standardized_loss = criterion(predicted_sif_non_standardized, true_sif_non_standardized)
+                running_loss += non_standardized_loss.item() * len(sample['SIF'])
                 # running_corrects += torch.sum(preds == labels.data)
-            if phase == 'train':
-                scheduler.step()
 
-            epoch_loss = math.sqrt(running_loss / dataset_sizes[phase]) / average_sif
+            #if phase == 'train':
+            #    scheduler.step()
+
+            epoch_loss = math.sqrt(running_loss / dataset_sizes[phase]) / sif_mean
             #epoch_acc = running_corrects.double() / dataset_sizes[phase]
 
             print('{} Loss: {:.4f}'.format(
@@ -134,35 +166,43 @@ print("Device", device)
 # Read train/val tile metadata
 train_metadata = pd.read_csv(INFO_FILE_TRAIN)
 val_metadata = pd.read_csv(INFO_FILE_VAL)
-average_sif = train_metadata['SIF'].mean()
-print("Average sif", average_sif)
+train_statistics = pd.read_csv(BAND_STATISTICS_FILE)
+train_means = train_statistics['mean'].values
+train_stds = train_statistics['std'].values
+
 print("Train samples", len(train_metadata))
 print("Validation samples", len(val_metadata))
+print("Means", train_means)
+print("Stds", train_stds)
 
 # Set up Datasets and Dataloaders
 # resize_transform = torchvision.transforms.Resize((224, 224))
 datasets = {'train': ReflectanceCoverSIFDataset(train_metadata), # , resize_transform),
             'val': ReflectanceCoverSIFDataset(val_metadata)} # resize_transform),
 dataloaders = {x: torch.utils.data.DataLoader(datasets[x], batch_size=4,
-                                             shuffle=True, num_workers=4)
+                                              shuffle=True, num_workers=1)
               for x in ['train', 'val']}
 
 print("Dataloaders")
-resnet_model = resnet.resnet18(input_channels=14).to(device)
+resnet_model = resnet.resnet18(input_channels=14)  #.to(device)
+print("Got model")
+resnet_model = resnet_model.to(device)
+
 if FROM_PRETRAINED:
     resnet_model.load_state_dict(torch.load(TRAINED_MODEL_FILE))
-criterion = nn.MSELoss()
-optimizer = optim.SGD(resnet_model.parameters(), lr=1e-4, momentum=0.9)
+criterion = nn.MSELoss(reduction='mean')
+#optimizer = optim.SGD(resnet_model.parameters(), lr=1e-4, momentum=0.9)
+optimizer = optim.Adam(resnet_model.parameters(), lr=1e-4)
 dataset_sizes = {'train': len(train_metadata),
                  'val': len(val_metadata)}
 
 # Decay LR by a factor of 0.1 every 7 epochs
-exp_lr_scheduler = lr_scheduler.StepLR(optimizer, step_size=2, gamma=0.1)
+#exp_lr_scheduler = lr_scheduler.StepLR(optimizer, step_size=2, gamma=0.1)
 
 # Train model
 print("Starting to train")
 resnet_model, train_losses, val_losses, best_loss = train_model(resnet_model, dataloaders,
-    dataset_sizes, criterion, optimizer, exp_lr_scheduler, device, average_sif, num_epochs=NUM_EPOCHS)
+    dataset_sizes, criterion, optimizer, device, train_means, train_stds, num_epochs=NUM_EPOCHS)
 
 # Save model to file
 torch.save(resnet_model.state_dict(), TRAINED_MODEL_FILE)
