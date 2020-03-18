@@ -9,18 +9,25 @@
 
 
 # Aug 1-16, 2018
-DOCUMENT_IDS=("1xXArBQWuX7x-CpidVEKH9kp6W29k94Yf" "1Qg0lHOqiwDAGADgsHuSCNJy_woUp6LSB" "1aReE95lnCopm2PrwYC5ywr1j2WmBQLMm" "1yWZo4jA9hfxdFfpWwB_1Xm5em0JOZWpw" "1zUhUcY-JgmSN4NUhoGfvh4dkfbiOKJpQ" "1weIUAzGftgmAjwISx1MdHIg9mnYK3sgC" "1YDtjSydp7wpR5nqCq5dKOK2_BanGQGwX" "1vOEMznVxyyGf-AyPO3tVSNbTWu-aIm5x" "15xdIBzh50evr9k2efbrc8O745NG4slxL" "13MdQz0qeYYG5LKkmlcnlYLZQpQabXbaW" "1scX3nxJcwOWpdnk7jk33I79IH0n7e2AH" "1K6HoRfbRHKaHv5Xj6jpwOAUIJnaJ7pry" "1DW3XwwFaV-jjxPRRkABekTfsEZ5lkdAv" "1y6kHu4xlVlrzkOImXAFh0B5ZZ4WneehG" "1D01Mk9yCXMEScsuJfrFF8waQcmdNMOiS")
+# DOCUMENT_IDS=("1xXArBQWuX7x-CpidVEKH9kp6W29k94Yf" "1Qg0lHOqiwDAGADgsHuSCNJy_woUp6LSB" "1aReE95lnCopm2PrwYC5ywr1j2WmBQLMm" "1yWZo4jA9hfxdFfpWwB_1Xm5em0JOZWpw" "1zUhUcY-JgmSN4NUhoGfvh4dkfbiOKJpQ" "1weIUAzGftgmAjwISx1MdHIg9mnYK3sgC" "1YDtjSydp7wpR5nqCq5dKOK2_BanGQGwX" "1vOEMznVxyyGf-AyPO3tVSNbTWu-aIm5x" "15xdIBzh50evr9k2efbrc8O745NG4slxL" "13MdQz0qeYYG5LKkmlcnlYLZQpQabXbaW" "1scX3nxJcwOWpdnk7jk33I79IH0n7e2AH" "1K6HoRfbRHKaHv5Xj6jpwOAUIJnaJ7pry" "1DW3XwwFaV-jjxPRRkABekTfsEZ5lkdAv" "1y6kHu4xlVlrzkOImXAFh0B5ZZ4WneehG" "1D01Mk9yCXMEScsuJfrFF8waQcmdNMOiS")
 
 # Aug 1-16, 2016
 # DOCUMENT_IDS=("1zvOj_0q8jsaGPflIV6xjIibCgTnSW9mb" "13Gw9pitOK7tQTsFSNy5Q6mOyMWNp24nl" "19P-vLZM26yKvXxwpD7WnSBqRtae-BDDz" "1xTyjeVmYPwGmXtXEkKTPr5i79dnY14re" "17jX1rO7Qz9TU0ORbgtf-BRffNh3G61Pz" "1fOdTHLtL1Zzf2Hh3_T3woS5OjDNiaxJs" "1p2raQRgpfAq4RmfGXxn4v-Xb2rM2C3so" "1vS32cVFIRY8WP7R6XcoSGtQ95VRBG9o9" "1RbiK5Oa7SpM0D3MWyUf5XZIBl6zIn-eH" "1i8FT_aDZ5oL0D9euKivoDJxgWtbpNH4y" "14VVK_d7q6BQ5ONpe_cLux0CSysPB6-6s" "1KZ32R4iOOew9QEVzoN4TT6U3c8kZ3WZe" "1h5bSSdugByW9uOGZlzBK65y7iC2dM6fD" "1D7DtOWtj0Z8Dd7uWkkg6WHp7dheMThq9" "1bZ2KGMAh25wsd4qHNArtxcymw-DBVt91")
-DOWNLOAD_FOLDER="datasets/LandsatReflectance/2018-08-01"
+
+# 2018-08-01, r2
+#DOCUMENT_IDS=("1b566Fs4b4HycLTIm2eEfTrpmk8j7fsnu" "1R-8ADvC3WLGllZMMzedN6weOyWV_CFHI" "1RN8QmW5Iju-c5jQ76t4IfjjDVhSEyhjZ" "1G3rggh3_ggHo4kRtLpJXtDcWCCMg8mHS" "1F77ugWvyFRJbceOgkR11G-DH9TVqpKG3" "1euf-1O0g7yXcG6K9goUTUfGOlLaWjfRs" "14G9YRBeqmd18LJSVcu0TFBlBT-vUP7Zu" "1WHw0y9syUxEE2bDaBFl9ureZIIP4X73A" "1FIhuV5bx6yUYpktJBajc6C72BTi9Ny90" "1bfLt2VAVwFj2PcZGzhgf6p85y9dhAuw9" "1aFGqXm_O1LJ2iyTfKtFPaAd95FYmI3rG" "1-_VbFCapvHez5qagkcbtIgJ06kv50_44")
+
+# 2016-08-01, r2
+DOCUMENT_IDS=("1XCaN8ai9No_4wmbZCKLPOc_8UVQQDVnA" "15cMs1JuBvIeKH5blnPTFb2Bifmf9Tdsm" "1EtvhnsbXUaGmUlVxtCoioCXWVPQHaUEn" "15Gmg3JxyWsTO06x-qGJye1TPkZyhK85r" "1zkZlyMejJJP4w9-aQ_SIAbw0nIw4xvWy" "1MnvD7qGYpZ7GZ7BlCKHfGPbj3CQR3-XX" "1x69y-M7KzInzaifkWcsBMS-E-YDBgQ4x" "1j6JBUXNwqjnQ2DHtNM0j14F5mAwhFiqd" "1_SAvLkqT5kId7jN_8iOaglqA2pvl0xZp" "1aOs_Y1MgoDR2CZTyJKEqsgJxDexrBYk-" "1ZYF2lsEj4OtTCNaiC67Zj_sVgl0M3WlX" "1Vdy_DiC0_HZsZN7zDzPQ7ayh5iW1feG4")
+
+DOWNLOAD_FOLDER="datasets/LandsatReflectance/r2_2016-08-01"
 mkdir ./tmp
 mkdir ${DOWNLOAD_FOLDER}
 
 for i in ${!DOCUMENT_IDS[@]}; do
-  x=$((${i} / 5))
-  y=$((${i} % 5))
-  FINAL_DOWNLOADED_FILENAME="${DOWNLOAD_FOLDER}/corn_belt_reflectance_2018-08-01_box_${x}_${y}.tif"
+  x=$((${i} / 4))
+  y=$((${i} % 4))
+  FINAL_DOWNLOADED_FILENAME="${DOWNLOAD_FOLDER}/corn_belt_reflectance_2016-08-01_box_${x}_${y}.tif"
   #wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=${DOCUMENT_IDS[${i}]}' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=${DOCUMENT_IDS[${i}]}" -O ${FINAL_DOWNLOADED_FILENAME} && rm -rf /tmp/cookies.txt
   curl -c ./tmp/cookies "https://drive.google.com/uc?export=download&id=${DOCUMENT_IDS[${i}]}" > "./tmp/intermezzo_${i}"
   curl -L -b ./tmp/cookies "https://drive.google.com$(cat ./tmp/intermezzo_${i} | grep -Po 'uc-download-link" [^>]* href="\K[^"]*' | sed 's/\&amp;/\&/g')" > ${FINAL_DOWNLOADED_FILENAME}

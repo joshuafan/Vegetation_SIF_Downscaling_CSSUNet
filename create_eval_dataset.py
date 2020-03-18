@@ -49,6 +49,11 @@ plt.xlabel('Longitude')
 plt.ylabel('Latitude')
 plt.title('Validation points')
 plt.savefig('exploratory_plots/validation_points.png')
+
+print('Longitude extremes', np.max(validation_points[:,1]), np.min(validation_points[validation_points[:, 1] > -110, 1]))
+print('Latitude extremes', np.max(validation_points[:,2]), np.min(validation_points[validation_points[:, 2] > 38.2, 2]))
+
+
 exit(1)
 for i in range(validation_points.shape[0]):
     sif = validation_points[i, 0]

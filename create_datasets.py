@@ -193,6 +193,7 @@ with rio.open(COVER_FILE) as cover_dataset:
                 # For each "SIF tile", extract the tile of the reflectance data that maps to it
                 for left_degrees in np.arange(LEFT_BOUND, RIGHT_BOUND, SIF_TILE_DEGREE_SIZE):
                     for bottom_degrees in np.arange(BOTTOM_BOUND, TOP_BOUND, SIF_TILE_DEGREE_SIZE):
+                        # TODO actually we can do these steps ONCE for the entire area covered by the .tif file
                         right_edge = left_degrees + SIF_TILE_DEGREE_SIZE
                         top_edge = bottom_degrees + SIF_TILE_DEGREE_SIZE
 
@@ -269,6 +270,7 @@ with rio.open(COVER_FILE) as cover_dataset:
                         reflectance_and_cover_tile = np.concatenate((reflectance_tile, masks), axis=0)
                         #print("Combined tile shape", reflectance_and_cover_tile.shape)
 
+                        # TODO until here
                         # Extract corresponding SIF value
                         center_lat = round(bottom_degrees + SIF_TILE_DEGREE_SIZE / 2, 2)
                         center_lon = round(left_degrees + SIF_TILE_DEGREE_SIZE / 2, 2)
