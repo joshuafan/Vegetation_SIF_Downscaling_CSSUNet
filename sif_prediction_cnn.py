@@ -20,6 +20,7 @@ import torch.nn as nn
 import torch.optim as optim
 
 from reflectance_cover_sif_dataset import ReflectanceCoverSIFDataset
+import tile_transforms
 
 DATASET_DIR = "datasets/dataset_2018-08-01"
 INFO_FILE_TRAIN = os.path.join(DATASET_DIR, "tile_info_train.csv")
@@ -47,21 +48,13 @@ def imshow(tile):
 
 
 # "means" is a list of band averages (+ average SIF at end)
-def train_model(model, dataloaders, dataset_sizes, criterion, optimizer, device, means, stds, num_epochs=25):
+def train_model(model, dataloaders, dataset_sizes, criterion, optimizer, device, sif_mean, sif_std, num_epochs=25):
     since = time.time()
 
     best_model_wts = copy.deepcopy(model.state_dict())
     best_loss = float('inf')
     train_losses = []
     val_losses = []
-    band_means = means[:-1]
-    band_means_batch = None
-    band_stds = stds[:-1]
-    band_stds_batch = None
-    sif_mean = means[-1]
-    sif_std = stds[-1]
-    print('band means', band_means)
-    print('band stds', band_stds)
     print('SIF mean', sif_mean)
     print('SIF std', sif_std)
     for epoch in range(num_epochs):
@@ -82,16 +75,17 @@ def train_model(model, dataloaders, dataset_sizes, criterion, optimizer, device,
                 #if band_means_batch is not None:
                 #    print("Band means shape", band_means_batch.shape)
                 #print("Tile shape", sample['tile'].shape)
-                
+
                 # Recall: sample['tile'] has shape (batch x band x lat x long)
-                batch_size = sample['tile'].shape[0]
+                #batch_size = sample['tile'].shape[0]
 
                 # If batch size changed (or if this is the first time), compute repeated mean/std vectors 
-                if band_means_batch is None or band_means_batch.shape[0] != batch_size:
-                    band_means_batch = torch.tensor(np.repeat(band_means[np.newaxis, :, np.newaxis, np.newaxis], batch_size, axis=0), dtype=torch.float)
-                    band_stds_batch = torch.tensor(np.repeat(band_stds[np.newaxis, :, np.newaxis, np.newaxis], batch_size, axis=0), dtype=torch.float)
-                    print('Now band means shape', band_means_batch.shape)
-                input_tile_standardized = ((sample['tile'] - band_means_batch) / band_stds_batch).to(device)
+                #if band_means_batch is None or band_means_batch.shape[0] != batch_size:
+                #    band_means_batch = torch.tensor(np.repeat(band_means[np.newaxis, :, np.newaxis, np.newaxis], batch_size, axis=0), dtype=torch.float)
+                #    band_stds_batch = torch.tensor(np.repeat(band_stds[np.newaxis, :, np.newaxis, np.newaxis], batch_size, axis=0), dtype=torch.float)
+                #    print('Now band means shape', band_means_batch.shape)
+                #input_tile_standardized = ((sample['tile'] - band_means_batch) / band_stds_batch).to(device)
+                input_tile_standardized = sample['tile']
                 true_sif_non_standardized = sample['SIF'].to(device)
                 true_sif_standardized = ((true_sif_non_standardized - sif_mean) / sif_std).to(device)
 
@@ -166,19 +160,30 @@ print("Device", device)
 # Read train/val tile metadata
 train_metadata = pd.read_csv(INFO_FILE_TRAIN)
 val_metadata = pd.read_csv(INFO_FILE_VAL)
+
+# Read mean/standard deviation for each band, for standardization purposes
 train_statistics = pd.read_csv(BAND_STATISTICS_FILE)
 train_means = train_statistics['mean'].values
 train_stds = train_statistics['std'].values
-
 print("Train samples", len(train_metadata))
 print("Validation samples", len(val_metadata))
 print("Means", train_means)
 print("Stds", train_stds)
+band_means = train_means[:-1]
+sif_mean = train_means[-1]
+band_stds = train_stds[:-1]
+sif_std = train_stds[-1]
+
+# Set up image transforms
+transform_list = []
+transform_list.append(tile_transforms.StandardizeTile(band_means, band_stds))
+transform = transforms.Compose(transform_list)
 
 # Set up Datasets and Dataloaders
 # resize_transform = torchvision.transforms.Resize((224, 224))
-datasets = {'train': ReflectanceCoverSIFDataset(train_metadata), # , resize_transform),
-            'val': ReflectanceCoverSIFDataset(val_metadata)} # resize_transform),
+datasets = {'train': ReflectanceCoverSIFDataset(train_metadata, transform),
+            'val': ReflectanceCoverSIFDataset(val_metadata, transform)}
+
 dataloaders = {x: torch.utils.data.DataLoader(datasets[x], batch_size=4,
                                               shuffle=True, num_workers=1)
               for x in ['train', 'val']}

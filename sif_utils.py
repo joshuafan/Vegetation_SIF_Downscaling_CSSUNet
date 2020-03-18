@@ -15,7 +15,8 @@ def parse_date_string(date_string):
 def lat_long_to_index(lat, lon, dataset_top_bound, dataset_left_bound, resolution):
     height_idx = (dataset_top_bound - lat) / resolution[0]
     width_idx = (lon - dataset_left_bound) / resolution[1]
-    return int(height_idx), int(width_idx)
+    eps = 1e-6
+    return int(height_idx+eps), int(width_idx+eps)
 
 
 def plot_histogram(column, plot_filename):

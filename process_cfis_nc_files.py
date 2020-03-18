@@ -6,7 +6,7 @@ import numpy as np
 import os
 import xarray as xr
 
-FILE_PATH = './datasets/SIF/TROPO-SIF_01deg_biweekly_Apr18-Jan20.nc'
+FILE_PATH = './datasets/SIF/CFIS-SIF-L3-NGDCS20170727t192524-fv1.nc'
 START_DATE = '2018-08-01'
 END_DATE = '2018-08-15'
 PLOT_FOLDER = './datasets/SIF/visualizations/'
@@ -15,21 +15,21 @@ MIN_SIF = 0.0
 MAX_SIF = 1.0
 
 dataset = xr.open_dataset(FILE_PATH)
-print("dcSIF:", dataset)
+print("dataset:", dataset)
 
 # Plot the distribution of dcSIF (across all time/space)
-all_dcSIF = dataset.sif_dc.values.flatten()
-all_dcSIF = all_dcSIF[~np.isnan(all_dcSIF)]
-n, bins, patches = plt.hist(all_dcSIF, 100, facecolor='blue', alpha=0.5)
-plt.title('dcSIF values, Apr 2018 - Jan 2020 (over all days / locations, excluding NaN values)')
-plt.xlabel('dcSIF')
-plt.ylabel('Number of pixels (across all days)')
+# all_dcSIF = dataset.sif_dc.values.flatten()
+# all_dcSIF = all_dcSIF[~np.isnan(all_dcSIF)]
+# n, bins, patches = plt.hist(all_dcSIF, 100, facecolor='blue', alpha=0.5)
+# plt.title('dcSIF values, Apr 2018 - Jan 2020 (over all days / locations, excluding NaN values)')
+# plt.xlabel('dcSIF')
+# plt.ylabel('Number of pixels (across all days)')
 
 plt.savefig(os.path.join(PLOT_FOLDER, 'all_SIF.png'))
 plt.close()
 
 # Select one date (but backfill missing data that's present in the next few days, up to 10 days later)
-data_array = dataset.sif_dc.sel(time=slice(START_DATE, END_DATE)).mean(dim='time')
+data_array = dataset.sif_dc  #.sel(time=slice(START_DATE, END_DATE)).mean(dim='time')
 print("SIF array shape", data_array.shape)
 print("Array", data_array)
 

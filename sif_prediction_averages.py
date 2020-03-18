@@ -34,7 +34,7 @@ Y_val = val_set[OUTPUT_COLUMN].values.ravel()
 
 plot_histogram(Y_val, "val_large_tile_sif.png")
 
-linear_regression = Ridge().fit(X_train, Y_train)
+linear_regression = GradientBoostingRegressor().fit(X_train, Y_train)
 linear_predictions_train = linear_regression.predict(X_train)
 linear_predictions_val = linear_regression.predict(X_val)
 print('Linear Predictions val', linear_predictions_val)

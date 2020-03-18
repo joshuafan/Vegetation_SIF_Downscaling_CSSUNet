@@ -20,7 +20,10 @@
 # 2016-08-01, r2
 DOCUMENT_IDS=("1XCaN8ai9No_4wmbZCKLPOc_8UVQQDVnA" "15cMs1JuBvIeKH5blnPTFb2Bifmf9Tdsm" "1EtvhnsbXUaGmUlVxtCoioCXWVPQHaUEn" "15Gmg3JxyWsTO06x-qGJye1TPkZyhK85r" "1zkZlyMejJJP4w9-aQ_SIAbw0nIw4xvWy" "1MnvD7qGYpZ7GZ7BlCKHfGPbj3CQR3-XX" "1x69y-M7KzInzaifkWcsBMS-E-YDBgQ4x" "1j6JBUXNwqjnQ2DHtNM0j14F5mAwhFiqd" "1_SAvLkqT5kId7jN_8iOaglqA2pvl0xZp" "1aOs_Y1MgoDR2CZTyJKEqsgJxDexrBYk-" "1ZYF2lsEj4OtTCNaiC67Zj_sVgl0M3WlX" "1Vdy_DiC0_HZsZN7zDzPQ7ayh5iW1feG4")
 
-DOWNLOAD_FOLDER="datasets/LandsatReflectance/r2_2016-08-01"
+# DOCUMENT_IDS=("1xgaEwFaUe_mQAbq_NXua0_RjoNo0-qpj" "1mE7JggzWMZSqSIr5v0r3xucKZn2OwAf8" "196d_4jnvht8Kqy0CG7z8nkrry1OM2XOV" "1KyNf9bQa3WpSZtgM41en82nYPfmAhouN" "1Xncl3uy92r5qgurgJWxmFbHXzxyV3jm2" "1XhWsgYiAxkpnuiwnNrn0cH4ndpMlmEVr" "1I0Hq5iFlGST596ofiWIeFw5askW_m7Sa" "1RzXKVokf9xaQTByiOUd4S5iEbhUKiYAr" "1W1B_MbbRE1uCqBaPDXmLX8YoQevZEnw-" "1fTQ0NxfSDonfxqkk6dPf2DrVZ7suqFVN" "10Ve8DO9WxCBDgQJXV0HBhQIbyzsK67Q5" "1Ybc_cY2BxvG-zMrdAYtvC6z4qgVvJ-pT")
+
+DOWNLOAD_FOLDER="datasets/LandsatReflectance/test_2018-08-01"
+
 mkdir ./tmp
 mkdir ${DOWNLOAD_FOLDER}
 
@@ -28,7 +31,11 @@ for i in ${!DOCUMENT_IDS[@]}; do
   x=$((${i} / 4))
   y=$((${i} % 4))
   FINAL_DOWNLOADED_FILENAME="${DOWNLOAD_FOLDER}/corn_belt_reflectance_2016-08-01_box_${x}_${y}.tif"
+  curl -sc ./tmp/cookie "https://drive.google.com/uc?export=download&id=${DOCUMENT_IDS[${i}]}" > /dev/null
+  code="$(awk '/_warning_/ {print $NF}' ./tmp/cookie)"  
+  curl -Lb ./tmp/cookie "https://drive.google.com/uc?export=download&confirm=${code}&id=${DOCUMENT_IDS[${i}]}" -o ${FINAL_DOWNLOADED_FILENAME}
+
   #wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=${DOCUMENT_IDS[${i}]}' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=${DOCUMENT_IDS[${i}]}" -O ${FINAL_DOWNLOADED_FILENAME} && rm -rf /tmp/cookies.txt
-  curl -c ./tmp/cookies "https://drive.google.com/uc?export=download&id=${DOCUMENT_IDS[${i}]}" > "./tmp/intermezzo_${i}"
-  curl -L -b ./tmp/cookies "https://drive.google.com$(cat ./tmp/intermezzo_${i} | grep -Po 'uc-download-link" [^>]* href="\K[^"]*' | sed 's/\&amp;/\&/g')" > ${FINAL_DOWNLOADED_FILENAME}
+  #curl -c ./tmp/cookies "https://drive.google.com/uc?export=download&id=${DOCUMENT_IDS[${i}]}" > "./tmp/intermezzo_${i}"
+  #curl -L -b ./tmp/cookies "https://drive.google.com$(cat ./tmp/intermezzo_${i} | grep -Po 'uc-download-link" [^>]* href="\K[^"]*' | sed 's/\&amp;/\&/g')" > ${FINAL_DOWNLOADED_FILENAME}
 done

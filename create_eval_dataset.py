@@ -9,7 +9,7 @@ from sif_utils import lat_long_to_index
 
 DATE = "2016-08-01"
 TILES_DIR = "datasets/tiles_" + DATE
-SUBTILES_DIR = "datasets/tiles_" + DATE
+SUBTILES_DIR = "datasets/subtiles_" + DATE
 DATASET_DIR = "datasets/dataset_" + DATE
 
 assert os.path.exists(TILES_DIR)
@@ -42,19 +42,16 @@ subtile_averages = [column_names]
 # Each row is a datapoint. First column is the dc_sif. Second/third columns lon/lat of the grid center.
 validation_points = np.load(CFIS_FILE)
 print("Validation points shape", validation_points.shape)
-print("data point #3", validation_points[3])
 
-plt.scatter(validation_points[:, 1], validation_points[:, 2])
-plt.xlabel('Longitude')
-plt.ylabel('Latitude')
-plt.title('Validation points')
-plt.savefig('exploratory_plots/validation_points.png')
-
-print('Longitude extremes', np.max(validation_points[:,1]), np.min(validation_points[validation_points[:, 1] > -110, 1]))
-print('Latitude extremes', np.max(validation_points[:,2]), np.min(validation_points[validation_points[:, 2] > 38.2, 2]))
+#plt.scatter(validation_points[:, 1], validation_points[:, 2])
+#plt.xlabel('Longitude')
+#plt.ylabel('Latitude')
+#plt.title('Validation points')
+#plt.savefig('exploratory_plots/validation_points.png')
+#print('Longitude extremes', np.max(validation_points[:,1]), np.min(validation_points[validation_points[:, 1] > -110, 1]))
+#print('Latitude extremes', np.max(validation_points[:,2]), np.min(validation_points[validation_points[:, 2] > 38.2, 2]))
 
 
-exit(1)
 for i in range(validation_points.shape[0]):
     sif = validation_points[i, 0]
     if math.isnan(sif):
