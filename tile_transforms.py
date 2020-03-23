@@ -6,8 +6,8 @@ class StandardizeTile(object):
     Standardizes images so that each band has mean 0, standard deviation 1 
     """
     def __init__(self, band_means, band_stds):
-        self.band_means = band_means
-        self.band_stds = band_stds
+        self.band_means = band_means[:, np.newaxis, np.newaxis]
+        self.band_stds = band_stds[:, np.newaxis, np.newaxis]
 
     def __call__(self, tile):
         return (tile - self.band_means) / self.band_stds

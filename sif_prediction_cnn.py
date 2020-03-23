@@ -57,6 +57,9 @@ def train_model(model, dataloaders, dataset_sizes, criterion, optimizer, device,
     val_losses = []
     print('SIF mean', sif_mean)
     print('SIF std', sif_std)
+    sif_mean = torch.tensor(sif_mean).to(device)
+    sif_std = torch.tensor(sif_std).to(device)
+
     for epoch in range(num_epochs):
         print('Epoch {}/{}'.format(epoch, num_epochs - 1))
         print('-' * 10)
@@ -85,7 +88,7 @@ def train_model(model, dataloaders, dataset_sizes, criterion, optimizer, device,
                 #    band_stds_batch = torch.tensor(np.repeat(band_stds[np.newaxis, :, np.newaxis, np.newaxis], batch_size, axis=0), dtype=torch.float)
                 #    print('Now band means shape', band_means_batch.shape)
                 #input_tile_standardized = ((sample['tile'] - band_means_batch) / band_stds_batch).to(device)
-                input_tile_standardized = sample['tile']
+                input_tile_standardized = sample['tile'].to(device)
                 true_sif_non_standardized = sample['SIF'].to(device)
                 true_sif_standardized = ((true_sif_non_standardized - sif_mean) / sif_std).to(device)
 
@@ -207,7 +210,7 @@ dataset_sizes = {'train': len(train_metadata),
 # Train model
 print("Starting to train")
 resnet_model, train_losses, val_losses, best_loss = train_model(resnet_model, dataloaders,
-    dataset_sizes, criterion, optimizer, device, train_means, train_stds, num_epochs=NUM_EPOCHS)
+    dataset_sizes, criterion, optimizer, device, sif_mean, sif_std, num_epochs=NUM_EPOCHS)
 
 # Save model to file
 torch.save(resnet_model.state_dict(), TRAINED_MODEL_FILE)

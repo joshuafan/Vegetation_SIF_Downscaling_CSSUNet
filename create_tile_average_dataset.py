@@ -42,6 +42,7 @@ for split in ["train", "val"]:
     for index, row in dataset.iterrows():
         # Tile assumed to be (band x lat x long)
         tile = np.load(row.loc['tile_file'])
+        print('Tile', tile.shape, 'dtype', tile.dtype)
         tile_averages = np.mean(tile, axis=(1,2))
         csv_row = [row.loc['lat'], row.loc['lon']] + tile_averages.tolist() + [row.loc['SIF']]
         csv_rows.append(csv_row)

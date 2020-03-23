@@ -35,12 +35,12 @@ class ReflectanceCoverSIFDataset(Dataset):
         current_tile_info = self.tile_info.iloc[idx]
         #year, month, day_of_year = sif_utils.parse_date_string(current_tile_info.loc['date'])
         tile = np.load(current_tile_info.loc['tile_file']) 
-        tile = torch.tensor(tile, dtype=torch.float)
         #print('Tile shape', tile.shape)
         
         if self.transform:
             tile = self.transform(tile)
-
+        tile = torch.tensor(tile, dtype=torch.float)
+ 
         sample = {'lon': current_tile_info.loc['lon'],
                   'lat': current_tile_info.loc['lat'],
                   #'year': year,

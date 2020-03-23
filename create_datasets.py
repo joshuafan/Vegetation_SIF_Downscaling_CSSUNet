@@ -22,7 +22,7 @@ import xarray as xr
 from rasterio.plot import show
 from sif_utils import lat_long_to_index, plot_histogram
 
-DATE_RANGE = pd.date_range(start="2018-08-01", end="2018-08-16")
+DATE_RANGE = pd.date_range(start="2016-08-01", end="2016-08-16")
 START_DATE = str(DATE_RANGE.date[0])
 print("START DATE", START_DATE)
 REFLECTANCE_DIR = os.path.join("datasets/LandsatReflectance", START_DATE)
@@ -286,19 +286,16 @@ with rio.open(COVER_FILE) as cover_dataset:
                         # If the selected region (box) goes outside the range of the cover or reflectance dataset, ignore
                         if top_idx < 0 or left_idx < 0:
                             print("Index was negative!")
-                            #exit(1)
+                            continue
                         if (bottom_idx >= combined_area.shape[1] or right_idx >= combined_area.shape[2]):
                             print("Index went beyond edge of array!")
-                            #exit(1)
+                            continue
 
                         # Extract the cover and reflectance tiles (covering the same region as the SIF tile)
                         reflectance_and_cover_tile = combined_area[:, top_idx:bottom_idx, left_idx:right_idx]
                         reflectance_fraction_missing = np.sum(reflectance_and_cover_tile[-1, :, :].flatten()) / \
                                                        (reflectance_and_cover_tile.shape[1] *
                                                         reflectance_and_cover_tile.shape[2])
-                        cover_tile = reprojected_covers[cover_top_idx:cover_bottom_idx, cover_left_idx:cover_right_idx]
-                        reflectance_tile = reprojected_reflectances[:, reflectance_top_idx:reflectance_bottom_idx,
-                                           reflectance_left_idx:reflectance_right_idx]
                         print("Fraction of reflectance pixels missing:", reflectance_fraction_missing)
                         reflectance_coverage.append(1 - reflectance_fraction_missing)
 

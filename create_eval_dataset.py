@@ -9,13 +9,14 @@ from sif_utils import lat_long_to_index
 
 DATE = "2016-08-01"
 TILES_DIR = "datasets/tiles_" + DATE
-SUBTILES_DIR = "datasets/subtiles_" + DATE
+SUBTILES_DIR = "datasets/subtiles_" + DATE  # Directory to output subtiles to
 DATASET_DIR = "datasets/dataset_" + DATE
 
 assert os.path.exists(TILES_DIR)
+if not os.path.exists(SUBTILES_DIR):
+    os.makedirs(SUBTILES_DIR)
 if not os.path.exists(DATASET_DIR):
     os.makedirs(DATASET_DIR)
-
 OUTPUT_CSV_FILE = os.path.join(DATASET_DIR, "eval_subtiles.csv")
 TILE_AVERAGE_CSV_FILE = os.path.join(DATASET_DIR, "eval_large_tile_averages.csv")
 SUBTILE_AVERAGE_CSV_FILE = os.path.join(DATASET_DIR, "eval_subtile_averages.csv")
