@@ -10,11 +10,15 @@ from sklearn.metrics import mean_squared_error, r2_score
 import math
 from sif_utils import plot_histogram
 
-DATASET_DIR = "datasets/dataset_2018-08-01"
-TILE_AVERAGE_TRAIN_FILE = os.path.join(DATASET_DIR, "tile_averages_train.csv")
-TILE_AVERAGE_VAL_FILE = os.path.join(DATASET_DIR, "tile_averages_val.csv")
+TRAIN_DATE = "2018-08-01"
+TRAIN_DATASET_DIR = "datasets/dataset_" + TRAIN_DATE
+TILE_AVERAGE_TRAIN_FILE = os.path.join(TRAIN_DATASET_DIR, "tile_averages_train.csv")
+# TILE_AVERAGE_VAL_FILE = os.path.join(DATASET_DIR, "tile_averages_val.csv")
 
- #"datasets/generated_subtiles/eval_subtile_averages.csv" #
+EVAL_DATE = "2016-08-01"
+EVAL_DATASET_DIR = "datasets/dataset_" + EVAL_DATE
+TILE_AVERAGE_VAL_FILE = os.path.join(EVAL_DATASET_DIR, "eval_large_tile_averages.csv")
+
 train_set = pd.read_csv(TILE_AVERAGE_TRAIN_FILE).dropna()
 val_set = pd.read_csv(TILE_AVERAGE_VAL_FILE).dropna()
 average_sif = train_set['SIF'].mean()

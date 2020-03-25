@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from torch.optim import lr_scheduler
-from reflectance_cover_sif_dataset import ReflectanceCoverSIFDataset
+from reflectance_cover_sif_dataset import EvalSubtileDataset
 import time
 import torch
 import torchvision
@@ -15,17 +15,29 @@ import resnet
 import torch.nn as nn
 import torch.optim as optim
 
+# Don't know how to properly import from Tile2Vec
+from tile2vec.src.tilenet import make_tileNet
+from embedding_to_sif_model import EmbeddingToSIFModel
+
+
+
 
 DATASET_DIR = "datasets/dataset_2016-08-01"
 EVAL_FILE = os.path.join(DATASET_DIR, "tile_info_val.csv")  #"datasets/generated_subtiles/eval_subtiles.csv" 
-TRAINED_MODEL_FILE = "models/large_tile_sif_prediction"
+
+TILE2VEC_MODEL_FILE = "models/tile2vec/TileNet_epoch50.ckpt"
+EMBEDDING_TO_SIF_MODEL_FILE = "models/embedding_to_sif"
+Z_DIM = 20
+INPUT_CHANNELS= 14
 
 eval_points = pd.read_csv(EVAL_FILE)
+
 
 def eval_model(model, dataloader, dataset_size, criterion, device, sif_mean, sif_std):
     model.eval()   # Set model to evaluate mode
     sif_mean = torch.tensor(sif_mean).to(device)
     sif_std = torch.tensor(sif_std).to(device)
+
 
     running_loss = 0.0
 
@@ -46,6 +58,7 @@ def eval_model(model, dataloader, dataset_size, criterion, device, sif_mean, sif
 
     loss = math.sqrt(running_loss / dataset_size) / sif_mean
     return loss
+
 
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -77,16 +90,21 @@ transform = transforms.Compose(transform_list)
 
 # Set up Dataset and Dataloader
 dataset_size = len(eval_metadata)
-dataset = ReflectanceCoverSIFDataset(eval_metadata)
+dataset = EvalSubtileDataset(eval_metadata)
 dataloader = torch.utils.data.DataLoader(dataset, batch_size=4,
                                          shuffle=True, num_workers=4)
 
-# Load trained model from file
-resnet_model = resnet.resnet18(input_channels=14).to(device)
-resnet_model.load_state_dict(torch.load(TRAINED_MODEL_FILE))
+# Load trained models from file
+tile2vec_model = make_tilenet(input_channels=INPUT_CHANNELS, z_dim=Z_DIM).to(device)
+tile2vec_model.load_state_dict(torch.load(TILE2VEC_MODEL_FILE))
+
+embedding_to_sif_model = EmbeddingToSIFModel(embedding_size=Z_DIM)
+embedding_to_sif_model.load_state_dict(torch.load(EMBEDDING_TO_SIF_MODEL_FILE).to(device)
+
 criterion = nn.MSELoss(reduction='mean')
 
 # Evaluate the model
-loss = eval_model(resnet_model, dataloader, dataset_size, criterion, device, sif_mean, sif_std)
+loss = eval_model(resnet_model, dataloader, dataset_size, criterion, device, average_sif)
 print("Eval Loss", loss)
+
 

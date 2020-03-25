@@ -21,6 +21,7 @@ def lat_long_to_index(lat, lon, dataset_top_bound, dataset_left_bound, resolutio
 
 def plot_histogram(column, plot_filename):
     column = column.flatten()
+    print('Column', column)
     column = column[~np.isnan(column)]
     print(plot_filename)
     print('Number of datapoints:', len(column))

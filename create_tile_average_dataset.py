@@ -11,7 +11,7 @@ import pandas as pd
 import sklearn.model_selection
 from sif_utils import plot_histogram
 
-DATASET_DIR = "datasets/dataset_2018-08-01"
+DATASET_DIR = "datasets/dataset_2016-08-01"
 INFO_CSV_FILE = os.path.join(DATASET_DIR, "reflectance_cover_to_sif.csv")
 SPLIT_INFO_CSV_FILES = {"train": os.path.join(DATASET_DIR, "tile_info_train.csv"),
                         "val": os.path.join(DATASET_DIR, "tile_info_val.csv")}
@@ -62,10 +62,10 @@ for split in ["train", "val"]:
             csv_writer.writerow(row)
 
     # Plot histogram of each column
-    data_array = np.array(csv_rows[1:])  # Ignore header row
-    for i in range(len(column_names)):
-        print("Column:", column_names[i])
-        plot_histogram(data_array[:, i], column_names[i] + "_" + split + ".png")
+    #data_array = np.array(csv_rows[1:])  # Ignore header row
+    #for i in range(len(column_names)):
+    #    print("Column:", column_names[i])
+    #    plot_histogram(data_array[:, i], column_names[i] + "_" + split + ".png")
 
     # Write band averages to file
     statistics_rows = [['mean', 'std']]

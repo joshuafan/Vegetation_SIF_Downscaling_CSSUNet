@@ -39,6 +39,12 @@ if not os.path.exists(OUTPUT_TILES_DIR):
 OUTPUT_CSV_FILE = os.path.join(OUTPUT_DATASET_DIR, "reflectance_cover_to_sif.csv")
 SIF_FILE = "datasets/TROPOMI_SIF/TROPO-SIF_01deg_biweekly_Apr18-Jan20.nc"
 
+COVERS_TO_MASK = [1, 5, 176, 141]
+MAX_MISSING_FRACTION = 1.0  # If more than 30% of pixels in the tile are missing, throw the tile out
+
+
+
+
 
 # Plot corn pixels and print the most frequent crop types (sorted by percentage)
 # "covers" should be a 2-D array of pixels, with a single integer at each pixel representin the crop type (according
@@ -236,7 +242,6 @@ with rio.open(COVER_FILE) as cover_dataset:
                 print('Cover area shape', cover_area.shape, 'dtype', cover_area.dtype)
                 print('Reflectance area shape (should be the same!)', reflectance_area.shape, 'dtype', reflectance_area.dtype)
                 # Create cover bands (binary masks)
-                COVERS_TO_MASK = [1, 5, 176, 141]
                 masks = []
                 for i, cover_type in enumerate(COVERS_TO_MASK):
                     crop_mask = np.zeros_like(cover_area)
@@ -266,7 +271,6 @@ with rio.open(COVER_FILE) as cover_dataset:
                 RIGHT_BOUND = math.floor(combined_right_bound * 10) / 10  # -81.6
                 BOTTOM_BOUND = math.ceil(combined_bottom_bound * 10) / 10  # 38.2
                 TOP_BOUND = math.floor(combined_top_bound * 10) / 10  # 46.6
-                MAX_MISSING_FRACTION = 0.3  # If more than 30% of pixels in the tile are missing, throw the tile out
 
                 # For each "SIF tile", extract the tile of the reflectance data that maps to it
                 for left_degrees in np.arange(LEFT_BOUND, RIGHT_BOUND, SIF_TILE_DEGREE_SIZE):
@@ -330,4 +334,4 @@ with open(OUTPUT_CSV_FILE, "w") as output_csv_file:
     for row in dataset_rows:
         csv_writer.writerow(row)
 
-plot_histogram(np.array(reflectance_coverage), "reflectance_coverage.png")
+plot_histogram(np.array(reflectance_coverage), "reflectance_coverage_2016.png")
