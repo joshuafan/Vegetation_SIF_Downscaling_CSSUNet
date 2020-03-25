@@ -80,7 +80,7 @@ def train_model(tile2vec_model, embedding_to_sif_model, freeze_tile2vec, dataloa
                         predicted_subtile_sifs[i] = predicted_sif
                     
                     # Predicted SIF for full tile
-                    predicted_sif_standardized = torch.sum(predicted_subtile_sifs)
+                    predicted_sif_standardized = torch.mean(predicted_subtile_sifs)
                     loss = criterion(predicted_sif_standardized, true_sif_standardized)
 
                     # backward + optimize only if in training phase
