@@ -65,6 +65,7 @@ for i in range(validation_points.shape[0]):
     sif = validation_points[i, 0]
     if math.isnan(sif):
         continue
+
     sif *= 1.52  # TROPOMI SIF is roughly 1.52 times CFIS SIF
     point_lon = validation_points[i, 1]
     point_lat = validation_points[i, 2]
@@ -88,6 +89,11 @@ for i in range(validation_points.shape[0]):
     # Find the point's index in large tile
     point_lat_idx, point_lon_idx = lat_long_to_index(point_lat, point_lon, top_bound, left_bound, res)
     eps = int(SUBTILE_SIZE_PIXELS / 2)
+
+    # Check if ENTIRE subtile is inside bounds
+    if point_lat_idx+eps > large_tile.shape[1] or point_lat_idx-eps <= 0 or point_lon_idx+eps > large_tile.shape[2] or point_lon_idx-eps <= 0:
+        print("Subtile went beyond edge of large tile")
+        continue
 
     # Tile dimensions assumed to be (band x lat x lon)
     subtile = large_tile[:, point_lat_idx-eps:point_lat_idx+eps,

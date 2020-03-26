@@ -5,6 +5,7 @@ import torch.nn as nn
 class EmbeddingToSIFModel(nn.Module):
 
     def __init__(self, embedding_size, num_outputs=1):
+        super(EmbeddingToSIFModel, self).__init__()
         self.linear1 = nn.Linear(embedding_size, num_outputs)
 
     def forward(self, x):
