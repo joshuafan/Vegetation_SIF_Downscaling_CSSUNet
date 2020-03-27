@@ -110,8 +110,8 @@ with rio.open(COVER_FILE) as cover_dataset:
         sif_array = sif_array.mean(dim='time')
     else:
         response = input("No SIF data available for any date between " + str(DATE_RANGE.date[0]) +
-                         " and " + str(
-            DATE_RANGE.date[-1]) + ". Create dataset anyways without total SIF label? (y/n) ")
+                         " and " + str(DATE_RANGE.date[-1]) +
+                         ". Create dataset anyways without total SIF label? (y/n) ")
         if response != 'y' and response != 'Y':
             exit(1)
 

@@ -46,6 +46,7 @@ subtile_averages = [column_names]
 validation_points = np.load(CFIS_FILE)
 print("Validation points shape", validation_points.shape)
 
+
 # Scatterplot of CFIS points
 green_cmap = plt.get_cmap('Greens')
 plt.scatter(validation_points[:, 1], validation_points[:, 2], c=validation_points[:, 0], cmap=green_cmap)
@@ -53,10 +54,12 @@ plt.xlabel('Longitude')
 plt.ylabel('Latitude')
 plt.title('Validation points')
 plt.savefig('exploratory_plots/validation_points_sif.png')
+plt.close()
 #print('Longitude extremes', np.max(validation_points[:,1]), np.min(validation_points[validation_points[:, 1] > -110, 1]))
 #print('Latitude extremes', np.max(validation_points[:,2]), np.min(validation_points[validation_points[:, 2] > 38.2, 2]))
 
 subtile_reflectance_coverage = []
+sifs = []
 points_no_reflectance = 0
 points_missing_reflectance = 0
 points_with_reflectance = 0
@@ -115,7 +118,7 @@ for i in range(validation_points.shape[0]):
     # Save subtile to file also
     np.save(subtile_filename, subtile)
     csv_rows.append([point_lat, point_lon, sif, large_tile_filename, subtile_filename])
-
+    sifs.append(sif)
     tile_averages.append([point_lat, point_lon] + np.nanmean(large_tile, axis=(1,2)).tolist() + [sif])
     subtile_averages.append([point_lat, point_lon] + np.nanmean(subtile, axis=(1,2)).tolist() + [sif])
 
@@ -125,6 +128,9 @@ print('Number of points with MISSING reflectance data', points_missing_reflectan
 print('Number of points WITH reflectance data', points_with_reflectance)
 
 plot_histogram(np.array(subtile_reflectance_coverage), "CFIS_subtile_reflectance_coverage.png")
+
+# Histogram of SIF
+plot_histogram(np.array(sifs), "cfis_sif_distribution.png")
 
 
 with open(OUTPUT_CSV_FILE, "w") as output_csv_file:

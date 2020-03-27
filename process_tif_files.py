@@ -8,8 +8,8 @@ from rasterio.plot import show
 # import earthpy as et
 
 #FILE_PATH = "datasets/GEE_data/41-42N_92-93W_reflectance.tif"
-FILE_PATH = "datasets/GEE_data/44-45N_88-89W_reflectance_august.tif" # "datasets/GEE_data/41-42N_92-93W_reflectance.tif"
-COVER_PATH = "datasets/GEE_data/44-45N_88-89W_cdl.tif"
+FILE_PATH = "datasets/LandsatReflectance/2018-08-01/corn_belt_reflectance_2018-08-01_box_0_0.tif"  # "datasets/GEE_data/41-42N_92-93W_reflectance.tif"
+COVER_PATH = "datasets/CDL_2018/CDL_2018_clip_20200316232647_1548459805.tif"
 
 with rio.open(FILE_PATH) as tiff_dataset:
     print('Bounds:', tiff_dataset.bounds)
@@ -57,7 +57,7 @@ with rio.open(COVER_PATH) as cover_dataset:
     mask = np.zeros_like(covers)
     mask[covers == 1] = 1.
     plt.imshow(mask, cmap='Greens', vmin=0, vmax=1)
-    plt.savefig('datasets/GEE_data/visualizations/corn_pixels.png')
+    plt.savefig('exploratory_plots/corn_pixels.png')
     plt.close()
 
     # Count how many pixels contain each crop
