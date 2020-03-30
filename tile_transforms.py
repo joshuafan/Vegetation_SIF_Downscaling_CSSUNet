@@ -12,5 +12,3 @@ class StandardizeTile(object):
     def __call__(self, tile):
         return (tile - self.band_means) / self.band_stds
 
-
-

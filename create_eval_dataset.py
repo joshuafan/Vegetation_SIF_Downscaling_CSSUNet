@@ -1,3 +1,16 @@
+"""
+Constructs validation datasets from CFIS data. 
+
+The main dataset (written to OUTPUT_CSV_FILE) contains
+(longitude, latitude, subtile file name, surrounding large tile file name, SIF).
+
+The "tile average" dataset (written to TILE_AVERAGE_CSV_FILE) contains
+the band averages for the surrounding large tile.
+
+The "subtile average" dataset (written to SUBTILE_AVERAGE_CSV_FILE) contains
+the band averages for the subtile.
+"""
+
 import csv
 import math
 import numpy as np
@@ -26,7 +39,6 @@ headers = ["lat", "lon", "SIF", "tile_file", "subtile_file"]
 csv_rows = [headers]
 TILE_SIZE_DEGREES = 0.1
 SUBTILE_SIZE_PIXELS = 10
-MAX_FRACTION_MISSING = 0.5
 
 column_names = ['lat', 'lon', 'ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
                 'ref_10', 'ref_11', 'corn', 'soybean', 'grassland', 'deciduous_forest',
@@ -34,13 +46,6 @@ column_names = ['lat', 'lon', 'ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_
 tile_averages = [column_names]
 subtile_averages = [column_names]
 
-#for cfis_file in os.listdir(CFIS_DIR):
-#    print('===============================================')
-#    print('CFIS file', cfis_file)
-#    data_array = xr.open_dataset(os.path.join(CFIS_DIR, cfis_file)).SIF.mean(dim='time')
-#    print('data array', data_array)
-    #print('Values', data_array.values)
-    #print('Coords', data_array.coords)
 
 # Each row is a datapoint. First column is the dc_sif. Second/third columns lon/lat of the grid center.
 validation_points = np.load(CFIS_FILE)
@@ -60,21 +65,27 @@ plt.close()
 
 subtile_reflectance_coverage = []
 sifs = []
-points_no_reflectance = 0
-points_missing_reflectance = 0
-points_with_reflectance = 0
 
+points_no_reflectance = 0  # Number of points outside bounds of reflectance dataset
+points_missing_reflectance = 0  # Number of points with missing reflectance data (due to cloud cover)
+points_with_reflectance = 0  # Number of points with reflectance data
+MAX_FRACTION_MISSING = 0.5  # If more than this fraction of reflectance pixels is missing, ignore the data point
+
+# Loop through all CFIS data points
 for i in range(validation_points.shape[0]):
     sif = validation_points[i, 0]
     if math.isnan(sif):
         continue
 
-    sif *= 1.52  # TROPOMI SIF is roughly 1.52 times CFIS SIF
+    #sif *= 1.52  # TROPOMI SIF is roughly 1.52 times CFIS SIF
     point_lon = validation_points[i, 1]
     point_lat = validation_points[i, 2]
 
+    # Compute the box of 0.1 degrees surrounding this point
     top_bound = math.ceil(point_lat * 10) / 10
     left_bound = math.floor(point_lon * 10) / 10
+
+    # Find the 0.1-degree large tile this point is in
     large_tile_center_lat = round(top_bound - (TILE_SIZE_DEGREES / 2), 2)
     large_tile_center_lon = round(left_bound + (TILE_SIZE_DEGREES / 2), 2)
     large_tile_filename = TILES_DIR + "/reflectance_lat_" + str(large_tile_center_lat) + "_lon_" + str(large_tile_center_lon) + ".npy"
@@ -93,7 +104,9 @@ for i in range(validation_points.shape[0]):
     point_lat_idx, point_lon_idx = lat_long_to_index(point_lat, point_lon, top_bound, left_bound, res)
     eps = int(SUBTILE_SIZE_PIXELS / 2)
 
-    # Check if ENTIRE subtile is inside bounds
+    # Check if ENTIRE subtile is inside bounds. If not, ignore.
+    # TODO This could be unneccesarily throwing away points, if there is another file that contains
+    # the missing pixels.
     if point_lat_idx+eps > large_tile.shape[1] or point_lat_idx-eps <= 0 or point_lon_idx+eps > large_tile.shape[2] or point_lon_idx-eps <= 0:
         print("Subtile went beyond edge of large tile")
         continue
@@ -103,36 +116,40 @@ for i in range(validation_points.shape[0]):
                          point_lon_idx-eps:point_lon_idx+eps]
     subtile_filename = SUBTILES_DIR + "/lat_" + str(point_lat) + "_lon_" + str(point_lon) + ".npy"
 
-    # Check if the subtile reflectance data is missing
+    # Check how much of the subtile's reflectance data is missing (due to cloud cover)
     print('Subtile shape', subtile.shape)
     fraction_missing_pixels = subtile[-1, :, :].sum() / (subtile.shape[1] * subtile.shape[2])
     print('Missing pixels', fraction_missing_pixels)
     subtile_reflectance_coverage.append(1 - fraction_missing_pixels)
 
+    # If too much reflectance data is missing, ignore this point
     if fraction_missing_pixels > MAX_FRACTION_MISSING:
         points_missing_reflectance += 1
         continue
-
     points_with_reflectance += 1
 
-    # Save subtile to file also
+    # Save subtile to file
     np.save(subtile_filename, subtile)
+
+    # We're constructing 3 datasets. "csv_rows" contains the filename of the surrounding large
+    # tile and the subtile. "tile_averages" contains the band averages of the surrounding large
+    # tile. "subtile_averages" contains the band averages of the subtile.
     csv_rows.append([point_lat, point_lon, sif, large_tile_filename, subtile_filename])
-    sifs.append(sif)
     tile_averages.append([point_lat, point_lon] + np.nanmean(large_tile, axis=(1,2)).tolist() + [sif])
     subtile_averages.append([point_lat, point_lon] + np.nanmean(subtile, axis=(1,2)).tolist() + [sif])
-
+    sifs.append(sif)
+ 
 print('=====================================================')
 print('Number of points with NO reflectance data', points_no_reflectance)
 print('Number of points with MISSING reflectance data', points_missing_reflectance)
 print('Number of points WITH reflectance data', points_with_reflectance)
 
-plot_histogram(np.array(subtile_reflectance_coverage), "CFIS_subtile_reflectance_coverage.png")
 
-# Histogram of SIF
+# Plot histograms of reflectance coverage percentage and SIF
+plot_histogram(np.array(subtile_reflectance_coverage), "CFIS_subtile_reflectance_coverage.png")
 plot_histogram(np.array(sifs), "cfis_sif_distribution.png")
 
-
+# Write 3 datasets to CSV files
 with open(OUTPUT_CSV_FILE, "w") as output_csv_file:
     csv_writer = csv.writer(output_csv_file, delimiter=",", quoting=csv.QUOTE_MINIMAL)
     for row in csv_rows:

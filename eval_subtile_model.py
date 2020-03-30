@@ -31,7 +31,7 @@ EVAL_FILE = os.path.join(EVAL_DATASET_DIR, "eval_subtiles.csv")  #"datasets/gene
 TRAIN_DATASET_DIR = "datasets/dataset_2018-08-01"
 BAND_STATISTICS_FILE = os.path.join(TRAIN_DATASET_DIR, "band_statistics_train.csv")
 TILE2VEC_MODEL_FILE = "models/tile2vec/TileNet_epoch50.ckpt"
-EMBEDDING_TO_SIF_MODEL_FILE = "models/avg_reflectance_to_sif"
+EMBEDDING_TO_SIF_MODEL_FILE = "models/embedding_to_sif"
 Z_DIM = 32
 INPUT_CHANNELS= 14
 
@@ -110,7 +110,7 @@ dataloader = torch.utils.data.DataLoader(dataset, batch_size=4,
 #tile2vec_model = make_tilenet(in_channels=INPUT_CHANNELS, z_dim=Z_DIM).to(device)
 #tile2vec_model.load_state_dict(torch.load(TILE2VEC_MODEL_FILE))
 tile2vec_model = None
-embedding_to_sif_model = EmbeddingToSIFModel(embedding_size=INPUT_CHANNELS)
+embedding_to_sif_model = EmbeddingToSIFModel(embedding_size=Z_DIM)
 embedding_to_sif_model.load_state_dict(torch.load(EMBEDDING_TO_SIF_MODEL_FILE))
 embedding_to_sif_model = embedding_to_sif_model.to(device)
 

@@ -31,30 +31,37 @@ INFO_FILE_TRAIN = os.path.join(DATASET_DIR, "tile_info_train.csv")
 INFO_FILE_VAL = os.path.join(DATASET_DIR, "tile_info_val.csv")
 BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
 TILE2VEC_MODEL_FILE = "models/tile2vec/TileNet_epoch50.ckpt"
-EMBEDDING_TO_SIF_MODEL_FILE = "models/avg_reflectance_to_sif"
+EMBEDDING_TO_SIF_MODEL_FILE = "models/embedding_to_sif"
 FREEZE_TILE2VEC = True
 Z_DIM = 32
 INPUT_CHANNELS= 14
 LEARNING_RATE = 5e-3
-NUM_EPOCHS = 5
+NUM_EPOCHS = 20
 SUBTILE_DIM = 10
 
-# Given the tile (C x W x H), returns a list of subtiles, each of dimension (C x subtile_dim x subtile_dim)
-def get_subtiles_list(tile, subtile_dim):
+# For each tile in the batch, returns a list of subtiles.
+# Given a Tensor of tiles, with shape (batch x C x W x H), returns a Tensor of
+# shape (batch x SUBTILE x C x subtile_dim x subtile_dim)
+def get_subtiles_list(tile, subtile_dim, device):
     print('Tile shape', tile.shape)
     batch_size, bands, width, height = tile.shape
     num_subtiles_along_width = int(width / subtile_dim)
     num_subtiles_along_height = int(height / subtile_dim)
+    num_subtiles = num_subtiles_along_width * num_subtiles_along_height
     assert(num_subtiles_along_width == 37)
     assert(num_subtiles_along_height == 37)
-    subtiles = []
-    for i in range(num_subtiles_along_width):
-        for j in range(num_subtiles_along_height):
-            subtile = tile[:, :, subtile_dim*i:subtile_dim*(i+1), subtile_dim*j:subtile_dim*(j+1)].to(device)
-            subtiles.append(subtile)
+    subtiles = torch.empty((batch_size, num_subtiles, bands, subtile_dim, subtile_dim), device=device)
+    for b in range(batch_size):
+        subtile_idx = 0
+        for i in range(num_subtiles_along_width):
+            for j in range(num_subtiles_along_height):
+                subtile = tile[b, :, subtile_dim*i:subtile_dim*(i+1), subtile_dim*j:subtile_dim*(j+1)].to(device)
+                subtiles[b, subtile_idx, :, :, :] = subtile
+                subtile_idx += 1
     return subtiles
 
 
+# TODO precompute embedding
 def create_subtile_embeddings_to_sif_dataset(tile2vec_model, dataloader, subtile_dim, z_dim, output_file):
     tile2vec_model.eval()
     csv_rows = []
@@ -112,27 +119,27 @@ def train_model(tile2vec_model, embedding_to_sif_model, freeze_tile2vec, dataloa
                 optimizer.zero_grad()
 
                 # Obtain subtiles (NOTE Pay attention to standardization :( )
-                subtiles = get_subtiles_list(input_tile_standardized, subtile_dim)
-                predicted_subtile_sifs = torch.empty((batch_size, len(subtiles)), device=device)
-                print('Predicted subtile SIFs', predicted_subtile_sifs.shape)
+                subtiles = get_subtiles_list(input_tile_standardized, subtile_dim, device)  # (batch x num subtiles x bands x subtile_dim x subtile_dim)
+                #print('subtiles returned by get_subtiles_list', subtiles.shape)
+                #print('0th example:', subtiles[0].shape)
+                predicted_subtile_sifs = torch.empty((batch_size, subtiles.shape[1]), device=device)
+                #print('Predicted subtile SIFs', predicted_subtile_sifs.shape)
 
                 # Forward pass: feed subtiles through embedding model and then the
                 # embedding -> SIF model
                 with torch.set_grad_enabled(phase == 'train'):
-                    for i in range(len(subtiles)):
-                        #print('subtile', i)
-                        #print('Subtile dim', subtiles[i].shape)
-                        embedding = torch.mean(subtiles[i], dim=(2,3))
-                        # embedding = tile2vec_model(subtiles[i])
-                        #print('Embedding shape', embedding.shape)
-                        predicted_sif = embedding_to_sif_model(embedding)
-                        #print('predicted_sif shape', predicted_sif.shape)
-                        predicted_subtile_sifs[:, i] = predicted_sif.flatten()
+                    for i in range(batch_size):
+                        # embeddings = torch.mean(subtiles[i], dim=(2,3))  # (num subtiles x embedding size)
+                        embeddings = tile2vec_model(subtiles[i])
+                        #print('Embedding shape', embeddings.shape)
+                        predicted_sifs = embedding_to_sif_model(embeddings)
+                        #print('predicted_sif shape', predicted_sifs.shape)
+                        predicted_subtile_sifs[i] = predicted_sifs.flatten()
                     
                     # Predicted SIF for full tile
                     predicted_sif_standardized = torch.mean(predicted_subtile_sifs, axis=1)
-                    print('Shape of predicted total SIFs', predicted_sif_standardized.shape)
-                    print('Shape of true total SIFs', true_sif_standardized.shape)
+                    #print('Shape of predicted total SIFs', predicted_sif_standardized.shape)
+                    #print('Shape of true total SIFs', true_sif_standardized.shape)
                     loss = criterion(predicted_sif_standardized, true_sif_standardized)
 
                     # backward + optimize only if in training phase
@@ -216,7 +223,7 @@ print("Dataloaders")
 
 tile2vec_model = make_tilenet(in_channels=INPUT_CHANNELS, z_dim=Z_DIM).to(device)
 tile2vec_model.load_state_dict(torch.load(TILE2VEC_MODEL_FILE))
-embedding_to_sif_model = EmbeddingToSIFModel(embedding_size=INPUT_CHANNELS).to(device)  # TODO
+embedding_to_sif_model = EmbeddingToSIFModel(embedding_size=Z_DIM).to(device)  # TODO
 criterion = nn.MSELoss(reduction='mean')
 #optimizer = optim.SGD(resnet_model.parameters(), lr=1e-4, momentum=0.9)
 

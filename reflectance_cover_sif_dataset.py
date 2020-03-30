@@ -16,7 +16,7 @@ warnings.filterwarnings("ignore")
 class ReflectanceCoverSIFDataset(Dataset):
     """Dataset mapping a tile (with reflectance/cover bands) to total SIF"""
 
-    def __init__(self, tile_info, transform=None):
+    def __init__(self, tile_info, transform):
         """
         Args:
             tile_info_file (string): Pandas dataframe containing metadata for each tile.

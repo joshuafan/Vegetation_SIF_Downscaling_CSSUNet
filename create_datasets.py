@@ -24,25 +24,23 @@ from sif_utils import lat_long_to_index, plot_histogram
 
 DATE_RANGE = pd.date_range(start="2016-08-01", end="2016-08-16")
 START_DATE = str(DATE_RANGE.date[0])
-print("START DATE", START_DATE)
 REFLECTANCE_DIR = os.path.join("datasets/LandsatReflectance", START_DATE)
 COVER_FILE = "datasets/CDL_2016/CDL_2016_big.tif"
 OUTPUT_DATASET_DIR = "datasets/dataset_" + START_DATE  # Directory containing list of tiles
 OUTPUT_IMAGES_DIR = "datasets/images_" + START_DATE  # Directory containing large images
 OUTPUT_TILES_DIR = "datasets/tiles_" + START_DATE  # Directory containing 0.1x0.1 degree tiles
-if not os.path.exists(OUTPUT_DATASET_DIR):
-    os.makedirs(OUTPUT_DATASET_DIR)
-if not os.path.exists(OUTPUT_IMAGES_DIR):
-    os.makedirs(OUTPUT_IMAGES_DIR)
-if not os.path.exists(OUTPUT_TILES_DIR):
-    os.makedirs(OUTPUT_TILES_DIR)
 OUTPUT_CSV_FILE = os.path.join(OUTPUT_DATASET_DIR, "reflectance_cover_to_sif.csv")
 SIF_FILE = "datasets/TROPOMI_SIF/TROPO-SIF_01deg_biweekly_Apr18-Jan20.nc"
 
 COVERS_TO_MASK = [1, 5, 176, 141]
 MAX_MISSING_FRACTION = 1.0  # If more than 30% of pixels in the tile are missing, throw the tile out
 
-
+if not os.path.exists(OUTPUT_DATASET_DIR):
+    os.makedirs(OUTPUT_DATASET_DIR)
+if not os.path.exists(OUTPUT_IMAGES_DIR):
+    os.makedirs(OUTPUT_IMAGES_DIR)
+if not os.path.exists(OUTPUT_TILES_DIR):
+    os.makedirs(OUTPUT_TILES_DIR)
 
 
 
@@ -72,7 +70,7 @@ def plot_and_print_covers(covers, filename):
         print(str(crop) + ': ' + str(round((count / total_pixels) * 100, 2)) + '%')
 
 
-# Dataset format: image file name, SIF, date
+# Dataset format: lon/lat, date, image file name, SIF
 dataset_rows = [["lon", "lat", "date", "tile_file", "SIF"]]
 
 # For each tile, keep track of how much reflectance data is present
@@ -94,7 +92,7 @@ with rio.open(COVER_FILE) as cover_dataset:
     print('Height:', cover_dataset.height)
     print('===================================================')
 
-    # print('ORIGINAL COVER STATS')
+    # Print stats about cover dataset
     # plot_and_print_covers(cover_dataset.read(1), 'original_covers_corn_big.png')
 
     # Open up the SIF file
@@ -105,7 +103,9 @@ with rio.open(COVER_FILE) as cover_dataset:
     print("SIF array shape", sif_array.shape)
     print("SIF array:", sif_array)
 
-    # Check if SIF is available for any date in time range
+    # Check if SIF is available for any date in time range. If there is, take the mean
+    # over all dates in the time period. Otherwise, ask if we should still create the
+    # dataset, but without the SIF label.
     if len(sif_array['time'].values) >= 1:
         sif_array = sif_array.mean(dim='time')
     else:
@@ -115,8 +115,12 @@ with rio.open(COVER_FILE) as cover_dataset:
         if response != 'y' and response != 'Y':
             exit(1)
 
-    # If you select a large region, Google Drive breaks the reflectance data into multiple files; loop through
-    # all of them.
+    # Stores a version of cover dataset, reprojected to the resolution of
+    # the reflectance dataset
+    reprojected_covers = None
+ 
+    # If you select a large region, Google Earth Engine breaks the reflectance data
+    # into multiple files; loop through all of them.
     reprojected_covers = None
     for reflectance_file in os.listdir(REFLECTANCE_DIR):
         try:
@@ -133,14 +137,15 @@ with rio.open(COVER_FILE) as cover_dataset:
                 print('Shape:', reflectance_dataset.shape)
                 print('===================================================')
 
-                # Resample cover data into target resolution
                 SIF_TILE_DEGREE_SIZE = 0.1
                 target_res = (reflectance_dataset.res[0], reflectance_dataset.res[1])
                 TARGET_TILE_SIZE = int(SIF_TILE_DEGREE_SIZE / target_res[0])
                 print("target tile size", TARGET_TILE_SIZE)
+
+                # Resample cover data into target resolution
                 if reprojected_covers is None:
-                    cover_height_upscale_factor = cover_dataset.res[0] / target_res[0]  # reflectance_dataset.res[0]
-                    cover_width_upscale_factor = cover_dataset.res[1] / target_res[1]  # reflectance_dataset.res[1]
+                    cover_height_upscale_factor = cover_dataset.res[0] / target_res[0]
+                    cover_width_upscale_factor = cover_dataset.res[1] / target_res[1]
                     print('Upscale factor: height', cover_height_upscale_factor, 'width', cover_width_upscale_factor)
                     reprojected_covers = cover_dataset.read(
                         out_shape=(
@@ -154,7 +159,8 @@ with rio.open(COVER_FILE) as cover_dataset:
                     print('Shape:', reprojected_covers.shape)
                     print('Dtype:', reprojected_covers.dtype)
                 
-                # Resample reflectance data into target resolution
+                # Resample reflectance data into target resolution (don't need this now since we're
+                # projecting everything to the reflectance dataset's resolution)
                 # reflectance_height_upscale_factor = reflectance_dataset.res[0] / target_res[0]
                 # reflectance_width_upscale_factor = reflectance_dataset.res[1] / target_res[1]
                 # reprojected_reflectances = reflectance_dataset.read(
@@ -165,12 +171,13 @@ with rio.open(COVER_FILE) as cover_dataset:
                 #    resampling=Resampling.bilinear
                 # 
                 # )
+
+                # Read reflectance dataset into numpy array: CxHxW
                 reprojected_reflectances = reflectance_dataset.read()
-                print('REPROJECTED REFLECTANCE DATASET')
+                print('REFLECTANCE DATASET')
                 print('Shape:', reprojected_reflectances.shape)
                 print('Dtype:', reprojected_reflectances.dtype)
-                print('Reprojected reflecntaces', reprojected_reflectances[5, 100, 100])
-                print(reprojected_reflectances[5, 100, 101])
+                print('Reprojected reflectances', reprojected_reflectances[5, 100, 100])
 
                 # Plot distribution of specific crop
                 # plot_and_print_covers(reprojected_covers, filename="reprojected_cover_corn_big.png")
@@ -198,11 +205,13 @@ with rio.open(COVER_FILE) as cover_dataset:
                 # print("indices in cover:", cover_height_idx, cover_width_idx)
                 # print('===================================================')
 
-                # Extract bounds intersection of reflectance/cover coverage
+                # Extract bounds of the intersection of reflectance/cover coverage
                 combined_left_bound = max(reflectance_dataset.bounds.left, cover_dataset.bounds.left)
                 combined_right_bound = min(reflectance_dataset.bounds.right, cover_dataset.bounds.right)
                 combined_bottom_bound = max(reflectance_dataset.bounds.bottom, cover_dataset.bounds.bottom)
                 combined_top_bound = min(reflectance_dataset.bounds.top, cover_dataset.bounds.top)
+
+                # Convert bounds to indices in the cover and reflectance datasets
                 cover_bottom_idx, cover_left_idx = lat_long_to_index(combined_bottom_bound,
                                                                      combined_left_bound,
                                                                      cover_dataset.bounds.top,
@@ -225,6 +234,7 @@ with rio.open(COVER_FILE) as cover_dataset:
                 assert(cover_top_idx >= 0)
                 assert(cover_right_idx <= reprojected_covers.shape[1])  # Recall right_idx is exclusive
                 assert(reflectance_right_idx <= reprojected_reflectances.shape[2])
+
                 #cover_top_idx, cover_right_idx = lat_long_to_index(combined_top_bound,
                 #                                                   combined_right_bound,
                 #                                                   cover_dataset.bounds.top,
@@ -235,12 +245,15 @@ with rio.open(COVER_FILE) as cover_dataset:
                 #                                                               reflectance_dataset.bounds.top,
                 #                                                               reflectance_dataset.bounds.left,
                 #                                                               target_res)
+                
+                # Extract relevant areas from cover and reflectance datasets
                 cover_area = reprojected_covers[cover_top_idx:cover_bottom_idx,
                                                 cover_left_idx:cover_right_idx]
                 reflectance_area = reprojected_reflectances[:, reflectance_top_idx:reflectance_bottom_idx,
                                                             reflectance_left_idx:reflectance_right_idx]
                 print('Cover area shape', cover_area.shape, 'dtype', cover_area.dtype)
                 print('Reflectance area shape (should be the same!)', reflectance_area.shape, 'dtype', reflectance_area.dtype)
+                
                 # Create cover bands (binary masks)
                 masks = []
                 for i, cover_type in enumerate(COVERS_TO_MASK):
@@ -275,9 +288,6 @@ with rio.open(COVER_FILE) as cover_dataset:
                 # For each "SIF tile", extract the tile of the reflectance data that maps to it
                 for left_degrees in np.arange(LEFT_BOUND, RIGHT_BOUND, SIF_TILE_DEGREE_SIZE):
                     for top_degrees in np.arange(TOP_BOUND, BOTTOM_BOUND, -1*SIF_TILE_DEGREE_SIZE):
-                        # TODO actually we can do these steps ONCE for the entire area covered by the .tif file
-                        #right_edge = left_degrees + SIF_TILE_DEGREE_SIZE
-                        #top_edge = bottom_degrees + SIF_TILE_DEGREE_SIZE
 
                         # Find indices in combined area.
                         top_idx, left_idx = lat_long_to_index(top_degrees, left_degrees, combined_top_bound,

@@ -47,7 +47,7 @@ plot_histogram(Y_eval_subtile, "eval_subtile_sif.png")
 
 
 
-linear_regression = LinearRegression().fit(X_train, Y_train)
+linear_regression = GradientBoostingRegressor().fit(X_train, Y_train)
 linear_predictions_train = linear_regression.predict(X_train)
 linear_predictions_val = linear_regression.predict(X_val)
 linear_predictions_eval_subtile = linear_regression.predict(X_eval_subtile)
