@@ -19,11 +19,11 @@ import torch.optim as optim
 
 
 EVAL_DATASET_DIR = "datasets/dataset_2016-08-01"
-EVAL_FILE = "datasets/dataset_2018-08-01/tile_info_train.csv"  # os.path.join(EVAL_DATASET_DIR, "eval_subtiles.csv")  #"datasets/generated_subtiles/eval_subtiles.csv" 
+EVAL_FILE = os.path.join(EVAL_DATASET_DIR, "eval_subtiles.csv")  #  "datasets/dataset_2018-08-01/tile_info_val.csv" 
 TRAINED_MODEL_FILE = "models/large_tile_sif_prediction"
 TRAIN_DATASET_DIR = "datasets/dataset_2018-08-01"
 BAND_STATISTICS_FILE = os.path.join(TRAIN_DATASET_DIR, "band_statistics_train.csv")
-
+TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_trivial_large_tile_cnn.png' 
 eval_points = pd.read_csv(EVAL_FILE)
 
 def eval_model(model, dataloader, dataset_size, criterion, device, sif_mean, sif_std):
@@ -106,5 +106,5 @@ plt.scatter(true, predicted)
 plt.xlabel('True')
 plt.ylabel('Predicted')
 plt.title('Predict SIF for small tile = large tile CNN prediction')
-plt.savefig('exploratory_plots/true_vs_predicted_trivial_large_tile_cnn.png')
+plt.savefig(TRUE_VS_PREDICTED_PLOT)
 plt.close()

@@ -6,7 +6,7 @@ from torch.utils.data import Dataset, DataLoader
 
 class EvalSubtileDataset(Dataset):
 
-    def __init__(self, eval_tile_info, transform=None):
+    def __init__(self, eval_tile_info, transform):
         self.eval_tile_info = eval_tile_info
         self.transform = transform
 

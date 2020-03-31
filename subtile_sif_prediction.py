@@ -16,6 +16,7 @@ import torch.nn as nn
 import torch.optim as optim
 
 from reflectance_cover_sif_dataset import ReflectanceCoverSIFDataset
+from sif_utils import get_subtiles_list
 import tile_transforms
 
 
@@ -31,51 +32,18 @@ INFO_FILE_TRAIN = os.path.join(DATASET_DIR, "tile_info_train.csv")
 INFO_FILE_VAL = os.path.join(DATASET_DIR, "tile_info_val.csv")
 BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
 TILE2VEC_MODEL_FILE = "models/tile2vec/TileNet_epoch50.ckpt"
-EMBEDDING_TO_SIF_MODEL_FILE = "models/embedding_to_sif"
-FREEZE_TILE2VEC = True
+FINETUNED_TILE2VEC_MODEL_FILE = "models/tile2vec/finetuned_tile2vec"
+EMBEDDING_TO_SIF_MODEL_FILE = "models/finetune_embedding_to_sif"
+TRAINING_PLOT_FILE = 'exploratory_plots/finetune_tile2vec_subtile_sif_prediction.png'
+
+FREEZE_TILE2VEC = False
 Z_DIM = 32
 INPUT_CHANNELS= 14
-LEARNING_RATE = 5e-3
-NUM_EPOCHS = 20
+LEARNING_RATE = 1e-4
+NUM_EPOCHS = 4
 SUBTILE_DIM = 10
+ 
 
-# For each tile in the batch, returns a list of subtiles.
-# Given a Tensor of tiles, with shape (batch x C x W x H), returns a Tensor of
-# shape (batch x SUBTILE x C x subtile_dim x subtile_dim)
-def get_subtiles_list(tile, subtile_dim, device):
-    print('Tile shape', tile.shape)
-    batch_size, bands, width, height = tile.shape
-    num_subtiles_along_width = int(width / subtile_dim)
-    num_subtiles_along_height = int(height / subtile_dim)
-    num_subtiles = num_subtiles_along_width * num_subtiles_along_height
-    assert(num_subtiles_along_width == 37)
-    assert(num_subtiles_along_height == 37)
-    subtiles = torch.empty((batch_size, num_subtiles, bands, subtile_dim, subtile_dim), device=device)
-    for b in range(batch_size):
-        subtile_idx = 0
-        for i in range(num_subtiles_along_width):
-            for j in range(num_subtiles_along_height):
-                subtile = tile[b, :, subtile_dim*i:subtile_dim*(i+1), subtile_dim*j:subtile_dim*(j+1)].to(device)
-                subtiles[b, subtile_idx, :, :, :] = subtile
-                subtile_idx += 1
-    return subtiles
-
-
-# TODO precompute embedding
-def create_subtile_embeddings_to_sif_dataset(tile2vec_model, dataloader, subtile_dim, z_dim, output_file):
-    tile2vec_model.eval()
-    csv_rows = []
-    for sample in dataloader:
-        input_tile_standardized = sample['tile'].to(device)
-        true_sif_non_standardized = sample['SIF'].to(device)
-        subtiles = get_subtiles_list(input_tile_standardized, subtile_dim)
-        subtile_embeddings = np.empty((len(subtiles), z_dim))
-        for i in range(len(subtiles)):
-            subtile_embeddings[i] = tile2vec_model(subtiles[i])
-        
-
-
-# "means" is a list of band averages (+ average SIF at end)
 # TODO should there be 2 separate models?
 def train_model(tile2vec_model, embedding_to_sif_model, freeze_tile2vec, dataloaders, dataset_sizes, criterion, optimizer, device, sif_mean, sif_std, subtile_dim, num_epochs=25):
     since = time.time()
@@ -129,8 +97,13 @@ def train_model(tile2vec_model, embedding_to_sif_model, freeze_tile2vec, dataloa
                 # embedding -> SIF model
                 with torch.set_grad_enabled(phase == 'train'):
                     for i in range(batch_size):
-                        # embeddings = torch.mean(subtiles[i], dim=(2,3))  # (num subtiles x embedding size)
-                        embeddings = tile2vec_model(subtiles[i])
+                        if EMBEDDING_TYPE == 'average':
+                            embeddings = torch.mean(subtiles[i], dim=(2,3))  # (num subtiles x embedding size)
+                        elif EMBEDDING_TYPE == 'tile2vec':
+                            embeddings = tile2vec_model(subtiles[i])
+                        else:
+                            print('Unsupported embedding type', EMBEDDING_TYPE)
+                            exit(1)
                         #print('Embedding shape', embeddings.shape)
                         predicted_sifs = embedding_to_sif_model(embeddings)
                         #print('predicted_sif shape', predicted_sifs.shape)
@@ -149,9 +122,9 @@ def train_model(tile2vec_model, embedding_to_sif_model, freeze_tile2vec, dataloa
 
                     # statistics
                     predicted_sif_non_standardized = torch.tensor(predicted_sif_standardized * sif_std + sif_mean, dtype=torch.float).to(device)
-                    print('========================')
-                    print('Predicted', predicted_sif_non_standardized)
-                    print('True', true_sif_non_standardized)
+                    #print('========================')
+                    #print('Predicted', predicted_sif_non_standardized)
+                    #print('True', true_sif_non_standardized)
                     non_standardized_loss = criterion(predicted_sif_non_standardized, true_sif_non_standardized)
                     running_loss += non_standardized_loss.item()
 
@@ -239,6 +212,7 @@ dataset_sizes = {'train': len(train_metadata),
 
 tile2vec_model, embedding_to_sif_model, train_losses, val_losses, best_loss = train_model(tile2vec_model, embedding_to_sif_model, FREEZE_TILE2VEC, dataloaders, dataset_sizes, criterion, optimizer, device, sif_mean, sif_std, subtile_dim=SUBTILE_DIM, num_epochs=NUM_EPOCHS)
 
+torch.save(tile2vec_model.state_dict(), FINETUNED_TILE2VEC_MODEL_FILE)
 torch.save(embedding_to_sif_model.state_dict(), EMBEDDING_TO_SIF_MODEL_FILE)
 
 # Plot loss curves
@@ -250,5 +224,5 @@ val_plot, = plt.plot(epoch_list, val_losses, color='red', label='Validation NRMS
 plt.legend(handles=[train_plot, val_plot])
 plt.xlabel('Epoch #')
 plt.ylabel('Normalized Root Mean Squared Error')
-plt.savefig('plots/resnet_sif_prediction.png')
+plt.savefig(TRAINING_PLOT_FILE) 
 plt.close()

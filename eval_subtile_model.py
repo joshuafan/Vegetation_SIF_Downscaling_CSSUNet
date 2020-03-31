@@ -5,6 +5,7 @@ import os
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error, r2_score
 from torch.optim import lr_scheduler
 from eval_subtile_dataset import EvalSubtileDataset
 import time
@@ -31,20 +32,21 @@ EVAL_FILE = os.path.join(EVAL_DATASET_DIR, "eval_subtiles.csv")  #"datasets/gene
 TRAIN_DATASET_DIR = "datasets/dataset_2018-08-01"
 BAND_STATISTICS_FILE = os.path.join(TRAIN_DATASET_DIR, "band_statistics_train.csv")
 TILE2VEC_MODEL_FILE = "models/tile2vec/TileNet_epoch50.ckpt"
-EMBEDDING_TO_SIF_MODEL_FILE = "models/embedding_to_sif"
-Z_DIM = 32
+EMBEDDING_TO_SIF_MODEL_FILE = "models/avg_embedding_to_sif"
+TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_subtile_avg.png'
+Z_DIM = 14
 INPUT_CHANNELS= 14
 
 eval_points = pd.read_csv(EVAL_FILE)
 
 
 def eval_model(tile2vec_model, embedding_to_sif_model, dataloader, dataset_size, criterion, device, sif_mean, sif_std):
-    #tile2vec_model.eval()   # Set model to evaluate mode
+    tile2vec_model.eval()   # Set model to evaluate mode
     embedding_to_sif_model.eval()
     sif_mean = torch.tensor(sif_mean).to(device)
     sif_std = torch.tensor(sif_std).to(device)
-
-
+    predicted = []
+    true = []
     running_loss = 0.0
 
     # Iterate over data.
@@ -56,21 +58,20 @@ def eval_model(tile2vec_model, embedding_to_sif_model, dataloader, dataset_size,
         # forward
         # track history if only in train
         with torch.set_grad_enabled(False):
-            # embedding = tile2vec_model(input_tile_standardized).flatten()
+            # embedding = tile2vec_model(input_tile_standardized)
             embedding = torch.mean(input_tile_standardized, dim=(2,3))
             #print('Embedding', embedding)
             # print('Embedding shape', embedding.shape)
             predicted_sif_standardized = embedding_to_sif_model(embedding).flatten()
         predicted_sif_non_standardized = predicted_sif_standardized * sif_std + sif_mean
-        #print('Predicted:', predicted_sif_non_standardized)
-        #print('True:', true_sif_non_standardized)
         loss = criterion(predicted_sif_non_standardized, true_sif_non_standardized)
 
         # statistics
         running_loss += loss.item() * len(sample['SIF'])
-
+        predicted += predicted_sif_non_standardized.tolist()
+        true += true_sif_non_standardized.tolist()
     loss = math.sqrt(running_loss / dataset_size) / sif_mean
-    return loss
+    return loss, predicted, true
 
 
 
@@ -107,9 +108,9 @@ dataloader = torch.utils.data.DataLoader(dataset, batch_size=4,
                                          shuffle=True, num_workers=4)
 
 # Load trained models from file
-#tile2vec_model = make_tilenet(in_channels=INPUT_CHANNELS, z_dim=Z_DIM).to(device)
-#tile2vec_model.load_state_dict(torch.load(TILE2VEC_MODEL_FILE))
-tile2vec_model = None
+tile2vec_model = make_tilenet(in_channels=INPUT_CHANNELS, z_dim=Z_DIM).to(device)
+# tile2vec_model.load_state_dict(torch.load(TILE2VEC_MODEL_FILE))
+# tile2vec_model = None
 embedding_to_sif_model = EmbeddingToSIFModel(embedding_size=Z_DIM)
 embedding_to_sif_model.load_state_dict(torch.load(EMBEDDING_TO_SIF_MODEL_FILE))
 embedding_to_sif_model = embedding_to_sif_model.to(device)
@@ -117,7 +118,21 @@ embedding_to_sif_model = embedding_to_sif_model.to(device)
 criterion = nn.MSELoss(reduction='mean')
 
 # Evaluate the model
-loss = eval_model(tile2vec_model, embedding_to_sif_model, dataloader, dataset_size, criterion, device, sif_mean, sif_std)
+loss, predicted, true = eval_model(tile2vec_model, embedding_to_sif_model, dataloader, dataset_size, criterion, device, sif_mean, sif_std)
+print('Predicted', predicted[0:50])
+print('True', true[0:50])
 print("Eval Loss", loss)
 
+# Compare predicted vs true: calculate NRMSE, R2, scatter plot
+nrmse = math.sqrt(mean_squared_error(predicted, true)) / sif_mean
+r2 = r2_score(predicted, true)
+print('NRMSE:', nrmse)
+print('R2:', r2)
 
+# Scatter plot of true vs predicted
+plt.scatter(true, predicted)
+plt.xlabel('True')
+plt.ylabel('Predicted')
+plt.title('Subtile prediction with Tile2Vec')
+plt.savefig(TRUE_VS_PREDICTED_PLOT)
+plt.close()

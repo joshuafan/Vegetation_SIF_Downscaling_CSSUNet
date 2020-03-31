@@ -21,7 +21,7 @@ BAND_STATISTICS_CSV_FILES = {"train": os.path.join(DATASET_DIR, "band_statistics
                              "val": os.path.join(DATASET_DIR, "band_statistics_val.csv")}
 tile_metadata = pd.read_csv(INFO_CSV_FILE)
 
-# Split into train/val, and write the split to a file (to ensure that all methos use the same
+# Split into train/val, and write the split to a file (to ensure that all methods use the same
 # train/val split)
 train_set, val_set = sklearn.model_selection.train_test_split(tile_metadata, test_size=0.2)
 datasets = {"train": train_set, "val": val_set}
