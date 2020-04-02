@@ -8,22 +8,30 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, r2_score
 from torch.optim import lr_scheduler
 from reflectance_cover_sif_dataset import ReflectanceCoverSIFDataset
+from eval_subtile_dataset import EvalSubtileDataset
 import tile_transforms
 import time
 import torch
 import torchvision
 import torchvision.transforms as transforms
+import small_resnet
 import resnet
 import torch.nn as nn
 import torch.optim as optim
+import sys
+sys.path.append('../')
+from tile2vec.src.tilenet import make_tilenet
 
 
-EVAL_DATASET_DIR = "datasets/dataset_2016-08-01"
-EVAL_FILE = os.path.join(EVAL_DATASET_DIR, "eval_subtiles.csv")  #  "datasets/dataset_2018-08-01/tile_info_val.csv" 
-TRAINED_MODEL_FILE = "models/large_tile_sif_prediction"
 TRAIN_DATASET_DIR = "datasets/dataset_2018-08-01"
+EVAL_DATASET_DIR = "datasets/dataset_2016-08-01"
+EVAL_FILE = os.path.join(EVAL_DATASET_DIR, "eval_subtiles.csv")
+# EVAL_FILE = os.path.join(TRAIN_DATASET_DIR, "tile_info_val.csv")
+
+TRAINED_MODEL_FILE = "models/small_tile_sif_prediction"
 BAND_STATISTICS_FILE = os.path.join(TRAIN_DATASET_DIR, "band_statistics_train.csv")
-TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_trivial_large_tile_cnn.png' 
+TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_small_tile_cnn.png' 
+INPUT_CHANNELS = 14
 eval_points = pd.read_csv(EVAL_FILE)
 
 def eval_model(model, dataloader, dataset_size, criterion, device, sif_mean, sif_std):
@@ -36,7 +44,7 @@ def eval_model(model, dataloader, dataset_size, criterion, device, sif_mean, sif
 
     # Iterate over data.
     for sample in dataloader:
-        input_tile = sample['tile'].to(device)
+        input_tile = sample['subtile'].to(device)
         true_sif_non_standardized = sample['SIF'].to(device)
 
         # forward
@@ -54,7 +62,13 @@ def eval_model(model, dataloader, dataset_size, criterion, device, sif_mean, sif
     return loss, predicted, true
 
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+# Check if any CUDA devices are visible. If so, pick a default visible device.
+# If not, use CPU.
+if 'CUDA_VISIBLE_DEVICES' in os.environ:
+    print('CUDA_VISIBLE_DEVICES:', os.environ['CUDA_VISIBLE_DEVICES'])
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+else:
+    device = "cpu"
 print("Device", device)
 
 # Read train/val tile metadata
@@ -74,17 +88,19 @@ sif_std = train_stds[-1]
 
 # Set up image transforms
 transform_list = []
+transform_list.append(tile_transforms.ShrinkTile())
 transform_list.append(tile_transforms.StandardizeTile(band_means, band_stds))
 transform = transforms.Compose(transform_list)
 
 # Set up Dataset and Dataloader
 dataset_size = len(eval_metadata)
-dataset = ReflectanceCoverSIFDataset(eval_metadata, transform)
+dataset = EvalSubtileDataset(eval_metadata, transform)  # ReflectanceCoverSIFDataset(eval_metadata, transform) #  EvalSubtileDataset(eval_metadata, transform)  #    ReflectanceCoverSIFDataset(eval_metadata, transform)  # ReflectanceCoverSIFDataset(eval_metadata, transform)
 dataloader = torch.utils.data.DataLoader(dataset, batch_size=4,
                                          shuffle=True, num_workers=4)
 
 # Load trained model from file
-resnet_model = resnet.resnet18(input_channels=14)
+resnet_model = small_resnet.resnet18(input_channels=14)
+# resnet_model = make_tilenet(in_channels=INPUT_CHANNELS, z_dim=1)  #.to(device)
 resnet_model.load_state_dict(torch.load(TRAINED_MODEL_FILE))
 resnet_model = resnet_model.to(device)
 criterion = nn.MSELoss(reduction='mean')
@@ -98,8 +114,8 @@ print("Eval Loss", loss)
 # Compare predicted vs true: calculate NRMSE, R2, scatter plot
 nrmse = math.sqrt(mean_squared_error(predicted, true)) / sif_mean
 r2 = r2_score(predicted, true)
-print('NRMSE:', nrmse)
-print('R2:', r2)
+print('NRMSE:', round(nrmse, 3))
+print('R2:', round(r2, 3))
 
 # Scatter plot of true vs predicted
 plt.scatter(true, predicted)

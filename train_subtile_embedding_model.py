@@ -1,4 +1,9 @@
+"""
+Learns embedding-to-SIF model, given pre-computed (fixed) embeddings,
+"""
+# TODO
 import copy
+import pickle
 import math
 import matplotlib.pyplot as plt
 import numpy as np
@@ -16,6 +21,8 @@ import torch.nn as nn
 import torch.optim as optim
 
 from reflectance_cover_sif_dataset import ReflectanceCoverSIFDataset
+from subtile_embedding_dataset import SubtileEmbeddingDataset
+
 from sif_utils import get_subtiles_list
 import tile_transforms
 
@@ -25,32 +32,34 @@ import sys
 sys.path.append('../')
 from tile2vec.src.tilenet import make_tilenet
 from embedding_to_sif_model import EmbeddingToSIFModel
-
+from embedding_to_sif_nonlinear_model import EmbeddingToSIFNonlinearModel
 
 DATASET_DIR = "datasets/dataset_2018-08-01"
-INFO_FILE_TRAIN = os.path.join(DATASET_DIR, "tile_info_train.csv")
-INFO_FILE_VAL = os.path.join(DATASET_DIR, "tile_info_val.csv")
+# INFO_FILE_TRAIN = os.path.join(DATASET_DIR, "tile_info_train.csv")
+# INFO_FILE_VAL = os.path.join(DATASET_DIR, "tile_info_val.csv")
 BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
 TILE2VEC_MODEL_FILE = "models/tile2vec_dim10_v2/TileNet_epoch50.ckpt"
-FINETUNED_TILE2VEC_MODEL_FILE = "models/tile2vec_dim10_v2/finetuned_tile2vec"
-EMBEDDING_TO_SIF_MODEL_FILE = "models/finetune_embedding_to_sif"
-TRAINING_PLOT_FILE = 'exploratory_plots/finetune_tile2vec_subtile_sif_prediction.png'
-EMBEDDING_TYPE = 'tile2vec'
+EMBEDDING_TO_SIF_MODEL_FILE = "models/tile2vec_dim10_embedding_to_sif_nonlinear"
 
-FREEZE_TILE2VEC = False
-Z_DIM = 10
-INPUT_CHANNELS= 14
-LEARNING_RATE = 1e-5
-NUM_EPOCHS = 5
+# LOAD_EMBEDDINGS = False
+SUBTILE_EMBEDDING_DATASET_TRAIN = os.path.join(DATASET_DIR, "tile2vec_dim10_embeddings_train.csv")
+SUBTILE_EMBEDDING_DATASET_VAL = os.path.join(DATASET_DIR, "tile2vec_dim10_embeddings_val.csv")
+
+# If EMBEDDING_TYPE is 'average', the embedding is just the average of each band.
+# If it is 'tile2vec', we use the Tile2Vec model 
+# EMBEDDING_TYPE = 'average'
+TRAINING_PLOT_FILE = 'exploratory_plots/tile2vec_dim10_nonlinear_subtile_sif_prediction.png'
 SUBTILE_DIM = 10
- 
+Z_DIM = 10
+INPUT_CHANNELS = 14
+NUM_EPOCHS = 30
+LEARNING_RATE = 1e-3
 
-# TODO should there be 2 separate models?
-def train_model(tile2vec_model, embedding_to_sif_model, freeze_tile2vec, dataloaders, dataset_sizes, criterion, optimizer, device, sif_mean, sif_std, subtile_dim, num_epochs=25):
+
+def train_embedding_to_sif_model(embedding_to_sif_model, dataloaders, dataset_sizes, criterion, optimizer, device, sif_mean, sif_std, num_epochs=25):
     since = time.time()
 
-    best_model_wts = [copy.deepcopy(tile2vec_model.state_dict()),
-                      copy.deepcopy(embedding_to_sif_model.state_dict())]
+    best_model_wts = copy.deepcopy(embedding_to_sif_model.state_dict())
     best_loss = float('inf')
     train_losses = []
     val_losses = []
@@ -66,13 +75,8 @@ def train_model(tile2vec_model, embedding_to_sif_model, freeze_tile2vec, dataloa
         # Each epoch has a training and validation phase
         for phase in ['train', 'val']:
             if phase == 'train':
-                if freeze_tile2vec:
-                    tile2vec_model.eval()
-                else:
-                    tile2vec_model.train()
                 embedding_to_sif_model.train()
             else:
-                tile2vec_model.eval()
                 embedding_to_sif_model.eval()
 
             running_loss = 0.0
@@ -80,33 +84,22 @@ def train_model(tile2vec_model, embedding_to_sif_model, freeze_tile2vec, dataloa
             # Iterate over data.
             for sample in dataloaders[phase]:
                 batch_size = len(sample['SIF'])
-                input_tile_standardized = sample['tile'].to(device)
+                subtile_embeddings = sample['subtile_embeddings'].to(device)
                 true_sif_non_standardized = sample['SIF'].to(device)
                 true_sif_standardized = ((true_sif_non_standardized - sif_mean) / sif_std).to(device)
 
                 # zero the parameter gradients
                 optimizer.zero_grad()
-
-                # Obtain subtiles (NOTE Pay attention to standardization :( )
-                subtiles = get_subtiles_list(input_tile_standardized, subtile_dim, device)  # (batch x num subtiles x bands x subtile_dim x subtile_dim)
-                #print('subtiles returned by get_subtiles_list', subtiles.shape)
-                #print('0th example:', subtiles[0].shape)
-                predicted_subtile_sifs = torch.empty((batch_size, subtiles.shape[1]), device=device)
+                predicted_subtile_sifs = torch.empty((batch_size, subtile_embeddings.shape[1]), device=device)
+                #print('Subtile embeddings', subtile_embeddings.shape)
                 #print('Predicted subtile SIFs', predicted_subtile_sifs.shape)
 
                 # Forward pass: feed subtiles through embedding model and then the
                 # embedding -> SIF model
                 with torch.set_grad_enabled(phase == 'train'):
                     for i in range(batch_size):
-                        if EMBEDDING_TYPE == 'average':
-                            embeddings = torch.mean(subtiles[i], dim=(2,3))  # (num subtiles x embedding size)
-                        elif EMBEDDING_TYPE == 'tile2vec':
-                            embeddings = tile2vec_model(subtiles[i])
-                        else:
-                            print('Unsupported embedding type', EMBEDDING_TYPE)
-                            exit(1)
-                        #print('Embedding shape', embeddings.shape)
-                        predicted_sifs = embedding_to_sif_model(embeddings)
+                        predicted_sifs = embedding_to_sif_model(subtile_embeddings[i])
+
                         #print('predicted_sif shape', predicted_sifs.shape)
                         predicted_subtile_sifs[i] = predicted_sifs.flatten()
                     
@@ -129,7 +122,7 @@ def train_model(tile2vec_model, embedding_to_sif_model, freeze_tile2vec, dataloa
                     non_standardized_loss = criterion(predicted_sif_non_standardized, true_sif_non_standardized)
                     running_loss += non_standardized_loss.item()
 
-            epoch_loss = math.sqrt(running_loss / dataset_sizes[phase]) / sif_mean
+            epoch_loss = (math.sqrt(running_loss / dataset_sizes[phase]) / sif_mean).item()
 
             print('{} Loss: {:.4f}'.format(
                 phase, epoch_loss))
@@ -137,8 +130,7 @@ def train_model(tile2vec_model, embedding_to_sif_model, freeze_tile2vec, dataloa
             # deep copy the model
             if phase == 'val' and epoch_loss < best_loss:
                 best_loss = epoch_loss
-                best_model_wts = [copy.deepcopy(tile2vec_model.state_dict()),
-                                  copy.deepcopy(embedding_to_sif_model.state_dict())]
+                best_model_wts = copy.deepcopy(embedding_to_sif_model.state_dict())
 
             # Record loss
             if phase == 'train':
@@ -154,9 +146,9 @@ def train_model(tile2vec_model, embedding_to_sif_model, freeze_tile2vec, dataloa
     print('Best val loss: {:4f}'.format(best_loss))
 
     # load best model weights
-    tile2vec_model.load_state_dict(best_model_wts[0])
-    embedding_to_sif_model.load_state_dict(best_model_wts[1])
-    return tile2vec_model, embedding_to_sif_model, train_losses, val_losses, best_loss
+    embedding_to_sif_model.load_state_dict(best_model_wts)
+    return embedding_to_sif_model, train_losses, val_losses, best_loss
+
 
 
 # Check if any CUDA devices are visible. If so, pick a default visible device.
@@ -168,58 +160,44 @@ else:
     device = "cpu"
 print("Device", device)
 
-# Read train/val tile metadata
-train_metadata = pd.read_csv(INFO_FILE_TRAIN)
-val_metadata = pd.read_csv(INFO_FILE_VAL)
-
 # Read mean/standard deviation for each band, for standardization purposes
 train_statistics = pd.read_csv(BAND_STATISTICS_FILE)
 train_means = train_statistics['mean'].values
 train_stds = train_statistics['std'].values
-print("Train samples", len(train_metadata))
-print("Validation samples", len(val_metadata))
-print("Means", train_means)
-print("Stds", train_stds)
 band_means = train_means[:-1]
 sif_mean = train_means[-1]
 band_stds = train_stds[:-1]
 sif_std = train_stds[-1]
 
-# Set up image transforms
-transform_list = []
-transform_list.append(tile_transforms.StandardizeTile(band_means, band_stds))
-transform = transforms.Compose(transform_list)
+# Load pre-computed subtile embeddings from file
+train_tile_rows = pd.read_csv(SUBTILE_EMBEDDING_DATASET_TRAIN)
+val_tile_rows = pd.read_csv(SUBTILE_EMBEDDING_DATASET_VAL)
 
-# Set up Datasets and Dataloaders
-# resize_transform = torchvision.transforms.Resize((224, 224))
-datasets = {'train': ReflectanceCoverSIFDataset(train_metadata, transform),
-            'val': ReflectanceCoverSIFDataset(val_metadata, transform)}
+# Set up datasets and dataloaders
+embedding_datasets = {'train': SubtileEmbeddingDataset(train_tile_rows),
+                      'val': SubtileEmbeddingDataset(val_tile_rows)}
+embedding_dataloaders = {x: torch.utils.data.DataLoader(embedding_datasets[x], batch_size=2,
+                                                        shuffle=True, num_workers=1)
+                  for x in ['train', 'val']}
 
-dataloaders = {x: torch.utils.data.DataLoader(datasets[x], batch_size=2,
-                                              shuffle=True, num_workers=1)
-              for x in ['train', 'val']}
+#if EMBEDDING_TYPE == 'average':
+#    embedding_to_sif_model = EmbeddingToSIFModel(embedding_size=INPUT_CHANNELS).to(device)  # TODO
+#elif EMBEDDING_TYPE == 'tile2vec':
+#    embedding_to_sif_model = EmbeddingToSIFModel(embedding_size=Z_DIM).to(device)
+#else:
+#    print('Unsupported embedding type', EMBEDDING_TYPE)
+#    exit(1)
 
-print("Dataloaders")
-
-tile2vec_model = make_tilenet(in_channels=INPUT_CHANNELS, z_dim=Z_DIM).to(device)
-tile2vec_model.load_state_dict(torch.load(TILE2VEC_MODEL_FILE))
-embedding_to_sif_model = EmbeddingToSIFModel(embedding_size=Z_DIM).to(device)  # TODO
+# Create embedding-to-SIF model
+embedding_to_sif_model = EmbeddingToSIFNonlinearModel(embedding_size=Z_DIM).to(device)
 criterion = nn.MSELoss(reduction='mean')
-#optimizer = optim.SGD(resnet_model.parameters(), lr=1e-4, momentum=0.9)
+optimizer = optim.Adam(embedding_to_sif_model.parameters(), lr=LEARNING_RATE)
+dataset_sizes = {'train': len(train_tile_rows),
+                 'val': len(val_tile_rows)}
 
-# Don't optimize Tile2vec model; just use pre-trained version
-if FREEZE_TILE2VEC:
-    params_to_optimize = embedding_to_sif_model.parameters()
-else:
-    params_to_optimize = list(tile2vec_model.parameters()) + list(embedding_to_sif_model.parameters())
-optimizer = optim.Adam(params_to_optimize, lr=LEARNING_RATE)
-dataset_sizes = {'train': len(train_metadata),
-                 'val': len(val_metadata)}
+# Train model
+embedding_to_sif_model, train_losses, val_losses, best_loss = train_embedding_to_sif_model(embedding_to_sif_model, embedding_dataloaders, dataset_sizes, criterion, optimizer, device, sif_mean, sif_std, num_epochs=NUM_EPOCHS)
 
-
-tile2vec_model, embedding_to_sif_model, train_losses, val_losses, best_loss = train_model(tile2vec_model, embedding_to_sif_model, FREEZE_TILE2VEC, dataloaders, dataset_sizes, criterion, optimizer, device, sif_mean, sif_std, subtile_dim=SUBTILE_DIM, num_epochs=NUM_EPOCHS)
-
-torch.save(tile2vec_model.state_dict(), FINETUNED_TILE2VEC_MODEL_FILE)
 torch.save(embedding_to_sif_model.state_dict(), EMBEDDING_TO_SIF_MODEL_FILE)
 
 # Plot loss curves
@@ -233,3 +211,9 @@ plt.xlabel('Epoch #')
 plt.ylabel('Normalized Root Mean Squared Error')
 plt.savefig(TRAINING_PLOT_FILE) 
 plt.close()
+
+
+
+
+
+

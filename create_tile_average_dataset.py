@@ -11,7 +11,7 @@ import pandas as pd
 import sklearn.model_selection
 from sif_utils import plot_histogram
 
-DATASET_DIR = "datasets/dataset_2016-08-01"
+DATASET_DIR = "datasets/dataset_2018-08-01"
 INFO_CSV_FILE = os.path.join(DATASET_DIR, "reflectance_cover_to_sif.csv")
 SPLIT_INFO_CSV_FILES = {"train": os.path.join(DATASET_DIR, "tile_info_train.csv"),
                         "val": os.path.join(DATASET_DIR, "tile_info_val.csv")}

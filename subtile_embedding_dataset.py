@@ -28,8 +28,9 @@ class SubtileEmbeddingDataset(Dataset):
         if torch.is_tensor(idx):
             idx = idx.tolist()
 
-        subtile_embeddings = self.tile_rows[idx][0]
-        sif = self.tile_rows[idx][1]
+        current_tile_row = self.tile_rows.iloc[idx]
+        subtile_embeddings = np.load(current_tile_row.loc['embedding_file'])
+        sif = current_tile_row['sif']
  
         sample = {'subtile_embeddings': subtile_embeddings,
                   'SIF': sif}

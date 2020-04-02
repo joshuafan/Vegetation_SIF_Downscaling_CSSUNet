@@ -141,7 +141,7 @@ class ResNet(nn.Module):
                              "or a 3-element tuple, got {}".format(replace_stride_with_dilation))
         self.groups = groups
         self.base_width = width_per_group
-        self.conv1 = nn.Conv2d(input_channels, self.inplanes, kernel_size=7, stride=2, padding=3,
+        self.conv1 = nn.Conv2d(input_channels, self.inplanes, kernel_size=3, stride=1, padding=1,
                                bias=False)
         self.bn1 = norm_layer(self.inplanes)
         self.relu = nn.ReLU(inplace=True)
@@ -149,12 +149,12 @@ class ResNet(nn.Module):
         self.layer1 = self._make_layer(block, 64, layers[0])
         self.layer2 = self._make_layer(block, 128, layers[1], stride=2,
                                        dilate=replace_stride_with_dilation[0])
-        self.layer3 = self._make_layer(block, 256, layers[2], stride=2,
-                                       dilate=replace_stride_with_dilation[1])
-        self.layer4 = self._make_layer(block, 512, layers[3], stride=2,
-                                       dilate=replace_stride_with_dilation[2])
+        #self.layer3 = self._make_layer(block, 256, layers[2], stride=2,
+        #                               dilate=replace_stride_with_dilation[1])
+        #self.layer4 = self._make_layer(block, 512, layers[3], stride=2,
+        #                               dilate=replace_stride_with_dilation[2])
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.fc = nn.Linear(512 * block.expansion, output_dim)
+        self.fc = nn.Linear(128 * block.expansion, output_dim)  # TODO change
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -203,16 +203,16 @@ class ResNet(nn.Module):
         x = self.bn1(x)
         x = self.relu(x)
         x = self.maxpool(x)
-        print('before layer1', x.shape)
+        #print('before layer1', x.shape)
         x = self.layer1(x)
-        print('after layer1', x.shape)
+        #print('after layer1', x.shape)
         x = self.layer2(x)
-        print('after layer2', x.shape)
+        #print('after layer2', x.shape)
         # x = self.layer3(x)
         #x = self.layer4(x)
 
         x = self.avgpool(x)
-        print('after avgpool', x.shape)
+        #print('after avgpool', x.shape)
         x = torch.flatten(x, 1)
         x = self.fc(x)
 
@@ -222,8 +222,8 @@ class ResNet(nn.Module):
         return self._forward_impl(x)
 
 
-def _resnet(arch, block, layers, input_channels, pretrained, progress, **kwargs):
-    model = ResNet(block, layers, input_channels, **kwargs)
+def _resnet(arch, block, layers, input_channels, pretrained, progress, output_dim, **kwargs):
+    model = ResNet(block, layers, input_channels, output_dim=output_dim, **kwargs)
     if pretrained:
         state_dict = load_state_dict_from_url(model_urls[arch],
                                               progress=progress)
@@ -231,7 +231,7 @@ def _resnet(arch, block, layers, input_channels, pretrained, progress, **kwargs)
     return model
 
 
-def resnet18(input_channels, pretrained=False, progress=True, **kwargs):
+def resnet18(input_channels, pretrained=False, progress=True, output_dim=1, **kwargs):
     r"""ResNet-18 model from
     `"Deep Residual Learning for Image Recognition" <https://arxiv.org/pdf/1512.03385.pdf>`_
     Args:
@@ -239,7 +239,7 @@ def resnet18(input_channels, pretrained=False, progress=True, **kwargs):
         progress (bool): If True, displays a progress bar of the download to stderr
     """
     return _resnet('resnet18', BasicBlock, [2, 2, 2, 2], input_channels, pretrained, progress,
-                   **kwargs)
+                   output_dim=output_dim, **kwargs)
 
 
 def resnet34(pretrained=False, progress=True, **kwargs):

@@ -32,8 +32,10 @@ OUTPUT_TILES_DIR = "datasets/tiles_" + START_DATE  # Directory containing 0.1x0.
 OUTPUT_CSV_FILE = os.path.join(OUTPUT_DATASET_DIR, "reflectance_cover_to_sif.csv")
 SIF_FILE = "datasets/TROPOMI_SIF/TROPO-SIF_01deg_biweekly_Apr18-Jan20.nc"
 
-COVERS_TO_MASK = [1, 5, 176, 141]
-MAX_MISSING_FRACTION = 1.0  # If more than 30% of pixels in the tile are missing, throw the tile out
+# List of cover types to include (see https://developers.google.com/earth-engine/datasets/catalog/USDA_NASS_CDL
+# for what these numbers correspond to). I included all cover types that are >1% of the region.
+COVERS_TO_MASK = [176, 152, 1, 5, 141, 142, 23, 121, 37, 190, 195, 111, 36, 24, 61]
+MAX_MISSING_FRACTION = 0.3  # If more than 30% of pixels in the tile are missing, throw the tile out
 
 if not os.path.exists(OUTPUT_DATASET_DIR):
     os.makedirs(OUTPUT_DATASET_DIR)
@@ -51,9 +53,9 @@ def plot_and_print_covers(covers, filename):
     print('Covers!', covers)
     mask = np.zeros_like(covers)
     mask[covers == 1] = 1.
-    plt.imshow(mask, cmap='Greens', vmin=0, vmax=1)
-    plt.savefig('datasets/CDL_2019/visualizations/' + filename)
-    plt.close()
+    #plt.imshow(mask, cmap='Greens', vmin=0, vmax=1)
+    #plt.savefig('datasets/CDL_2019/visualizations/' + filename)
+    #plt.close()
 
     # Count how many pixels contain each crop
     total_pixels = covers.shape[0] * covers.shape[1]

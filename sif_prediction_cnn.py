@@ -15,21 +15,29 @@ import time
 import torch
 import torchvision
 import torchvision.transforms as transforms
-import resnet
+import small_resnet
 import torch.nn as nn
 import torch.optim as optim
 
 from reflectance_cover_sif_dataset import ReflectanceCoverSIFDataset
 import tile_transforms
+import sys
+sys.path.append('../')
+from tile2vec.src.tilenet import make_tilenet
+
+
 
 DATASET_DIR = "datasets/dataset_2018-08-01"
 INFO_FILE_TRAIN = os.path.join(DATASET_DIR, "tile_info_train.csv")
 INFO_FILE_VAL = os.path.join(DATASET_DIR, "tile_info_val.csv")
-TRAINED_MODEL_FILE = "models/large_tile_sif_prediction"
+TRAINED_MODEL_FILE = "models/small_tile_sif_prediction"
 BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
 FROM_PRETRAINED = False
 RGB_BANDS = [1, 2, 3]
-NUM_EPOCHS = 20 
+NUM_EPOCHS = 20
+INPUT_CHANNELS = 25
+LEARNING_RATE = 1e-4
+
 
 # Visualize images (RGB bands only)
 # Image is assumed to be standardized. You need to pass in band_means and band_stds
@@ -94,6 +102,11 @@ def train_model(model, dataloaders, dataset_sizes, criterion, optimizer, device,
                 
                 # Standardized input tile, (batch x C x W x H)
                 input_tile_standardized = sample['tile'].to(device)
+                #print('=========================')
+                #print('Sample input pixels')
+                #print(input_tile_standardized[1, :, 2, 7])
+                #print(input_tile_standardized[1, :, 2, 8])
+                #print(input_tile_standardized[1, :, 2, 9])
 
                 # Real SIF value (non-standardized)
                 true_sif_non_standardized = sample['SIF'].to(device)
@@ -107,7 +120,9 @@ def train_model(model, dataloaders, dataset_sizes, criterion, optimizer, device,
                 # forward
                 # track history if only in train
                 with torch.set_grad_enabled(phase == 'train'):
+                    #print('Input tile std', input_tile_standardized.shape)
                     predicted_sif_standardized = model(input_tile_standardized).flatten()
+                    # print('Predicted sif std', predicted_sif_standardized)
                     loss = criterion(predicted_sif_standardized, true_sif_standardized)
 
                     # backward + optimize only if in training phase
@@ -116,12 +131,15 @@ def train_model(model, dataloaders, dataset_sizes, criterion, optimizer, device,
                         optimizer.step()
 
                 # statistics
-                predicted_sif_non_standardized = torch.tensor(predicted_sif_standardized * sif_std + sif_mean, dtype=torch.float).to(device)
-                #print('========================')
-                #print('Predicted', predicted_sif_non_standardized)
-                #print('True', true_sif_non_standardized)
-                non_standardized_loss = criterion(predicted_sif_non_standardized, true_sif_non_standardized)
-                running_loss += non_standardized_loss.item() * len(sample['SIF'])
+                with torch.set_grad_enabled(False):
+                    predicted_sif_non_standardized = torch.tensor(predicted_sif_standardized * sif_std + sif_mean, dtype=torch.float).to(device)
+                    #print('========================')
+                    #print('Predicted', predicted_sif_non_standardized)
+                    #print('True', true_sif_non_standardized)
+                    #print('len SIF', len(sample['SIF']))
+                    non_standardized_loss = criterion(predicted_sif_non_standardized, true_sif_non_standardized)
+                    #print('loss', non_standardized_loss.item())
+                    running_loss += non_standardized_loss.item() * len(sample['SIF'])
 
             epoch_loss = math.sqrt(running_loss / dataset_sizes[phase]) / sif_mean
             print('{} Loss: {:.4f}'.format(
@@ -156,7 +174,13 @@ def train_model(model, dataloaders, dataset_sizes, criterion, optimizer, device,
 #for sample in samples:
 #    imshow(sample['tile'])
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+# Check if any CUDA devices are visible. If so, pick a default visible device.
+# If not, use CPU.
+if 'CUDA_VISIBLE_DEVICES' in os.environ:
+    print('CUDA_VISIBLE_DEVICES:', os.environ['CUDA_VISIBLE_DEVICES'])
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+else:
+    device = "cpu"
 print("Device", device)
 
 # Read train/val tile metadata
@@ -178,6 +202,7 @@ sif_std = train_stds[-1]
 
 # Set up image transforms
 transform_list = []
+transform_list.append(tile_transforms.ShrinkTile())
 transform_list.append(tile_transforms.StandardizeTile(band_means, band_stds))
 transform = transforms.Compose(transform_list)
 
@@ -186,12 +211,13 @@ transform = transforms.Compose(transform_list)
 datasets = {'train': ReflectanceCoverSIFDataset(train_metadata, transform),
             'val': ReflectanceCoverSIFDataset(val_metadata, transform)}
 
-dataloaders = {x: torch.utils.data.DataLoader(datasets[x], batch_size=4,
+dataloaders = {x: torch.utils.data.DataLoader(datasets[x], batch_size=32,
                                               shuffle=True, num_workers=1)
               for x in ['train', 'val']}
 
 print("Dataloaders")
-resnet_model = resnet.resnet18(input_channels=14)  #.to(device)
+resnet_model = small_resnet.resnet18(input_channels=INPUT_CHANNELS)
+# resnet_model = make_tilenet(in_channels=INPUT_CHANNELS, z_dim=1)  #.to(device)
 if FROM_PRETRAINED:
     resnet_model.load_state_dict(torch.load(TRAINED_MODEL_FILE))
 print("Loaded model")
@@ -200,7 +226,7 @@ resnet_model = resnet_model.to(device)
 
 criterion = nn.MSELoss(reduction='mean')
 #optimizer = optim.SGD(resnet_model.parameters(), lr=1e-4, momentum=0.9)
-optimizer = optim.Adam(resnet_model.parameters(), lr=1e-4)
+optimizer = optim.Adam(resnet_model.parameters(), lr=LEARNING_RATE)
 dataset_sizes = {'train': len(train_metadata),
                  'val': len(val_metadata)}
 

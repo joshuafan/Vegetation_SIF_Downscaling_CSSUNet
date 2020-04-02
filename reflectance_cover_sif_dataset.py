@@ -43,6 +43,7 @@ class ReflectanceCoverSIFDataset(Dataset):
  
         sample = {'lon': current_tile_info.loc['lon'],
                   'lat': current_tile_info.loc['lat'],
+                  'tile_file': current_tile_info.loc['tile_file'],
                   #'year': year,
                   #'day_of_year': day_of_year,
                   'tile': tile,
