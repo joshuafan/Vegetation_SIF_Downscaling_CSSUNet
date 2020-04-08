@@ -6,6 +6,7 @@ import os
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import r2_score, mean_squared_error
+from scipy.stats import pearsonr
 from torch.optim import lr_scheduler
 
 import time
@@ -28,15 +29,17 @@ from tile2vec.src.tilenet import make_tilenet
 from embedding_to_sif_model import EmbeddingToSIFModel
 
 
-DATASET_DIR = "datasets/dataset_2018-08-01"
+DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
+DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-08-01")
 INFO_FILE_TRAIN = os.path.join(DATASET_DIR, "tile_info_train.csv")
 INFO_FILE_VAL = os.path.join(DATASET_DIR, "tile_info_val.csv")
 BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
-TILE2VEC_MODEL_FILE = "models/tile2vec_dim10_v2/finetuned_tile2vec"  # "models/tile2vec_dim10_v2/TileNet_epoch50.ckpt"
-EMBEDDING_TO_SIF_MODEL_FILE = "models/finetune_embedding_to_sif"  # "models/tile2vec_dim10_embedding_to_sif"
-EMBEDDING_TYPE = "tile2vec"
-Z_DIM = 10
-INPUT_CHANNELS= 14
+TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_dim256_neighborhood100/TileNet.ckpt")
+# "models/tile2vec_dim10_neighborhood500/TileNet_epoch50.ckpt"
+EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/avg_embedding_to_sif")  # "models/tile2vec_dim10_embedding_to_sif"
+EMBEDDING_TYPE = "average"
+Z_DIM = 256
+INPUT_CHANNELS = 29
 SUBTILE_DIM = 10
 
 
@@ -154,12 +157,12 @@ predicted_train, true_train = eval_model(tile2vec_model, embedding_to_sif_model,
 predicted_val, true_val = eval_model(tile2vec_model, embedding_to_sif_model, dataloaders['val'], device, sif_mean, sif_std, subtile_dim=SUBTILE_DIM)
 
 train_nrmse = math.sqrt(mean_squared_error(predicted_train, true_train)) / sif_mean
-train_r2 = r2_score(predicted_train, true_train)
+train_corr, _ = pearsonr(predicted_train, true_train)
 val_nrmse = math.sqrt(mean_squared_error(predicted_val, true_val)) / sif_mean
-val_r2 = r2_score(predicted_val, true_val)
+val_corr, _ = pearsonr(predicted_val, true_val)
 
 print('Train NRMSE', round(train_nrmse, 3))
 print('Val NRMSE', round(val_nrmse, 3))
-print('Train R2', round(train_r2, 3))
-print('Val R2', round(val_r2, 3))
+print('Train correlation', round(train_corr, 3))
+print('Val correlation', round(val_corr, 3))
 

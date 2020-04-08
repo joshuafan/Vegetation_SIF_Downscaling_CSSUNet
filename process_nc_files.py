@@ -6,7 +6,7 @@ import numpy as np
 import os
 import xarray as xr
 
-FILE_PATH = './datasets/SIF/TROPO-SIF_01deg_biweekly_Apr18-Jan20.nc'
+FILE_PATH = './datasets/TROPOMI_SIF/TROPO-SIF_01deg_biweekly_Apr18-Jan20.nc'
 START_DATE = '2018-08-01'
 END_DATE = '2018-08-15'
 PLOT_FOLDER = './datasets/SIF/visualizations/'

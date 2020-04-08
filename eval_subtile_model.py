@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, r2_score
+from scipy.stats import pearsonr
 from torch.optim import lr_scheduler
 from eval_subtile_dataset import EvalSubtileDataset
 import time
@@ -25,18 +26,20 @@ from embedding_to_sif_model import EmbeddingToSIFModel
 import tile_transforms
 
 
-
-EVAL_DATASET_DIR = "datasets/dataset_2016-08-01"
-TRAIN_DATASET_DIR = "datasets/dataset_2018-08-01"
+DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
+EVAL_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2016-08-01")
+TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-08-01")
 EVAL_FILE = os.path.join(EVAL_DATASET_DIR, "eval_subtiles.csv") 
-
 BAND_STATISTICS_FILE = os.path.join(TRAIN_DATASET_DIR, "band_statistics_train.csv")
-TILE2VEC_MODEL_FILE = "models/tile2vec_dim10_v2/finetuned_tile2vec"
-EMBEDDING_TO_SIF_MODEL_FILE = "models/finetune_embedding_to_sif"
-TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_finetune_tile2vec_dim10.png'
-Z_DIM = 10
-INPUT_CHANNELS= 14
-EMBEDDING_TYPE = 'tile2vec'
+TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_dim256_neighborhood100/TileNet.ckpt")
+# "models/tile2vec_dim32_neighborhood100/TileNet_epoch20.ckpt"
+# "models/tile2vec_dim10_neighborhood500/TileNet_epoch50.ckpt"  # finetuned_tile2vec"
+EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_embedding_to_sif")
+TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_tile2vec.png'
+
+Z_DIM = 256
+INPUT_CHANNELS = 29
+EMBEDDING_TYPE = 'tile2vec'  # average'  # 'tile2vec'
 
 eval_points = pd.read_csv(EVAL_FILE)
 
@@ -139,9 +142,9 @@ print('True', true[0:50])
 
 # Compare predicted vs true: calculate NRMSE, R2, scatter plot
 nrmse = math.sqrt(mean_squared_error(predicted, true)) / sif_mean
-r2 = r2_score(predicted, true)
+corr, _ = pearsonr(predicted, true)
 print('NRMSE:', round(nrmse, 3))
-print('R2:', round(r2, 3))
+print("Pearson's correlation coefficient:", round(corr, 3))
 
 # Scatter plot of true vs predicted
 plt.scatter(true, predicted)

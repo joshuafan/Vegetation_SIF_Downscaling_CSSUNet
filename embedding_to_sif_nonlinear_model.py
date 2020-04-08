@@ -14,3 +14,4 @@ class EmbeddingToSIFNonlinearModel(nn.Module):
         x = F.relu(x)
         x = self.linear2(x)
         return x
+

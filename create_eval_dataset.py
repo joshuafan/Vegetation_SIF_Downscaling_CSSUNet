@@ -21,9 +21,10 @@ import matplotlib.pyplot as plt
 from sif_utils import lat_long_to_index, plot_histogram
 
 DATE = "2016-08-01"
-TILES_DIR = "datasets/tiles_" + DATE
-SUBTILES_DIR = "datasets/subtiles_" + DATE  # Directory to output subtiles to
-DATASET_DIR = "datasets/dataset_" + DATE
+DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
+TILES_DIR = os.path.join(DATA_DIR, "tiles_" + DATE)
+SUBTILES_DIR = os.path.join(DATA_DIR, "subtiles_" + DATE)  # Directory to output subtiles to
+DATASET_DIR = os.path.join(DATA_DIR, "dataset_" + DATE)
 
 assert os.path.exists(TILES_DIR)
 if not os.path.exists(SUBTILES_DIR):
@@ -34,15 +35,18 @@ if not os.path.exists(DATASET_DIR):
 OUTPUT_CSV_FILE = os.path.join(DATASET_DIR, "eval_subtiles.csv")
 TILE_AVERAGE_CSV_FILE = os.path.join(DATASET_DIR, "eval_large_tile_averages.csv")
 SUBTILE_AVERAGE_CSV_FILE = os.path.join(DATASET_DIR, "eval_subtile_averages.csv")
-CFIS_FILE = "datasets/CFIS/CFIS_201608a_300m.npy"
+CFIS_FILE = os.path.join(DATA_DIR, "CFIS/CFIS_201608a_300m.npy")
 headers = ["lat", "lon", "SIF", "tile_file", "subtile_file"]
 csv_rows = [headers]
 TILE_SIZE_DEGREES = 0.1
 SUBTILE_SIZE_PIXELS = 10
 
 column_names = ['lat', 'lon', 'ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
-                'ref_10', 'ref_11', 'corn', 'soybean', 'grassland', 'deciduous_forest',
-                'percent_missing', 'SIF']
+                    'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg', 
+                    'grassland_pasture', 'shrubland', 'corn', 'soybean',
+                    'deciduous_forest', 'evergreen_forest', 'spring_wheat', 'developed_open_space',
+                    'other_hay_non_alfalfa', 'woody_wetlands', 'herbaceous_wetlands',
+                    'open_water', 'alfalfa', 'winter_wheat', 'missing_cover', 'missing_reflectance', 'SIF']
 tile_averages = [column_names]
 subtile_averages = [column_names]
 

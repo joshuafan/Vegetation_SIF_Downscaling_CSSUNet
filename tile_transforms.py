@@ -18,7 +18,7 @@ class ShrinkTile(object):
     Shrinks tile down to designated size (e.g. from 371 x 371 to 10 x 10).
     Contains custom logic to ensure that binary bands (1/0) stay that way.
     """
-    def __init__(self, target_dim=10, continuous_bands=list(range(0, 9)), cover_bands=list(range(9, 13)), missing_band=13):
+    def __init__(self, target_dim=10, continuous_bands=list(range(0, 9)), cover_bands=list(range(9, 24)), missing_band=24):
         print('Continuous bands', continuous_bands)
         self.target_dim = target_dim
         self.continuous_bands = continuous_bands
@@ -31,7 +31,7 @@ class ShrinkTile(object):
         bands, original_height, original_width = tile.shape
         resized_tile = np.zeros((bands, self.target_dim, self.target_dim))
         
-        # Loop trhoguh each pixel in the target smaller tile
+        # Loop through each pixel in the target smaller tile
         for i in range(self.target_dim):
             for j in range(self.target_dim):
                 # Find which pixels in original tile correspond to this pixel
@@ -46,7 +46,8 @@ class ShrinkTile(object):
                 original_pixels = tile[:, top:bottom, left:right]
                 
                 # Sample center pixel
-                # resized_tile[:, i, j] = tile[:, int((top+bottom)/2), int((left+right)/2)]
+                resized_tile[:, i, j] = tile[:, int((top+bottom)/2), int((left+right)/2)]
+                continue
 
                 # Count number of pixels with and without reflectance data (by looking at the missing_band mask)
                 pixels_without_reflectance = np.sum(original_pixels[self.missing_band, :, :])
@@ -70,7 +71,7 @@ class ShrinkTile(object):
                 index = np.argmax(cover_fractions)
                 #print('argmax index', index)
                 value = cover_fractions[index]
-                if value > 0.4:
+                if value > 0.3:
                     most_common_cover = self.cover_bands[index]
                     #print('Most common cover:', most_common_cover)
                     resized_tile[most_common_cover, i, j] = 1

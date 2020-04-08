@@ -24,12 +24,20 @@ with rio.open(FILE_PATH) as tiff_dataset:
     print('numpy array shape', all_bands_numpy.shape)
 
     # Read off RGB bands
-    red = tiff_dataset.read(4) / 1000.
-    green = tiff_dataset.read(3) / 1000.
-    blue = tiff_dataset.read(2) / 1000.
+    red = tiff_dataset.read(4)
+    green = tiff_dataset.read(3)
+    blue = tiff_dataset.read(2)
+    print('max red', np.max(red))
+    print('mean read', np.mean(red))
+    red = red / (2*np.mean(red))
+    green = green / (2*np.mean(green))
+    blue = blue / (2*np.mean(blue))
     rgb = np.stack([red, green, blue], axis=0)
     print('rgb shape', rgb.shape)
     show(rgb)
+    plt.savefig('exploratory_plots/reflectance_rgb_visualization.png')
+    plt.close()
+    exit(1)
 
     print(green)
     plt.imshow(green, cmap='Greens', vmin=0, vmax=1)

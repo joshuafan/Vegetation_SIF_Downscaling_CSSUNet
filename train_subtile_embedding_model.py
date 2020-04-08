@@ -34,27 +34,30 @@ from tile2vec.src.tilenet import make_tilenet
 from embedding_to_sif_model import EmbeddingToSIFModel
 from embedding_to_sif_nonlinear_model import EmbeddingToSIFNonlinearModel
 
-DATASET_DIR = "datasets/dataset_2018-08-01"
+
+DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
+DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-08-01")
 # INFO_FILE_TRAIN = os.path.join(DATASET_DIR, "tile_info_train.csv")
 # INFO_FILE_VAL = os.path.join(DATASET_DIR, "tile_info_val.csv")
 BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
-TILE2VEC_MODEL_FILE = "models/tile2vec_dim10_v2/TileNet_epoch50.ckpt"
-EMBEDDING_TO_SIF_MODEL_FILE = "models/tile2vec_dim10_embedding_to_sif_nonlinear"
+# TILE2VEC_MODEL_FILE = "models/tile2vec_dim10_v2/TileNet_epoch50.ckpt"
+EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_embedding_to_sif")
 
 # LOAD_EMBEDDINGS = False
-SUBTILE_EMBEDDING_DATASET_TRAIN = os.path.join(DATASET_DIR, "tile2vec_dim10_embeddings_train.csv")
-SUBTILE_EMBEDDING_DATASET_VAL = os.path.join(DATASET_DIR, "tile2vec_dim10_embeddings_val.csv")
+SUBTILE_EMBEDDING_DATASET_TRAIN = os.path.join(DATASET_DIR, "tile2vec_embeddings_train.csv")
+SUBTILE_EMBEDDING_DATASET_VAL = os.path.join(DATASET_DIR, "tile2vec_embeddings_val.csv")
 
 # If EMBEDDING_TYPE is 'average', the embedding is just the average of each band.
 # If it is 'tile2vec', we use the Tile2Vec model 
 # EMBEDDING_TYPE = 'average'
-TRAINING_PLOT_FILE = 'exploratory_plots/tile2vec_dim10_nonlinear_subtile_sif_prediction.png'
+TRAINING_PLOT_FILE = 'exploratory_plots/tile2vec_subtile_sif_prediction.png'
+PLOT_TITLE = 'Loss curves: Tile2Vec embedding to SIF'
 SUBTILE_DIM = 10
-Z_DIM = 10
-INPUT_CHANNELS = 14
-NUM_EPOCHS = 30
+Z_DIM = 32
+INPUT_CHANNELS = 25
+NUM_EPOCHS = 100
 LEARNING_RATE = 1e-3
-
+WEIGHT_DECAY = 1e-3
 
 def train_embedding_to_sif_model(embedding_to_sif_model, dataloaders, dataset_sizes, criterion, optimizer, device, sif_mean, sif_std, num_epochs=25):
     since = time.time()
@@ -176,22 +179,14 @@ val_tile_rows = pd.read_csv(SUBTILE_EMBEDDING_DATASET_VAL)
 # Set up datasets and dataloaders
 embedding_datasets = {'train': SubtileEmbeddingDataset(train_tile_rows),
                       'val': SubtileEmbeddingDataset(val_tile_rows)}
-embedding_dataloaders = {x: torch.utils.data.DataLoader(embedding_datasets[x], batch_size=2,
+embedding_dataloaders = {x: torch.utils.data.DataLoader(embedding_datasets[x], batch_size=4,
                                                         shuffle=True, num_workers=1)
                   for x in ['train', 'val']}
 
-#if EMBEDDING_TYPE == 'average':
-#    embedding_to_sif_model = EmbeddingToSIFModel(embedding_size=INPUT_CHANNELS).to(device)  # TODO
-#elif EMBEDDING_TYPE == 'tile2vec':
-#    embedding_to_sif_model = EmbeddingToSIFModel(embedding_size=Z_DIM).to(device)
-#else:
-#    print('Unsupported embedding type', EMBEDDING_TYPE)
-#    exit(1)
-
 # Create embedding-to-SIF model
-embedding_to_sif_model = EmbeddingToSIFNonlinearModel(embedding_size=Z_DIM).to(device)
+embedding_to_sif_model = EmbeddingToSIFModel(embedding_size=Z_DIM).to(device)
 criterion = nn.MSELoss(reduction='mean')
-optimizer = optim.Adam(embedding_to_sif_model.parameters(), lr=LEARNING_RATE)
+optimizer = optim.Adam(embedding_to_sif_model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
 dataset_sizes = {'train': len(train_tile_rows),
                  'val': len(val_tile_rows)}
 
@@ -209,6 +204,7 @@ val_plot, = plt.plot(epoch_list, val_losses, color='red', label='Validation NRMS
 plt.legend(handles=[train_plot, val_plot])
 plt.xlabel('Epoch #')
 plt.ylabel('Normalized Root Mean Squared Error')
+plt.title(PLOT_TITLE)
 plt.savefig(TRAINING_PLOT_FILE) 
 plt.close()
 

@@ -26,17 +26,18 @@ sys.path.append('../')
 from tile2vec.src.tilenet import make_tilenet
 
 
-
-DATASET_DIR = "datasets/dataset_2018-08-01"
+DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
+DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-08-01")
 INFO_FILE_TRAIN = os.path.join(DATASET_DIR, "tile_info_train.csv")
 INFO_FILE_VAL = os.path.join(DATASET_DIR, "tile_info_val.csv")
-TRAINED_MODEL_FILE = "models/small_tile_sif_prediction"
+TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/small_tile_sif_prediction")
 BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
 FROM_PRETRAINED = False
 RGB_BANDS = [1, 2, 3]
-NUM_EPOCHS = 20
+NUM_EPOCHS = 30
 INPUT_CHANNELS = 25
 LEARNING_RATE = 1e-4
+WEIGHT_DECAY = 1e-2
 
 
 # Visualize images (RGB bands only)
@@ -59,8 +60,7 @@ def imshow(tile, band_means, band_stds):
 
 # Train CNN to predict total SIF of tile.
 # "model" should take in a (standardized) tile (with dimensions CxWxH), and output standardized SIF.
-# "dataloader" should return, for each training example: 'tile' (standardized CxWxH tile), and 'SIF' (non-standardized SIF)
-# 
+# "dataloader" should return, for each training example: 'tile' (standardized CxWxH tile), and 'SIF' (non-standardized SIF) 
 def train_model(model, dataloaders, dataset_sizes, criterion, optimizer, device, sif_mean, sif_std, num_epochs=25):
     since = time.time()
 
@@ -103,10 +103,8 @@ def train_model(model, dataloaders, dataset_sizes, criterion, optimizer, device,
                 # Standardized input tile, (batch x C x W x H)
                 input_tile_standardized = sample['tile'].to(device)
                 #print('=========================')
-                #print('Sample input pixels')
-                #print(input_tile_standardized[1, :, 2, 7])
-                #print(input_tile_standardized[1, :, 2, 8])
-                #print(input_tile_standardized[1, :, 2, 9])
+                #print('Input band means')
+                #print(torch.mean(input_tile_standardized, dim=(2,3)))
 
                 # Real SIF value (non-standardized)
                 true_sif_non_standardized = sample['SIF'].to(device)
@@ -226,7 +224,7 @@ resnet_model = resnet_model.to(device)
 
 criterion = nn.MSELoss(reduction='mean')
 #optimizer = optim.SGD(resnet_model.parameters(), lr=1e-4, momentum=0.9)
-optimizer = optim.Adam(resnet_model.parameters(), lr=LEARNING_RATE)
+optimizer = optim.Adam(resnet_model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
 dataset_sizes = {'train': len(train_metadata),
                  'val': len(val_metadata)}
 

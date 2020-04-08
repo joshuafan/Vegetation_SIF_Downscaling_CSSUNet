@@ -11,7 +11,8 @@ import pandas as pd
 import sklearn.model_selection
 from sif_utils import plot_histogram
 
-DATASET_DIR = "datasets/dataset_2018-08-01"
+DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
+DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-08-01")
 INFO_CSV_FILE = os.path.join(DATASET_DIR, "reflectance_cover_to_sif.csv")
 SPLIT_INFO_CSV_FILES = {"train": os.path.join(DATASET_DIR, "tile_info_train.csv"),
                         "val": os.path.join(DATASET_DIR, "tile_info_val.csv")}
@@ -33,26 +34,33 @@ for split in ["train", "val"]:
     # Create a dataset of tile-average values. Also, compute mean/std of each band
     csv_rows = []
     column_names = ['lat', 'lon', 'ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
-                    'ref_10', 'ref_11', 'corn', 'soybean', 'grassland', 'deciduous_forest',
-                    'percent_missing', 'SIF']
+                    'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg', 
+                    'grassland_pasture', 'shrubland', 'corn', 'soybean',
+                    'deciduous_forest', 'evergreen_forest', 'spring_wheat', 'developed_open_space',
+                    'other_hay_non_alfalfa', 'woody_wetlands', 'herbaceous_wetlands',
+                    'open_water', 'alfalfa', 'winter_wheat', 'missing_cover', 'missing_reflectance', 'SIF']
+
     csv_rows.append(column_names)
 
     band_values_all_tiles = []
     dataset = datasets[split]
+    i = 0
     for index, row in dataset.iterrows():
         # Tile assumed to be (band x lat x long)
         tile = np.load(row.loc['tile_file'])
-        print('Tile', tile.shape, 'dtype', tile.dtype)
+        # print('Tile', tile.shape, 'dtype', tile.dtype)
         tile_averages = np.mean(tile, axis=(1,2))
         csv_row = [row.loc['lat'], row.loc['lon']] + tile_averages.tolist() + [row.loc['SIF']]
         csv_rows.append(csv_row)
-        band_values = tile.reshape(tile.shape[0], -1)
-        print("Band values shape", band_values.shape)
-        band_values_all_tiles.append(band_values)
-    band_values_array = np.concatenate(band_values_all_tiles, axis=1)
+        band_values_all_tiles.append(tile_averages)
+        print(i)
+        i += 1
+    band_values_array = np.stack(band_values_all_tiles)
     print("Band values ARRAY shape", band_values_array.shape)
-    band_means = np.mean(band_values_array, axis=1).flatten()
-    band_stds = np.std(band_values_array, axis=1).flatten()
+    band_means = np.mean(band_values_array, axis=0)
+
+    # By Central Limit Theorem, standard deviation of sample mean is 1/sqrt(n) times real standard deviation. 
+    band_stds = np.std(band_values_array, axis=0) * 371
     print("Band means", band_means)
 
     # Write rows to .csv file
