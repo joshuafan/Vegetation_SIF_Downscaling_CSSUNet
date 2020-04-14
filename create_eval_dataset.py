@@ -40,13 +40,19 @@ headers = ["lat", "lon", "SIF", "tile_file", "subtile_file"]
 csv_rows = [headers]
 TILE_SIZE_DEGREES = 0.1
 SUBTILE_SIZE_PIXELS = 10
+MAX_FRACTION_MISSING = 0.1  # If more than this fraction of reflectance pixels is missing, ignore the data point
 
 column_names = ['lat', 'lon', 'ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
                     'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg', 
-                    'grassland_pasture', 'shrubland', 'corn', 'soybean',
+                    'grassland_pasture', 'corn', 'soybean', 'shrubland',
                     'deciduous_forest', 'evergreen_forest', 'spring_wheat', 'developed_open_space',
-                    'other_hay_non_alfalfa', 'woody_wetlands', 'herbaceous_wetlands',
-                    'open_water', 'alfalfa', 'winter_wheat', 'missing_cover', 'missing_reflectance', 'SIF']
+                    'other_hay_non_alfalfa', 'winter_wheat', 'herbaceous_wetlands',
+                    'woody_wetlands', 'open_water', 'alfalfa', 'fallow_idle_cropland',
+                    'sorghum', 'developed_low_intensity', 'barren', 'durum_wheat',
+                    'canola', 'sunflower', 'dry_beans', 'developed_med_intensity',
+                    'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
+                    'lentils', 'missing_reflectance', 'SIF']
+ 
 tile_averages = [column_names]
 subtile_averages = [column_names]
 
@@ -73,7 +79,6 @@ sifs = []
 points_no_reflectance = 0  # Number of points outside bounds of reflectance dataset
 points_missing_reflectance = 0  # Number of points with missing reflectance data (due to cloud cover)
 points_with_reflectance = 0  # Number of points with reflectance data
-MAX_FRACTION_MISSING = 0.5  # If more than this fraction of reflectance pixels is missing, ignore the data point
 
 # Loop through all CFIS data points
 for i in range(validation_points.shape[0]):
@@ -151,7 +156,6 @@ print('Number of points WITH reflectance data', points_with_reflectance)
 
 # Plot histograms of reflectance coverage percentage and SIF
 plot_histogram(np.array(subtile_reflectance_coverage), "CFIS_subtile_reflectance_coverage.png")
-plot_histogram(np.array(sifs), "cfis_sif_distribution.png")
 
 # Write 3 datasets to CSV files
 with open(OUTPUT_CSV_FILE, "w") as output_csv_file:

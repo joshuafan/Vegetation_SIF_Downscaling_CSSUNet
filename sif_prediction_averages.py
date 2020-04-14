@@ -22,7 +22,7 @@ EVAL_DATE = "2016-08-01"
 EVAL_DATASET_DIR = os.path.join(DATA_DIR, "dataset_" + EVAL_DATE)
 EVAL_SUBTILE_AVERAGE_FILE = os.path.join(EVAL_DATASET_DIR, "eval_subtile_averages.csv")
 
-METHOD = "Gradient_Boosting_Regressor"
+METHOD = "Linear_Regression"  #Gradient_Boosting_Regressor"
 
 train_set = pd.read_csv(TILE_AVERAGE_TRAIN_FILE).dropna()
 val_set = pd.read_csv(TILE_AVERAGE_VAL_FILE).dropna()
@@ -54,7 +54,7 @@ plot_histogram(Y_eval_subtile, "eval_subtile_sif.png")
 
 
 
-linear_regression = GradientBoostingRegressor().fit(X_train, Y_train)
+linear_regression = LinearRegression().fit(X_train, Y_train)
 linear_predictions_train = linear_regression.predict(X_train)
 linear_predictions_val = linear_regression.predict(X_val)
 linear_predictions_eval_subtile = linear_regression.predict(X_eval_subtile)

@@ -35,11 +35,11 @@ TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_dim256_neighborhoo
 # "models/tile2vec_dim32_neighborhood100/TileNet_epoch20.ckpt"
 # "models/tile2vec_dim10_neighborhood500/TileNet_epoch50.ckpt"  # finetuned_tile2vec"
 EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_embedding_to_sif")
-TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_tile2vec.png'
+TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_eval_subtile_tile2vec_subtile.png'
 
 Z_DIM = 256
-INPUT_CHANNELS = 29
-EMBEDDING_TYPE = 'tile2vec'  # average'  # 'tile2vec'
+INPUT_CHANNELS = 43
+EMBEDDING_TYPE = 'tile2vec'  # average'  # 'tile2vec'  # average'  # 'tile2vec'
 
 eval_points = pd.read_csv(EVAL_FILE)
 
@@ -109,7 +109,7 @@ print("Means", train_means)
 print("Stds", train_stds)
 band_means = train_means[:-1]
 sif_mean = train_means[-1]
-band_stds = train_stds[:-1]
+band_stds = train_stds[:-1] * 371
 sif_std = train_stds[-1]
 
 # Set up image transforms
@@ -126,11 +126,11 @@ dataloader = torch.utils.data.DataLoader(dataset, batch_size=4,
 # Load trained models from file
 if EMBEDDING_TYPE == 'tile2vec':
     tile2vec_model = make_tilenet(in_channels=INPUT_CHANNELS, z_dim=Z_DIM).to(device)
-    tile2vec_model.load_state_dict(torch.load(TILE2VEC_MODEL_FILE))
+    tile2vec_model.load_state_dict(torch.load(TILE2VEC_MODEL_FILE), map_location=device)
 else:
     tile2vec_model = None
 embedding_to_sif_model = EmbeddingToSIFModel(embedding_size=Z_DIM)
-embedding_to_sif_model.load_state_dict(torch.load(EMBEDDING_TO_SIF_MODEL_FILE))
+embedding_to_sif_model.load_state_dict(torch.load(EMBEDDING_TO_SIF_MODEL_FILE), map_device=device)
 embedding_to_sif_model = embedding_to_sif_model.to(device)
 
 criterion = nn.MSELoss(reduction='mean')

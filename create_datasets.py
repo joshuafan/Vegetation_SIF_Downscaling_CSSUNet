@@ -22,22 +22,22 @@ import xarray as xr
 from rasterio.plot import show
 from sif_utils import lat_long_to_index, plot_histogram
 
-DATE_RANGE = pd.date_range(start="2018-08-01", end="2018-08-16")
+DATE_RANGE = pd.date_range(start="2016-08-01", end="2016-08-16")
 START_DATE = str(DATE_RANGE.date[0])
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
 REFLECTANCE_DIR = os.path.join(DATA_DIR, "LandsatReflectance", START_DATE)
-COVER_FILE = os.path.join(DATA_DIR, "CDL_2018/corn_belt_cdl_2018-08-01_epsg.tif")  # "CDL_2016_big.tif"
+COVER_FILE = os.path.join(DATA_DIR, "CDL_2016/corn_belt_cdl_2016-08-01_epsg.tif")  # "CDL_2016_big.tif"
 OUTPUT_DATASET_DIR = os.path.join(DATA_DIR, "dataset_" + START_DATE)  # Directory containing list of tiles
 OUTPUT_IMAGES_DIR = os.path.join(DATA_DIR, "images_" + START_DATE)  # Directory containing large images
 OUTPUT_TILES_DIR = os.path.join(DATA_DIR, "tiles_" + START_DATE)  # Directory containing 0.1x0.1 degree tiles
 OUTPUT_CSV_FILE = os.path.join(OUTPUT_DATASET_DIR, "reflectance_cover_to_sif.csv")
 SIF_FILE = os.path.join(DATA_DIR, "TROPOMI_SIF/TROPO-SIF_01deg_biweekly_Apr18-Jan20.nc")
-FLDAS_FILE = os.path.join(DATA_DIR, "FLDAS/FLDAS_NOAH01_C_GL_M.A201808.001.nc.SUB.nc4")
+FLDAS_FILE = os.path.join(DATA_DIR, "FLDAS/FLDAS_NOAH01_C_GL_M.A201608.001.nc.SUB.nc4")
 
 # List of cover types to include (see https://developers.google.com/earth-engine/datasets/catalog/USDA_NASS_CDL
 # for what these numbers correspond to). I included all cover types that are >1% of the region.
-COVERS_TO_MASK = [176, 152, 1, 5, 141, 142, 23, 121, 37, 190, 195, 111, 36, 24, 61, 0]
-MAX_MISSING_FRACTION = 0.5  # If more than 50% of pixels in the tile are missing, throw the tile out
+COVERS_TO_MASK = [176, 1, 5, 152, 141, 142, 23, 121, 37, 24, 195, 190, 111, 36, 61, 4, 122, 131, 22, 31, 6, 42, 123, 29, 41, 28, 143, 53, 21, 52]  # [176, 152, 1, 5, 141, 142, 23, 121, 37, 190, 195, 111, 36, 24, 61, 0]
+# MAX_MISSING_FRACTION = 0.5  # If more than 50% of pixels in the tile are missing, throw the tile out
 SIF_TILE_DEGREE_SIZE = 0.1
 FLOAT_EQUALITY_TOLERANCE = 1e-10
 
@@ -77,7 +77,7 @@ def plot_and_print_covers(covers, filename):
 
 
 # Dataset format: lon/lat, date, image file name, SIF
-dataset_rows = [["lon", "lat", "date", "tile_file", "SIF"]]
+dataset_rows = [["lon", "lat", "date", "missing_reflectance", "tile_file", "SIF"]]
 
 # For each tile, keep track of how much reflectance and cover data is present
 reflectance_coverage = []
@@ -100,7 +100,7 @@ with rio.open(COVER_FILE) as cover_dataset:
     print('===================================================')
 
     # Open up FLDAS dataset
-    fldas_dataset = xr.open_dataset(FLDAS_FILE)
+    fldas_dataset = xr.open_dataset(FLDAS_FILE).mean(dim='time')
 
     # Print stats about cover dataset
     # plot_and_print_covers(cover_dataset.read(1), 'original_covers_corn_big.png')
@@ -151,7 +151,8 @@ with rio.open(COVER_FILE) as cover_dataset:
                 TARGET_TILE_SIZE = int(SIF_TILE_DEGREE_SIZE / target_res[0])
                 print("target tile size", TARGET_TILE_SIZE)
 
-                # Resample cover data into target resolution
+                # Resample cover data into target resolution, if we haven't done so already and the
+                # cover dataset is in a different resolution
                 if reprojected_covers is None:
                     if abs(cover_dataset.res[0] - target_res[0]) < FLOAT_EQUALITY_TOLERANCE and abs(cover_dataset.res[1] - target_res[1]) < FLOAT_EQUALITY_TOLERANCE:
                         reprojected_covers = cover_dataset.read(1)
@@ -168,24 +169,9 @@ with rio.open(COVER_FILE) as cover_dataset:
                             ),
                             resampling=Resampling.mode
                         )
-                    print('REPROJECTED COVER DATASET')
                     reprojected_covers = np.squeeze(reprojected_covers)
-                    print('Shape:', reprojected_covers.shape)
-                    print('Dtype:', reprojected_covers.dtype)
 
-                # Resample FLDAS data into target resolution (if we haven't already)
-                if reprojected_fldas is None:
-                    new_lat = np.linspace(cover_dataset.bounds.bottom, cover_dataset.bounds.top, reprojected_covers.shape[0])
-                    new_lon = np.linspace(cover_dataset.bounds.left, cover_dataset.bounds.right, reprojected_covers.shape[1])
-                    reprojected_fldas_dataset = fldas_dataset.mean(dim='time') #.interp(X=new_lon, Y=new_lat)
-                    layers = []
-                    print('FLDAS data vars', reprojected_fldas_dataset.data_vars)
-                    for data_var in reprojected_fldas_dataset.data_vars:
-                        print('var', data_var)
-                        layers.append(reprojected_fldas_dataset[data_var].data)
-                    exit(1)
-                    reprojected_fldas = np.stack(layers)
-                    print('Reprojected FLDAS shape', reprojected_fldas.shape)
+                print('REPROJECTED COVER DATASET: shape', reprojected_covers.shape, 'dtype:', reprojected_covers.dtype)
 
 
                 # Resample reflectance data into target resolution (don't need this now since we're
@@ -203,9 +189,7 @@ with rio.open(COVER_FILE) as cover_dataset:
 
                 # Read reflectance dataset into numpy array: CxHxW
                 reprojected_reflectances = reflectance_dataset.read()
-                print('REFLECTANCE DATASET')
-                print('Shape:', reprojected_reflectances.shape)
-                print('Dtype:', reprojected_reflectances.dtype)
+                print('REPROJECTED REFLECTANCE DATASET: shape', reprojected_reflectances.shape, 'Dtype:', reprojected_reflectances.dtype)
 
                 # Plot distribution of specific crop
                 # plot_and_print_covers(reprojected_covers, filename="reprojected_cover_corn_big.png")
@@ -241,64 +225,28 @@ with rio.open(COVER_FILE) as cover_dataset:
 
                 # Convert bounds to indices in the cover and reflectance datasets. Note that (0,0)
                 # is the upper-left corner!
-                cover_top_idx, cover_left_idx = lat_long_to_index(combined_top_bound,
-                                                                  combined_left_bound,
-                                                                  cover_dataset.bounds.top,
-                                                                  cover_dataset.bounds.left,
-                                                                  target_res)
-                reflectance_top_idx, reflectance_left_idx = lat_long_to_index(combined_top_bound,
-                                                                              combined_left_bound,
-                                                                              reflectance_dataset.bounds.top,
-                                                                              reflectance_dataset.bounds.left,
-                                                                              target_res)
-                height_pixels = int((combined_top_bound - combined_bottom_bound) / target_res[0])
-                width_pixels = int((combined_right_bound - combined_left_bound) / target_res[1])
-                cover_right_idx = cover_left_idx + width_pixels
-                reflectance_right_idx = reflectance_left_idx + width_pixels
-                cover_bottom_idx = cover_top_idx + height_pixels
-                reflectance_bottom_idx = reflectance_top_idx + height_pixels
-                print('Cover: top', cover_top_idx, 'bottom', cover_bottom_idx, 'left', cover_left_idx, 'right', cover_right_idx)
-                print('Reflectance: top', reflectance_top_idx, 'bottom', reflectance_bottom_idx, 'left', reflectance_left_idx, 'right', reflectance_right_idx)
-                assert(reflectance_top_idx >= 0)
-                assert(cover_top_idx >= 0)
-                assert(cover_right_idx <= reprojected_covers.shape[1])  # Recall right_idx is exclusive
-                assert(reflectance_right_idx <= reprojected_reflectances.shape[2])
-
-                # Extract relevant areas from cover and reflectance datasets
-                cover_area = reprojected_covers[cover_top_idx:cover_bottom_idx,
-                                                cover_left_idx:cover_right_idx]
-                reflectance_area = reprojected_reflectances[:, reflectance_top_idx:reflectance_bottom_idx,
-                                                            reflectance_left_idx:reflectance_right_idx]
-                fldas_area = reprojected_fldas[:, cover_top_idx:cover_bottom_idx,
-                                               cover_left_idx:cover_right_idx]  # Note: same resolution/bounds as cover dataset
-                print('Cover area shape', cover_area.shape, 'dtype', cover_area.dtype)
-                print('Reflectance area shape (should be the same!)', reflectance_area.shape, 'dtype', reflectance_area.dtype)
-                print('FLDAS area shape (should be the same!)', fldas_area.shape, 'dtype', fldas_area.dtype)
-
-                # Create cover bands (binary masks)
-                masks = []
-                for i, cover_type in enumerate(COVERS_TO_MASK):
-                    crop_mask = np.zeros_like(cover_area)
-                    crop_mask[cover_area == cover_type] = 1.
-                    masks.append(crop_mask)
-
-                # Also create a binary mask, which is 1 for pixels where reflectance
-                # data (for all bands) is missing (due to cloud cover)
-                reflectance_sum_bands = reflectance_area.sum(axis=0)
-                print("Reflectance sum bands", reflectance_sum_bands.dtype)
-                missing_reflectance_mask = np.zeros_like(reflectance_sum_bands, dtype=np.uint8)
-                missing_reflectance_mask[reflectance_sum_bands == 0] = 1.
-                print("Missing reflectance mask", missing_reflectance_mask.dtype)
-                masks.append(missing_reflectance_mask)
-
-                # Stack masks on top of each other
-                masks = np.stack(masks, axis=0)
-
-                # Stack reflectance bands and masks on top of each other
-                combined_area = np.concatenate((reflectance_area, fldas_area, masks), axis=0)
-                print("Combined area shape", combined_area.shape, 'dtype', combined_area.dtype)
-                combined_filename = os.path.join(OUTPUT_IMAGES_DIR, "combined_" + reflectance_file)
-                np.save(combined_filename, combined_area)
+                #cover_top_idx, cover_left_idx = lat_long_to_index(combined_top_bound,
+                #                                                  combined_left_bound,
+                #                                                  cover_dataset.bounds.top,
+                #                                                  cover_dataset.bounds.left,
+                #                                                  target_res)
+                #reflectance_top_idx, reflectance_left_idx = lat_long_to_index(combined_top_bound,
+                #                                                              combined_left_bound,
+                #                                                              reflectance_dataset.bounds.top,
+                #                                                              reflectance_dataset.bounds.left,
+                #                                                              target_res)
+                #height_pixels = int((combined_top_bound - combined_bottom_bound) / target_res[0])
+                #width_pixels = int((combined_right_bound - combined_left_bound) / target_res[1])
+                #cover_right_idx = cover_left_idx + width_pixels
+                #reflectance_right_idx = reflectance_left_idx + width_pixels
+                #cover_bottom_idx = cover_top_idx + height_pixels
+                #reflectance_bottom_idx = reflectance_top_idx + height_pixels
+                #print('Cover: top', cover_top_idx, 'bottom', cover_bottom_idx, 'left', cover_left_idx, 'right', cover_right_idx)
+                #print('Reflectance: top', reflectance_top_idx, 'bottom', reflectance_bottom_idx, 'left', reflectance_left_idx, 'right', reflectance_right_idx)
+                #assert(reflectance_top_idx >= 0)
+                #assert(cover_top_idx >= 0)
+                #assert(cover_right_idx <= reprojected_covers.shape[1])  # Recall right_idx is exclusive
+                #assert(reflectance_right_idx <= reprojected_reflectances.shape[2])
 
                 # Round boundaries to the nearest 0.1 degree
                 LEFT_BOUND = math.ceil(combined_left_bound * 10) / 10  # -100.2
@@ -309,41 +257,101 @@ with rio.open(COVER_FILE) as cover_dataset:
                 # For each "SIF tile", extract the tile of the reflectance data that maps to it
                 for left_degrees in np.arange(LEFT_BOUND, RIGHT_BOUND, SIF_TILE_DEGREE_SIZE):
                     for top_degrees in np.arange(TOP_BOUND, BOTTOM_BOUND, -1*SIF_TILE_DEGREE_SIZE):
+                        
+                        bottom_degrees = top_degrees - (TARGET_TILE_SIZE * target_res[0])
+                        right_degrees = left_degrees + (TARGET_TILE_SIZE * target_res[1])
+                        print('____________________________________________________')
+                        print('Extracting tile: longitude', left_degrees, 'to', right_degrees, 'latitude', bottom_degrees, 'to', top_degrees)
 
-                        # Find indices in combined area.
-                        top_idx, left_idx = lat_long_to_index(top_degrees, left_degrees, combined_top_bound,
-                                                              combined_left_bound, target_res)
-                        bottom_idx = top_idx + TARGET_TILE_SIZE  # tile_height_pixels
-                        right_idx = left_idx + TARGET_TILE_SIZE
-                        print("Combined area idx: top", top_idx, "bottom", bottom_idx, "left", left_idx,
-                              "right", right_idx)
+                        # Find indices of tile in reflectance and cover datasets
+                        reflectance_top_idx, reflectance_left_idx = lat_long_to_index(top_degrees, left_degrees, reflectance_dataset.bounds.top, reflectance_dataset.bounds.left, target_res)
+                        reflectance_bottom_idx = reflectance_top_idx + TARGET_TILE_SIZE
+                        reflectance_right_idx = reflectance_left_idx + TARGET_TILE_SIZE
+                        cover_top_idx, cover_left_idx = lat_long_to_index(top_degrees, left_degrees, cover_dataset.bounds.top, cover_dataset.bounds.left, target_res)
+                        cover_bottom_idx = cover_top_idx + TARGET_TILE_SIZE
+                        cover_right_idx = cover_left_idx + TARGET_TILE_SIZE
+
+                        print("Reflectance dataset idx: top", reflectance_top_idx, "bottom", reflectance_bottom_idx,
+                              "left", reflectance_left_idx, "right", reflectance_right_idx)
+                        print("Cover dataset idx: top", cover_top_idx, "bottom", cover_bottom_idx,
+                              "left", cover_left_idx, "right", cover_right_idx)
 
                         # If the selected region (box) goes outside the range of the cover or reflectance dataset, ignore
-                        if top_idx < 0 or left_idx < 0:
-                            print("Index was negative!")
+                        if reflectance_top_idx < 0 or reflectance_left_idx < 0:
+                            print("Reflectance index was negative!")
                             continue
-                        if (bottom_idx >= combined_area.shape[1] or right_idx >= combined_area.shape[2]):
-                            print("Index went beyond edge of array!")
+                        if (reflectance_bottom_idx >= reprojected_reflectances.shape[1] or reflectance_right_idx >= reprojected_reflectances.shape[2]):
+                            print("Reflectance index went beyond edge of array!")
+                            continue
+                        if cover_top_idx < 0 or cover_left_idx < 0:
+                            print("Cover index was negative!")
+                            continue
+                        if (cover_bottom_idx >= reprojected_covers.shape[0] or cover_right_idx >= reprojected_covers.shape[1]):
+                            print("Cover index went beyond edge of array!")
                             continue
 
+                        # Resample FLDAS data for this tile into target resolution (if we haven't already)
+                        new_lat = np.linspace(bottom_degrees, top_degrees, TARGET_TILE_SIZE)  # bottom_bound, combined_top_bound, height_pixels)
+                        new_lon = np.linspace(left_degrees, right_degrees, TARGET_TILE_SIZE)  # combined_left_bound, combined_right_bound, width_pixels)
+                        reprojected_fldas_dataset = fldas_dataset.interp(X=new_lon, Y=new_lat)
+                        fldas_layers = []
+                        #print('FLDAS data vars', reprojected_fldas_dataset.data_vars)
+                        for data_var in reprojected_fldas_dataset.data_vars:
+                        #    print('var', data_var)
+                            fldas_layers.append(reprojected_fldas_dataset[data_var].data)
+                        fldas_tile = np.stack(fldas_layers)
+
+                        # Extract relevant areas from cover and reflectance datasets
+                        cover_tile = reprojected_covers[cover_top_idx:cover_bottom_idx,
+                                                        cover_left_idx:cover_right_idx]
+                        reflectance_tile = reprojected_reflectances[:, reflectance_top_idx:reflectance_bottom_idx,
+                                                                    reflectance_left_idx:reflectance_right_idx]
+                        print('Cover tile shape', cover_tile.shape, 'dtype', cover_tile.dtype)
+                        print('Reflectance tile shape (should be the same!)', reflectance_tile.shape, 'dtype', reflectance_tile.dtype)
+                        print('FLDAS tile shape (should be the same!)', fldas_tile.shape, 'dtype', fldas_tile.dtype)
+
+                        # Create cover bands (binary masks)
+                        masks = []
+                        for i, cover_type in enumerate(COVERS_TO_MASK):
+                            crop_mask = np.zeros_like(cover_tile, dtype=bool)
+                            crop_mask[cover_tile == cover_type] = 1.
+                            masks.append(crop_mask)
+
+                        # Also create a binary mask, which is 1 for pixels where reflectance
+                        # data (for all bands) is missing (due to cloud cover)
+                        reflectance_sum_bands = reflectance_tile.sum(axis=0)
+                        #print("Reflectance sum bands dtype", reflectance_sum_bands.dtype)
+                        missing_reflectance_mask = np.zeros_like(reflectance_sum_bands, dtype=bool)
+                        missing_reflectance_mask[reflectance_sum_bands == 0] = 1.
+                        #print("Missing reflectance mask dtype", missing_reflectance_mask.dtype)
+                        masks.append(missing_reflectance_mask)
+
+                        # Stack masks on top of each other
+                        masks = np.stack(masks, axis=0)
+
+                        # Stack reflectance bands and masks on top of each other
+                        combined_tile = np.concatenate((reflectance_tile, fldas_tile, masks), axis=0)
+                        print("Combined tile shape", combined_tile.shape, 'dtype', combined_tile.dtype)
+
+
                         # Extract the cover and reflectance tiles (covering the same region as the SIF tile)
-                        reflectance_and_cover_tile = combined_area[:, top_idx:bottom_idx, left_idx:right_idx]
-                        reflectance_fraction_missing = np.sum(reflectance_and_cover_tile[-1, :, :].flatten()) / \
-                                                       (reflectance_and_cover_tile.shape[1] *
-                                                        reflectance_and_cover_tile.shape[2])
+                        # reflectance_and_cover_tile = combined_area[:, top_idx:bottom_idx, left_idx:right_idx]
+                        reflectance_fraction_missing = np.sum(combined_tile[-1, :, :].flatten()) / \
+                                                       (combined_tile.shape[1] *
+                                                        combined_tile.shape[2])
                         print("Fraction of reflectance pixels missing:", reflectance_fraction_missing)
                         reflectance_coverage.append(1 - reflectance_fraction_missing)
-                        cover_fraction_missing = np.sum(reflectance_and_cover_tile[-2, :, :].flatten()) / \
-                                                        (reflectance_and_cover_tile.shape[1] *
-                                                         reflectance_and_cover_tile.shape[2])
-                        print("Fraction of cover pixels missing:", cover_fraction_missing)
-                        cover_coverage.append(1 - cover_fraction_missing)
+                        #cover_fraction_missing = np.sum(reflectance_and_cover_tile[-2, :, :].flatten()) / \
+                        #                                (reflectance_and_cover_tile.shape[1] *
+                        #                                 reflectance_and_cover_tile.shape[2])
+                        #print("Fraction of cover pixels missing:", cover_fraction_missing)
+                        #cover_coverage.append(1 - cover_fraction_missing)
                         
                         # If too much data is missing, throw this tile out
-                        if reflectance_fraction_missing > MAX_MISSING_FRACTION:
-                            continue
-                        if cover_fraction_missing > MAX_MISSING_FRACTION:
-                            continue
+                        #if reflectance_fraction_missing > MAX_MISSING_FRACTION:
+                        #    continue
+                        #if cover_fraction_missing > MAX_MISSING_FRACTION:
+                        #    continue
 
                         # Extract corresponding SIF value
                         center_lat = round(top_degrees - SIF_TILE_DEGREE_SIZE / 2, 2)
@@ -354,15 +362,14 @@ with rio.open(COVER_FILE) as cover_dataset:
                                 continue
                         else:
                             total_sif = float.nan
-                        print("total_sif", total_sif)
+                        # print("total_sif", total_sif)
 
                         # Write reflectance/cover pixels tile (as Numpy array) to .npy file
                         npy_filename = os.path.join(OUTPUT_TILES_DIR, "reflectance_lat_" + str(
                             center_lat) + "_lon_" + str(center_lon) + ".npy")
-                        np.save(npy_filename, reflectance_and_cover_tile)
-                        # print("date", date_range.date[0].isoformat())
-                        dataset_rows.append([center_lon, center_lat, START_DATE, npy_filename, total_sif])
-
+                        np.save(npy_filename, combined_tile)
+                        dataset_rows.append([center_lon, center_lat, START_DATE, reflectance_fraction_missing, npy_filename, total_sif])
+ 
         except Exception as error:
             print("Reading reflectance file", reflectance_file, "failed")
             print(traceback.format_exc())
@@ -373,4 +380,4 @@ with open(OUTPUT_CSV_FILE, "w") as output_csv_file:
         csv_writer.writerow(row)
 
 plot_histogram(np.array(reflectance_coverage), "reflectance_coverage_" + START_DATE + ".png")
-plot_histogram(np.array(cover_coverage), "cover_coverage_" + START_DATE + ".png")
+# plot_histogram(np.array(cover_coverage), "cover_coverage_" + START_DATE + ".png")

@@ -16,6 +16,7 @@ import torch
 import torchvision
 import torchvision.transforms as transforms
 import small_resnet
+import simple_cnn
 import torch.nn as nn
 import torch.optim as optim
 
@@ -30,14 +31,14 @@ DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
 DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-08-01")
 INFO_FILE_TRAIN = os.path.join(DATASET_DIR, "tile_info_train.csv")
 INFO_FILE_VAL = os.path.join(DATASET_DIR, "tile_info_val.csv")
-TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/small_tile_sif_prediction")
+TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/small_tile_sif_prediction_simple")
 BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
 FROM_PRETRAINED = False
 RGB_BANDS = [1, 2, 3]
-NUM_EPOCHS = 30
-INPUT_CHANNELS = 25
-LEARNING_RATE = 1e-4
-WEIGHT_DECAY = 1e-2
+NUM_EPOCHS = 20
+INPUT_CHANNELS = 43
+LEARNING_RATE = 1e-3
+WEIGHT_DECAY = 1e-8
 
 
 # Visualize images (RGB bands only)
@@ -61,7 +62,7 @@ def imshow(tile, band_means, band_stds):
 # Train CNN to predict total SIF of tile.
 # "model" should take in a (standardized) tile (with dimensions CxWxH), and output standardized SIF.
 # "dataloader" should return, for each training example: 'tile' (standardized CxWxH tile), and 'SIF' (non-standardized SIF) 
-def train_model(model, dataloaders, dataset_sizes, criterion, optimizer, device, sif_mean, sif_std, num_epochs=25):
+def train_model(model, dataloaders, dataset_sizes, criterion, optimizer, device, sif_mean, sif_std, MODEL_FILE, num_epochs=25):
     since = time.time()
 
     best_model_wts = copy.deepcopy(model.state_dict())
@@ -143,6 +144,10 @@ def train_model(model, dataloaders, dataset_sizes, criterion, optimizer, device,
             print('{} Loss: {:.4f}'.format(
                 phase, epoch_loss))
 
+            # save model in case
+            torch.save(model.state_dict(), TRAINED_MODEL_FILE)
+
+
             # deep copy the model
             if phase == 'val' and epoch_loss < best_loss:
                 best_loss = epoch_loss
@@ -182,8 +187,8 @@ else:
 print("Device", device)
 
 # Read train/val tile metadata
-train_metadata = pd.read_csv(INFO_FILE_TRAIN)
-val_metadata = pd.read_csv(INFO_FILE_VAL)
+train_metadata = pd.read_csv(INFO_FILE_TRAIN) #.iloc[0:1000]
+val_metadata = pd.read_csv(INFO_FILE_VAL) #.iloc[0:200]
 
 # Read mean/standard deviation for each band, for standardization purposes
 train_statistics = pd.read_csv(BAND_STATISTICS_FILE)
@@ -214,7 +219,8 @@ dataloaders = {x: torch.utils.data.DataLoader(datasets[x], batch_size=32,
               for x in ['train', 'val']}
 
 print("Dataloaders")
-resnet_model = small_resnet.resnet18(input_channels=INPUT_CHANNELS)
+resnet_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, output_dim=1)
+# resnet_model = small_resnet.resnet18(input_channels=INPUT_CHANNELS)
 # resnet_model = make_tilenet(in_channels=INPUT_CHANNELS, z_dim=1)  #.to(device)
 if FROM_PRETRAINED:
     resnet_model.load_state_dict(torch.load(TRAINED_MODEL_FILE))
@@ -234,7 +240,8 @@ dataset_sizes = {'train': len(train_metadata),
 # Train model
 print("Starting to train")
 resnet_model, train_losses, val_losses, best_loss = train_model(resnet_model, dataloaders,
-    dataset_sizes, criterion, optimizer, device, sif_mean, sif_std, num_epochs=NUM_EPOCHS)
+    dataset_sizes, criterion, optimizer, device, sif_mean, sif_std, TRAINED_MODEL_FILE,
+    num_epochs=NUM_EPOCHS)
 
 # Save model to file
 torch.save(resnet_model.state_dict(), TRAINED_MODEL_FILE)
@@ -248,5 +255,5 @@ val_plot, = plt.plot(epoch_list, val_losses, color='red', label='Validation NRMS
 plt.legend(handles=[train_plot, val_plot])
 plt.xlabel('Epoch #')
 plt.ylabel('Normalized Root Mean Squared Error')
-plt.savefig('plots/resnet_sif_prediction.png')
+plt.savefig('plots/losses_small_tile_sif_prediction.png')
 plt.close()

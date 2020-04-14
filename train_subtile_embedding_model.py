@@ -40,24 +40,27 @@ DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-08-01")
 # INFO_FILE_TRAIN = os.path.join(DATASET_DIR, "tile_info_train.csv")
 # INFO_FILE_VAL = os.path.join(DATASET_DIR, "tile_info_val.csv")
 BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
-# TILE2VEC_MODEL_FILE = "models/tile2vec_dim10_v2/TileNet_epoch50.ckpt"
-EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_embedding_to_sif")
+# TILE2VEC_MODEL_FILE = "models/tile2vec_dim10_v2/TileNet_epoch50.ckpti"
+EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/avg_embedding_to_sif")
 
 # LOAD_EMBEDDINGS = False
-SUBTILE_EMBEDDING_DATASET_TRAIN = os.path.join(DATASET_DIR, "tile2vec_embeddings_train.csv")
-SUBTILE_EMBEDDING_DATASET_VAL = os.path.join(DATASET_DIR, "tile2vec_embeddings_val.csv")
+SUBTILE_EMBEDDING_DATASET_TRAIN = os.path.join(DATASET_DIR, "avg_embeddings_train.csv")
+SUBTILE_EMBEDDING_DATASET_VAL = os.path.join(DATASET_DIR, "avg_embeddings_val.csv")
+FROM_PRETRAINED = True
 
+# Ignore this comment,.
 # If EMBEDDING_TYPE is 'average', the embedding is just the average of each band.
 # If it is 'tile2vec', we use the Tile2Vec model 
 # EMBEDDING_TYPE = 'average'
-TRAINING_PLOT_FILE = 'exploratory_plots/tile2vec_subtile_sif_prediction.png'
-PLOT_TITLE = 'Loss curves: Tile2Vec embedding to SIF'
+TRAINING_PLOT_FILE = 'exploratory_plots/losses_avg_subtile_sif_prediction.png'
+PLOT_TITLE = 'Loss curves: Average embedding to SIF'
 SUBTILE_DIM = 10
-Z_DIM = 32
-INPUT_CHANNELS = 25
-NUM_EPOCHS = 100
+Z_DIM = 29
+HIDDEN_SIZE = 256
+INPUT_CHANNELS = 29
+NUM_EPOCHS = 20
 LEARNING_RATE = 1e-3
-WEIGHT_DECAY = 1e-3
+WEIGHT_DECAY = 1e-8 #0.01
 
 def train_embedding_to_sif_model(embedding_to_sif_model, dataloaders, dataset_sizes, criterion, optimizer, device, sif_mean, sif_std, num_epochs=25):
     since = time.time()
@@ -173,8 +176,8 @@ band_stds = train_stds[:-1]
 sif_std = train_stds[-1]
 
 # Load pre-computed subtile embeddings from file
-train_tile_rows = pd.read_csv(SUBTILE_EMBEDDING_DATASET_TRAIN)
-val_tile_rows = pd.read_csv(SUBTILE_EMBEDDING_DATASET_VAL)
+train_tile_rows = pd.read_csv(SUBTILE_EMBEDDING_DATASET_TRAIN) # [0:200]
+val_tile_rows = pd.read_csv(SUBTILE_EMBEDDING_DATASET_VAL) # [0:200]
 
 # Set up datasets and dataloaders
 embedding_datasets = {'train': SubtileEmbeddingDataset(train_tile_rows),
@@ -184,7 +187,9 @@ embedding_dataloaders = {x: torch.utils.data.DataLoader(embedding_datasets[x], b
                   for x in ['train', 'val']}
 
 # Create embedding-to-SIF model
-embedding_to_sif_model = EmbeddingToSIFModel(embedding_size=Z_DIM).to(device)
+embedding_to_sif_model = EmbeddingToSIFNonlinearModel(embedding_size=Z_DIM, hidden_size=HIDDEN_SIZE).to(device)
+if FROM_PRETRAINED:
+    embedding_to_sif_model.load_state_dict(torch.load(EMBEDDING_TO_SIF_MODEL_FILE, map_location=device))
 criterion = nn.MSELoss(reduction='mean')
 optimizer = optim.Adam(embedding_to_sif_model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
 dataset_sizes = {'train': len(train_tile_rows),

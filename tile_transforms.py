@@ -18,7 +18,7 @@ class ShrinkTile(object):
     Shrinks tile down to designated size (e.g. from 371 x 371 to 10 x 10).
     Contains custom logic to ensure that binary bands (1/0) stay that way.
     """
-    def __init__(self, target_dim=10, continuous_bands=list(range(0, 9)), cover_bands=list(range(9, 24)), missing_band=24):
+    def __init__(self, target_dim=10, continuous_bands=list(range(0, 12)), cover_bands=list(range(12, 27)), missing_band=[27, 28]):
         print('Continuous bands', continuous_bands)
         self.target_dim = target_dim
         self.continuous_bands = continuous_bands

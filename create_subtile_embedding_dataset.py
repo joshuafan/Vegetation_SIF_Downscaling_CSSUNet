@@ -43,20 +43,19 @@ START_DATE = "2018-08-01"
 DATASET_DIR = os.path.join(DATA_DIR, "dataset_" + START_DATE)
 INFO_FILE_TRAIN = os.path.join(DATASET_DIR, "tile_info_train.csv")
 INFO_FILE_VAL = os.path.join(DATASET_DIR, "tile_info_val.csv")
-BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
+BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train_FIXED.csv")
 SUBTILE_EMBEDDING_FILE_TRAIN = os.path.join(DATASET_DIR, "tile2vec_embeddings_train.csv")
 SUBTILE_EMBEDDING_FILE_VAL = os.path.join(DATASET_DIR, "tile2vec_embeddings_val.csv")
 EMBEDDING_FILE_SUFFIX = '_tile2vec_embeddings.npy'
 TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_dim256_neighborhood100/TileNet.ckpt")
-S
+
 # If EMBEDDING_TYPE is 'average', the embedding is just the average of each band.
 # If it is 'tile2vec', we use the Tile2Vec model 
-EMBEDDING_TYPE = 'tile2vec'
+EMBEDDING_TYPE ='tile2vec' # 'tile2vec'
 # TRAINING_PLOT_FILE = 'exploratory_plots/tile2vec_subtile_sif_prediction.png'
 SUBTILE_DIM = 10
 Z_DIM = 256
 INPUT_CHANNELS = 29
-# NUM_EPOCHS = 1
 
 
 # 
@@ -120,8 +119,10 @@ dataloaders = {x: torch.utils.data.DataLoader(datasets[x], batch_size=2,
                    for x in ['train', 'val']}
 
 # Load pre-trained Tile2Vec embedding model
-tile2vec_model = make_tilenet(in_channels=INPUT_CHANNELS, z_dim=Z_DIM).to(device)
-tile2vec_model.load_state_dict(torch.load(TILE2VEC_MODEL_FILE))
+tile2vec_model = make_tilenet(in_channels=INPUT_CHANNELS, z_dim=Z_DIM)
+tile2vec_model.load_state_dict(torch.load(TILE2VEC_MODEL_FILE, map_location=device))
+#tile2vec_model = None
+print('loaded tile2vec')
 
 # Obtain embeddings for all subtiles
 train_tile_rows = compute_subtile_embeddings_to_sif_dataset(tile2vec_model, dataloaders['train'], SUBTILE_DIM, device) 

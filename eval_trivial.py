@@ -15,6 +15,7 @@ import time
 import torch
 import torchvision
 import torchvision.transforms as transforms
+import simple_cnn
 import small_resnet
 import resnet
 import torch.nn as nn
@@ -25,20 +26,22 @@ from tile2vec.src.tilenet import make_tilenet
 
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-TRAIN_DATASET_DIR = os.path.join("dataset_2018-08-01")
-EVAL_DATASET_DIR = os.path.join("dataset_2016-08-01")
+TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-08-01")
+EVAL_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2016-08-01")
 EVAL_FILE = os.path.join(EVAL_DATASET_DIR, "eval_subtiles.csv")
-# EVAL_FILE = os.path.join(TRAIN_DATASET_DIR, "tile_info_train.csv")
+# EVAL_FILE = os.path.join(TRAIN_DATASET_DIR, "tile_info_val.csv")
 
 TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/small_tile_sif_prediction")
 BAND_STATISTICS_FILE = os.path.join(TRAIN_DATASET_DIR, "band_statistics_train.csv")
 TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_eval_subtile_small_tile_cnn.png' 
-PLOT_TITLE = 'Small tile CNN (trained by resizing large tiles)'
+PLOT_TITLE = 'Small tile CNN (trained by resizing large tiles, eval subtile)'
 INPUT_CHANNELS = 29
 eval_points = pd.read_csv(EVAL_FILE)
 
 def eval_model(model, dataloader, dataset_size, criterion, device, sif_mean, sif_std):
     model.eval()   # Set model to evaluate mode
+    print('SIF mean', sif_mean)
+    print('SIF std', sif_std)
     sif_mean = torch.tensor(sif_mean).to(device)
     sif_std = torch.tensor(sif_std).to(device)
     predicted = []
@@ -48,9 +51,9 @@ def eval_model(model, dataloader, dataset_size, criterion, device, sif_mean, sif
     # Iterate over data.
     for sample in dataloader:
         input_tile = sample['subtile'].to(device)
-        print('=========================')
-        print('Input band means')
-        print(torch.mean(input_tile, dim=(2,3)))
+        #print('=========================')
+        #print('Input band means')
+        #print(torch.mean(input_tile, dim=(2,3)))
         true_sif_non_standardized = sample['SIF'].to(device)
 
         # forward
@@ -100,14 +103,13 @@ transform = transforms.Compose(transform_list)
 
 # Set up Dataset and Dataloader
 dataset_size = len(eval_metadata)
-dataset = ReflectanceCoverSIFDataset(eval_metadata, transform)
-
-# dataset = EvalSubtileDataset(eval_metadata, transform)  # ReflectanceCoverSIFDataset(eval_metadata, transform) #  EvalSubtileDataset(eval_metadata, transform)  #    ReflectanceCoverSIFDataset(eval_metadata, transform)  # ReflectanceCoverSIFDataset(eval_metadata, transform)
+# dataset = ReflectanceCoverSIFDataset(eval_metadata, transform)
+dataset = EvalSubtileDataset(eval_metadata, transform)  # ReflectanceCoverSIFDataset(eval_metadata, transform) #  EvalSubtileDataset(eval_metadata, transform)  #    ReflectanceCoverSIFDataset(eval_metadata, transform)  # ReflectanceCoverSIFDataset(eval_metadata, transform)
 dataloader = torch.utils.data.DataLoader(dataset, batch_size=4,
                                          shuffle=True, num_workers=4)
 
 # Load trained model from file
-resnet_model = small_resnet.resnet18(input_channels=INPUT_CHANNELS)
+resnet_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, output_dim=1)  # small_resnet.resnet18(input_channels=INPUT_CHANNELS)
 # resnet_model = make_tilenet(in_channels=INPUT_CHANNELS, z_dim=1)  #.to(device)
 resnet_model.load_state_dict(torch.load(TRAINED_MODEL_FILE))
 resnet_model = resnet_model.to(device)
