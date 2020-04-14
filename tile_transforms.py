@@ -18,7 +18,7 @@ class ShrinkTile(object):
     Shrinks tile down to designated size (e.g. from 371 x 371 to 10 x 10).
     Contains custom logic to ensure that binary bands (1/0) stay that way.
     """
-    def __init__(self, target_dim=10, continuous_bands=list(range(0, 12)), cover_bands=list(range(12, 27)), missing_band=[27, 28]):
+    def __init__(self, target_dim=10, continuous_bands=list(range(0, 12)), cover_bands=list(range(12, 42)), missing_band=42):
         print('Continuous bands', continuous_bands)
         self.target_dim = target_dim
         self.continuous_bands = continuous_bands
@@ -46,8 +46,8 @@ class ShrinkTile(object):
                 original_pixels = tile[:, top:bottom, left:right]
                 
                 # Sample center pixel
-                resized_tile[:, i, j] = tile[:, int((top+bottom)/2), int((left+right)/2)]
-                continue
+                #resized_tile[:, i, j] = tile[:, int((top+bottom)/2), int((left+right)/2)]
+                #continue
 
                 # Count number of pixels with and without reflectance data (by looking at the missing_band mask)
                 pixels_without_reflectance = np.sum(original_pixels[self.missing_band, :, :])

@@ -31,13 +31,14 @@ DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
 DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-08-01")
 INFO_FILE_TRAIN = os.path.join(DATASET_DIR, "tile_info_train.csv")
 INFO_FILE_VAL = os.path.join(DATASET_DIR, "tile_info_val.csv")
-TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/small_tile_sif_prediction_simple")
+TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/small_tile_simple_cnn_shrink_sample")
+LOSS_PLOT_FILE = "exploratory_plots/losses_small_tile_simple_cnn_shrink_sample.png")
 BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
 FROM_PRETRAINED = False
 RGB_BANDS = [1, 2, 3]
 NUM_EPOCHS = 20
 INPUT_CHANNELS = 43
-LEARNING_RATE = 1e-3
+LEARNING_RATE = 0.001  # 1e-3
 WEIGHT_DECAY = 1e-8
 
 

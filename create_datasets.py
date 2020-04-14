@@ -260,7 +260,7 @@ with rio.open(COVER_FILE) as cover_dataset:
                         
                         bottom_degrees = top_degrees - (TARGET_TILE_SIZE * target_res[0])
                         right_degrees = left_degrees + (TARGET_TILE_SIZE * target_res[1])
-                        print('____________________________________________________')
+                        print('-----------------------------------------------------------')
                         print('Extracting tile: longitude', left_degrees, 'to', right_degrees, 'latitude', bottom_degrees, 'to', top_degrees)
 
                         # Find indices of tile in reflectance and cover datasets
@@ -291,13 +291,13 @@ with rio.open(COVER_FILE) as cover_dataset:
                             continue
 
                         # Resample FLDAS data for this tile into target resolution (if we haven't already)
-                        new_lat = np.linspace(bottom_degrees, top_degrees, TARGET_TILE_SIZE)  # bottom_bound, combined_top_bound, height_pixels)
+                        new_lat = np.linspace(top_degrees, bottom_degrees, TARGET_TILE_SIZE)  # bottom_bound, combined_top_bound, height_pixels)
                         new_lon = np.linspace(left_degrees, right_degrees, TARGET_TILE_SIZE)  # combined_left_bound, combined_right_bound, width_pixels)
                         reprojected_fldas_dataset = fldas_dataset.interp(X=new_lon, Y=new_lat)
                         fldas_layers = []
                         #print('FLDAS data vars', reprojected_fldas_dataset.data_vars)
                         for data_var in reprojected_fldas_dataset.data_vars:
-                        #    print('var', data_var)
+                            #print('var', data_var)
                             fldas_layers.append(reprojected_fldas_dataset[data_var].data)
                         fldas_tile = np.stack(fldas_layers)
 

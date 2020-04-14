@@ -43,7 +43,7 @@ START_DATE = "2018-08-01"
 DATASET_DIR = os.path.join(DATA_DIR, "dataset_" + START_DATE)
 INFO_FILE_TRAIN = os.path.join(DATASET_DIR, "tile_info_train.csv")
 INFO_FILE_VAL = os.path.join(DATASET_DIR, "tile_info_val.csv")
-BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train_FIXED.csv")
+BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
 SUBTILE_EMBEDDING_FILE_TRAIN = os.path.join(DATASET_DIR, "tile2vec_embeddings_train.csv")
 SUBTILE_EMBEDDING_FILE_VAL = os.path.join(DATASET_DIR, "tile2vec_embeddings_val.csv")
 EMBEDDING_FILE_SUFFIX = '_tile2vec_embeddings.npy'
@@ -54,8 +54,8 @@ TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_dim256_neighborhoo
 EMBEDDING_TYPE ='tile2vec' # 'tile2vec'
 # TRAINING_PLOT_FILE = 'exploratory_plots/tile2vec_subtile_sif_prediction.png'
 SUBTILE_DIM = 10
-Z_DIM = 256
-INPUT_CHANNELS = 29
+Z_DIM = 512
+INPUT_CHANNELS = 43
 
 
 # 

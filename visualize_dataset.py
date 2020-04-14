@@ -4,6 +4,10 @@ import numpy as np
 import os
 import pandas as pd
 import xarray as xr
+from sklearn.metrics import mean_squared_error, r2_score
+from scipy.stats import pearsonr
+from numpy import poly1d
+
 from sif_utils import plot_histogram
 
 # Taken from https://stackoverflow.com/questions/11159436/multiple-figures-in-a-single-window
@@ -36,6 +40,7 @@ def plot_images(image_rows, image_filename_column, output_file):
  
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
+BAND_STATISTICS_FILE = os.path.join(DATA_DIR, "dataset_2018-08-01/band_statistics_train.csv")
 TILES_DIR = os.path.join(DATA_DIR, "tiles_2016-08-01")
 LAT_LON = 'lat_47.55_lon_-101.35'
 IMAGE_FILE = os.path.join(TILES_DIR, "reflectance_" + LAT_LON + ".npy")
@@ -44,6 +49,7 @@ TROPOMI_SIF_FILE = os.path.join(DATA_DIR, "TROPOMI_SIF/TROPO-SIF_01deg_biweekly_
 TROPOMI_DATE_RANGE = slice("2018-08-01", "2018-08-16")
 EVAL_SUBTILE_DATASET = os.path.join(DATA_DIR, "dataset_2016-08-01/eval_subtiles.csv")
 TRAIN_TILE_DATASET = os.path.join(DATA_DIR, "dataset_2018-08-01/tile_info_train.csv")
+ALL_TILE_DATASET = os.path.join(DATA_DIR, "dataset_2018-08-01/reflectance_cover_to_sif.csv")
 RGB_BANDS = [3, 2, 1]
 
 # Display tiles with largest/smallest TROPOMI SIFs
@@ -52,6 +58,7 @@ highest_tropomi_sifs = train_metadata.nlargest(25, 'SIF')
 plot_images(highest_tropomi_sifs, 'tile_file', 'exploratory_plots/tropomi_sif_high_subtiles.png')
 lowest_tropomi_sifs = train_metadata.nsmallest(25, 'SIF')
 plot_images(lowest_tropomi_sifs, 'tile_file', 'exploratory_plots/tropomi_sif_low_subtiles.png')
+all_metadata = pd.read_csv(ALL_TILE_DATASET)
 
 # Display tiles with largest/smallest CFIS SIFs
 eval_metadata = pd.read_csv(EVAL_SUBTILE_DATASET)
@@ -61,9 +68,9 @@ lowest_cfis_sifs = eval_metadata.nsmallest(25, 'SIF')
 plot_images(lowest_cfis_sifs, 'subtile_file', 'exploratory_plots/cfis_sif_low_subtiles.png')
 
 # Open CFIS SIF evaluation dataset
-#cfis_points = np.load(CFIS_SIF_FILE)
-#print("CFIS dataset shape", cfis_points.shape)
-print('Eval points', len(eval_metadata))
+all_cfis_points = np.load(CFIS_SIF_FILE)
+print("CFIS points total", all_cfis_points.shape[0])
+print('CFIS points with reflectance data', len(eval_metadata))
 
 # Open TROPOMI SIF dataset
 tropomi_dataset = xr.open_dataset(TROPOMI_SIF_FILE)
@@ -78,17 +85,33 @@ for i in range(len(eval_metadata)):  # range(cfis_points.shape[0]):
     tropomi_sifs.append(tropomi_sif)
 
 # Plot histogram of CFIS and TROPOMI SIFs
-plot_histogram(np.array(eval_metadata['SIF']), "cfis_sif_distribution.png") #  cfis_points[:, 0])
-plot_histogram(np.array(tropomi_sifs), "tropomi_sif_distribution_validation_area.png")
+plot_histogram(np.array(all_cfis_points[:, 0]), "sif_distribution_cfis_all.png")
+plot_histogram(np.array(eval_metadata['SIF']), "sif_distribution_cfis_filtered.png") #  cfis_points[:, 0])
+plot_histogram(np.array(tropomi_sifs), "sif_distribution_tropomi_eval_area.png")
+plot_histogram(np.array(train_metadata['SIF']), "sif_distribution_tropomi_train.png")
+plot_histogram(np.array(all_metadata['SIF']), "sif_distribution_tropomi_all.png")
 
-# Scatterplot of CFIS points
+# sif_mean = np.mean(train_metadata['SIF'])
+train_statistics = pd.read_csv(BAND_STATISTICS_FILE)
+sif_mean = train_statistics['mean'].values[-1]
+print('SIF mean (TROPOMI, train set)', sif_mean)
+
+# Scatterplot of CFIS points (all)
 green_cmap = plt.get_cmap('Greens')
-plt.scatter(eval_metadata['lon'], eval_metadata['lat'], c=eval_metadata['SIF'], cmap=green_cmap)
-# plt.scatter(cfis_points[:, 1], cfis_points[:, 2], c=cfis_points[:, 0], cmap=green_cmap)
+plt.scatter(all_cfis_points[:, 1], all_cfis_points[:, 2], c=all_cfis_points[:, 0], cmap=green_cmap)
 plt.xlabel('Longitude')
 plt.ylabel('Latitude')
-plt.title('Validation points')
-plt.savefig('exploratory_plots/validation_points_filtered.png')
+plt.title('CFIS points (all)')
+plt.savefig('exploratory_plots/cfis_points_all.png')
+plt.close()
+
+# Scatterplot of CFIS points (eval)
+green_cmap = plt.get_cmap('Greens')
+plt.scatter(eval_metadata['lon'], eval_metadata['lat'], c=eval_metadata['SIF'], cmap=green_cmap)
+plt.xlabel('Longitude')
+plt.ylabel('Latitude')
+plt.title('CFIS points (reflectance data available, eval set)')
+plt.savefig('exploratory_plots/cfis_points_filtered.png')
 plt.close()
 
 # Plot TROPOMI vs SIF (and linear regression)
@@ -103,6 +126,12 @@ plt.ylabel('TROPOMI SIF (surrounding large tile, 2018)')
 plt.title('TROPOMI vs CFIS SIF')
 plt.savefig('exploratory_plots/TROPOMI_vs_CFIS_SIF')
 plt.close()
+
+# Calculate NRMSE and correlation
+nrmse = math.sqrt(mean_squared_error(y, x)) / sif_mean
+corr, _ = pearsonr(y, x)
+print('NRMSE', round(nrmse, 3))
+print('Correlation', round(corr, 3))
 
 # Show example tiles (RGB)
 array = np.load(IMAGE_FILE).transpose((1, 2, 0))
