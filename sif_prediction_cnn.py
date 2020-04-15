@@ -31,16 +31,17 @@ DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
 DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-08-01")
 INFO_FILE_TRAIN = os.path.join(DATASET_DIR, "tile_info_train.csv")
 INFO_FILE_VAL = os.path.join(DATASET_DIR, "tile_info_val.csv")
-TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/small_tile_simple_cnn_shrink_sample")
-LOSS_PLOT_FILE = "exploratory_plots/losses_small_tile_simple_cnn_shrink_sample.png")
+TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/small_tile_resnet_shrink_average")
+LOSS_PLOT_FILE = "exploratory_plots/losses_small_tile_resnet_shrink_average.png"
 BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
 FROM_PRETRAINED = False
 RGB_BANDS = [1, 2, 3]
 NUM_EPOCHS = 20
 INPUT_CHANNELS = 43
-LEARNING_RATE = 0.001  # 1e-3
-WEIGHT_DECAY = 1e-8
-
+LEARNING_RATE = 0.00001  # 1e-3
+WEIGHT_DECAY = 0  # 1e-8
+BATCH_SIZE = 20
+NUM_WORKERS = 4
 
 # Visualize images (RGB bands only)
 # Image is assumed to be standardized. You need to pass in band_means and band_stds
@@ -138,21 +139,21 @@ def train_model(model, dataloaders, dataset_sizes, criterion, optimizer, device,
                     #print('True', true_sif_non_standardized)
                     #print('len SIF', len(sample['SIF']))
                     non_standardized_loss = criterion(predicted_sif_non_standardized, true_sif_non_standardized)
-                    #print('loss', non_standardized_loss.item())
+                    print('batch loss', (math.sqrt(non_standardized_loss.item()) / sif_mean).item())
                     running_loss += non_standardized_loss.item() * len(sample['SIF'])
 
             epoch_loss = math.sqrt(running_loss / dataset_sizes[phase]) / sif_mean
             print('{} Loss: {:.4f}'.format(
                 phase, epoch_loss))
-
-            # save model in case
-            torch.save(model.state_dict(), TRAINED_MODEL_FILE)
-
-
+ 
             # deep copy the model
             if phase == 'val' and epoch_loss < best_loss:
                 best_loss = epoch_loss
                 best_model_wts = copy.deepcopy(model.state_dict())
+
+                # save model in case
+                torch.save(model.state_dict(), TRAINED_MODEL_FILE)
+
 
             # Record loss
             if phase == 'train':
@@ -188,8 +189,8 @@ else:
 print("Device", device)
 
 # Read train/val tile metadata
-train_metadata = pd.read_csv(INFO_FILE_TRAIN) #.iloc[0:1000]
-val_metadata = pd.read_csv(INFO_FILE_VAL) #.iloc[0:200]
+train_metadata = pd.read_csv(INFO_FILE_TRAIN).iloc[0:5]
+val_metadata = pd.read_csv(INFO_FILE_VAL).iloc[0:5]
 
 # Read mean/standard deviation for each band, for standardization purposes
 train_statistics = pd.read_csv(BAND_STATISTICS_FILE)
@@ -215,13 +216,13 @@ transform = transforms.Compose(transform_list)
 datasets = {'train': ReflectanceCoverSIFDataset(train_metadata, transform),
             'val': ReflectanceCoverSIFDataset(val_metadata, transform)}
 
-dataloaders = {x: torch.utils.data.DataLoader(datasets[x], batch_size=32,
-                                              shuffle=True, num_workers=1)
+dataloaders = {x: torch.utils.data.DataLoader(datasets[x], batch_size=BATCH_SIZE,
+                                              shuffle=True, num_workers=NUM_WORKERS)
               for x in ['train', 'val']}
 
 print("Dataloaders")
-resnet_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, output_dim=1)
-# resnet_model = small_resnet.resnet18(input_channels=INPUT_CHANNELS)
+# resnet_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, output_dim=1)
+resnet_model = small_resnet.resnet18(input_channels=INPUT_CHANNELS)
 # resnet_model = make_tilenet(in_channels=INPUT_CHANNELS, z_dim=1)  #.to(device)
 if FROM_PRETRAINED:
     resnet_model.load_state_dict(torch.load(TRAINED_MODEL_FILE))

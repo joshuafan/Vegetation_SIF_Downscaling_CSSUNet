@@ -31,11 +31,14 @@ EVAL_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2016-08-01")
 TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-08-01")
 EVAL_FILE = os.path.join(EVAL_DATASET_DIR, "eval_subtiles.csv") 
 BAND_STATISTICS_FILE = os.path.join(TRAIN_DATASET_DIR, "band_statistics_train.csv")
-TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_dim256_neighborhood100/TileNet.ckpt")
-# "models/tile2vec_dim32_neighborhood100/TileNet_epoch20.ckpt"
-# "models/tile2vec_dim10_neighborhood500/TileNet_epoch50.ckpt"  # finetuned_tile2vec"
+TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_dim512_neighborhood100/TileNet.ckpt")
+# TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_dim512_neighborhood100/finetuned_tile2vec.ckpt"
+
 EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_embedding_to_sif")
+# EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/finetuned_embedding_to_sif.ckpt")
+
 TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_eval_subtile_tile2vec_subtile.png'
+# TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_eval_subtile_finetuned_tile2vec.ping'
 
 Z_DIM = 256
 INPUT_CHANNELS = 43
@@ -109,7 +112,7 @@ print("Means", train_means)
 print("Stds", train_stds)
 band_means = train_means[:-1]
 sif_mean = train_means[-1]
-band_stds = train_stds[:-1] * 371
+band_stds = train_stds[:-1]
 sif_std = train_stds[-1]
 
 # Set up image transforms

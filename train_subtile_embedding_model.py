@@ -41,26 +41,28 @@ DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-08-01")
 # INFO_FILE_VAL = os.path.join(DATASET_DIR, "tile_info_val.csv")
 BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
 # TILE2VEC_MODEL_FILE = "models/tile2vec_dim10_v2/TileNet_epoch50.ckpti"
-EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/avg_embedding_to_sif")
+EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_embedding_to_sif")
 
 # LOAD_EMBEDDINGS = False
-SUBTILE_EMBEDDING_DATASET_TRAIN = os.path.join(DATASET_DIR, "avg_embeddings_train.csv")
-SUBTILE_EMBEDDING_DATASET_VAL = os.path.join(DATASET_DIR, "avg_embeddings_val.csv")
-FROM_PRETRAINED = True
+SUBTILE_EMBEDDING_DATASET_TRAIN = os.path.join(DATASET_DIR, "tile2vec_embeddings_train.csv")
+SUBTILE_EMBEDDING_DATASET_VAL = os.path.join(DATASET_DIR, "tile2vec_embeddings_val.csv")
+FROM_PRETRAINED = False
 
 # Ignore this comment,.
 # If EMBEDDING_TYPE is 'average', the embedding is just the average of each band.
 # If it is 'tile2vec', we use the Tile2Vec model 
 # EMBEDDING_TYPE = 'average'
-TRAINING_PLOT_FILE = 'exploratory_plots/losses_avg_subtile_sif_prediction.png'
-PLOT_TITLE = 'Loss curves: Average embedding to SIF'
+TRAINING_PLOT_FILE = 'exploratory_plots/losses_tile2vec_subtile_sif_prediction.png'
+PLOT_TITLE = 'Loss curves: Tile2vec embedding to SIF'
 SUBTILE_DIM = 10
-Z_DIM = 29
-HIDDEN_SIZE = 256
-INPUT_CHANNELS = 29
+Z_DIM = 512
+HIDDEN_SIZE = 1024
+INPUT_CHANNELS = 43
 NUM_EPOCHS = 20
-LEARNING_RATE = 1e-3
-WEIGHT_DECAY = 1e-8 #0.01
+LEARNING_RATE = 1e-3 #1e-2
+WEIGHT_DECAY = 0 # 1e-8 #0.01
+BATCH_SIZE = 8
+NUM_WORKERS = 4
 
 def train_embedding_to_sif_model(embedding_to_sif_model, dataloaders, dataset_sizes, criterion, optimizer, device, sif_mean, sif_std, num_epochs=25):
     since = time.time()
@@ -126,8 +128,9 @@ def train_embedding_to_sif_model(embedding_to_sif_model, dataloaders, dataset_si
                     #print('Predicted', predicted_sif_non_standardized)
                     #print('True', true_sif_non_standardized)
                     non_standardized_loss = criterion(predicted_sif_non_standardized, true_sif_non_standardized)
-                    running_loss += non_standardized_loss.item()
-
+                    running_loss += non_standardized_loss.item() * len(sample['SIF'])
+                    #print('batch loss', (math.sqrt(non_standardized_loss.item()) / sif_mean).item())
+ 
             epoch_loss = (math.sqrt(running_loss / dataset_sizes[phase]) / sif_mean).item()
 
             print('{} Loss: {:.4f}'.format(
@@ -137,6 +140,8 @@ def train_embedding_to_sif_model(embedding_to_sif_model, dataloaders, dataset_si
             if phase == 'val' and epoch_loss < best_loss:
                 best_loss = epoch_loss
                 best_model_wts = copy.deepcopy(embedding_to_sif_model.state_dict())
+                torch.save(embedding_to_sif_model.state_dict(), EMBEDDING_TO_SIF_MODEL_FILE)
+
 
             # Record loss
             if phase == 'train':
@@ -182,8 +187,8 @@ val_tile_rows = pd.read_csv(SUBTILE_EMBEDDING_DATASET_VAL) # [0:200]
 # Set up datasets and dataloaders
 embedding_datasets = {'train': SubtileEmbeddingDataset(train_tile_rows),
                       'val': SubtileEmbeddingDataset(val_tile_rows)}
-embedding_dataloaders = {x: torch.utils.data.DataLoader(embedding_datasets[x], batch_size=4,
-                                                        shuffle=True, num_workers=1)
+embedding_dataloaders = {x: torch.utils.data.DataLoader(embedding_datasets[x], batch_size=BATCH_SIZE,
+                                                        shuffle=True, num_workers=NUM_WORKERS)
                   for x in ['train', 'val']}
 
 # Create embedding-to-SIF model
@@ -197,8 +202,6 @@ dataset_sizes = {'train': len(train_tile_rows),
 
 # Train model
 embedding_to_sif_model, train_losses, val_losses, best_loss = train_embedding_to_sif_model(embedding_to_sif_model, embedding_dataloaders, dataset_sizes, criterion, optimizer, device, sif_mean, sif_std, num_epochs=NUM_EPOCHS)
-
-torch.save(embedding_to_sif_model.state_dict(), EMBEDDING_TO_SIF_MODEL_FILE)
 
 # Plot loss curves
 print("Train losses:", train_losses)

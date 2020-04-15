@@ -71,7 +71,7 @@ class ShrinkTile(object):
                 index = np.argmax(cover_fractions)
                 #print('argmax index', index)
                 value = cover_fractions[index]
-                if value > 0.3:
+                if value > 0.2:
                     most_common_cover = self.cover_bands[index]
                     #print('Most common cover:', most_common_cover)
                     resized_tile[most_common_cover, i, j] = 1

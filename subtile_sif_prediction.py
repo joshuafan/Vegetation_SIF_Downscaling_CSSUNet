@@ -25,28 +25,34 @@ import sys
 sys.path.append('../')
 from tile2vec.src.tilenet import make_tilenet
 from embedding_to_sif_model import EmbeddingToSIFModel
+from embedding_to_sif_nonlinear_model import EmbeddingToSIFNonlinearModel
 
+DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
+TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-08-01")
+INFO_FILE_TRAIN = os.path.join(TRAIN_DATASET_DIR, "tile_info_train.csv")
+INFO_FILE_VAL = os.path.join(TRAIN_DATASET_DIR, "tile_info_val.csv")
+BAND_STATISTICS_FILE = os.path.join(TRAIN_DATASET_DIR, "band_statistics_train.csv")
 
-DATASET_DIR = "datasets/dataset_2018-08-01"
-INFO_FILE_TRAIN = os.path.join(DATASET_DIR, "tile_info_train.csv")
-INFO_FILE_VAL = os.path.join(DATASET_DIR, "tile_info_val.csv")
-BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
-TILE2VEC_MODEL_FILE = "models/tile2vec_dim10_v2/TileNet_epoch50.ckpt"
-FINETUNED_TILE2VEC_MODEL_FILE = "models/tile2vec_dim10_v2/finetuned_tile2vec"
-EMBEDDING_TO_SIF_MODEL_FILE = "models/finetune_embedding_to_sif"
-TRAINING_PLOT_FILE = 'exploratory_plots/finetune_tile2vec_subtile_sif_prediction.png'
+TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_dim512_neighborhood100/TileNet.ckpt")
+#ILE2VEC_MODEL_FILE = "models/tile2vec_dim10_v2/TileNet_epoch50.ckpt"
+FINETUNED_TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_dim512_neighborhood100/finetuned_tile2vec.ckpt")
+EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/finetuned_embedding_to_sif.ckpt")
+TRAINING_PLOT_FILE = 'exploratory_plots/losses_finetuned_tile2vec.png'
 EMBEDDING_TYPE = 'tile2vec'
 
 FREEZE_TILE2VEC = False
-Z_DIM = 10
-INPUT_CHANNELS= 14
-LEARNING_RATE = 1e-5
+Z_DIM = 512
+HIDDEN_DIM = 256  # 1024
+INPUT_CHANNELS = 43
+LEARNING_RATE_TILE2VEC = 1e-4
+LEARNING_RATE_EMBEDDING_TO_SIF = 1e-3  # 0.01  #1e-3
 NUM_EPOCHS = 5
 SUBTILE_DIM = 10
- 
+BATCH_SIZE = 8
+NUM_WORKERS = 4
 
 # TODO should there be 2 separate models?
-def train_model(tile2vec_model, embedding_to_sif_model, freeze_tile2vec, dataloaders, dataset_sizes, criterion, optimizer, device, sif_mean, sif_std, subtile_dim, num_epochs=25):
+def train_model(tile2vec_model, embedding_to_sif_model, freeze_tile2vec, dataloaders, dataset_sizes, criterion, tile2vec_optimizer, embedding_to_sif_optimizer, device, sif_mean, sif_std, subtile_dim, num_epochs=25):
     since = time.time()
 
     best_model_wts = [copy.deepcopy(tile2vec_model.state_dict()),
@@ -85,7 +91,8 @@ def train_model(tile2vec_model, embedding_to_sif_model, freeze_tile2vec, dataloa
                 true_sif_standardized = ((true_sif_non_standardized - sif_mean) / sif_std).to(device)
 
                 # zero the parameter gradients
-                optimizer.zero_grad()
+                tile2vec_optimizer.zero_grad()
+                embedding_to_sif_optimizer.zero_grad()
 
                 # Obtain subtiles (NOTE Pay attention to standardization :( )
                 subtiles = get_subtiles_list(input_tile_standardized, subtile_dim, device)  # (batch x num subtiles x bands x subtile_dim x subtile_dim)
@@ -119,7 +126,8 @@ def train_model(tile2vec_model, embedding_to_sif_model, freeze_tile2vec, dataloa
                     # backward + optimize only if in training phase
                     if phase == 'train':
                         loss.backward()
-                        optimizer.step()
+                        embedding_to_sif_optimizer.step()
+                        tile2vec_optimizer.step()
 
                     # statistics
                     predicted_sif_non_standardized = torch.tensor(predicted_sif_standardized * sif_std + sif_mean, dtype=torch.float).to(device)
@@ -127,8 +135,9 @@ def train_model(tile2vec_model, embedding_to_sif_model, freeze_tile2vec, dataloa
                     #print('Predicted', predicted_sif_non_standardized)
                     #print('True', true_sif_non_standardized)
                     non_standardized_loss = criterion(predicted_sif_non_standardized, true_sif_non_standardized)
-                    running_loss += non_standardized_loss.item()
-
+                    running_loss += non_standardized_loss.item() * len(sample['SIF'])
+                    print('batch loss', (math.sqrt(non_standardized_loss.item()) / sif_mean).item())
+ 
             epoch_loss = math.sqrt(running_loss / dataset_sizes[phase]) / sif_mean
 
             print('{} Loss: {:.4f}'.format(
@@ -139,6 +148,9 @@ def train_model(tile2vec_model, embedding_to_sif_model, freeze_tile2vec, dataloa
                 best_loss = epoch_loss
                 best_model_wts = [copy.deepcopy(tile2vec_model.state_dict()),
                                   copy.deepcopy(embedding_to_sif_model.state_dict())]
+                torch.save(tile2vec_model.state_dict(), FINETUNED_TILE2VEC_MODEL_FILE)
+                torch.save(embedding_to_sif_model.state_dict(), EMBEDDING_TO_SIF_MODEL_FILE)
+
 
             # Record loss
             if phase == 'train':
@@ -195,32 +207,32 @@ transform = transforms.Compose(transform_list)
 datasets = {'train': ReflectanceCoverSIFDataset(train_metadata, transform),
             'val': ReflectanceCoverSIFDataset(val_metadata, transform)}
 
-dataloaders = {x: torch.utils.data.DataLoader(datasets[x], batch_size=2,
-                                              shuffle=True, num_workers=1)
+dataloaders = {x: torch.utils.data.DataLoader(datasets[x], batch_size=BATCH_SIZE,
+                                              shuffle=True, num_workers=NUM_WORKERS)
               for x in ['train', 'val']}
 
 print("Dataloaders")
 
 tile2vec_model = make_tilenet(in_channels=INPUT_CHANNELS, z_dim=Z_DIM).to(device)
-tile2vec_model.load_state_dict(torch.load(TILE2VEC_MODEL_FILE))
-embedding_to_sif_model = EmbeddingToSIFModel(embedding_size=Z_DIM).to(device)  # TODO
+# tile2vec_model.load_state_dict(torch.load(FINETUNED_TILE2VEC_MODEL_FILE, map_location=device))
+tile2vec_model.load_state_dict(torch.load(TILE2VEC_MODEL_FILE, map_location=device))
+embedding_to_sif_model = EmbeddingToSIFNonlinearModel(embedding_size=Z_DIM, hidden_size=HIDDEN_DIM).to(device)  # TODO
+
 criterion = nn.MSELoss(reduction='mean')
 #optimizer = optim.SGD(resnet_model.parameters(), lr=1e-4, momentum=0.9)
 
 # Don't optimize Tile2vec model; just use pre-trained version
 if FREEZE_TILE2VEC:
-    params_to_optimize = embedding_to_sif_model.parameters()
+    tile2vec_optimizer = None
 else:
-    params_to_optimize = list(tile2vec_model.parameters()) + list(embedding_to_sif_model.parameters())
-optimizer = optim.Adam(params_to_optimize, lr=LEARNING_RATE)
+    tile2vec_optimizer = optim.Adam(tile2vec_model.parameters(), lr=LEARNING_RATE_TILE2VEC)
+embedding_to_sif_optimizer = optim.Adam(embedding_to_sif_model.parameters(), lr=LEARNING_RATE_EMBEDDING_TO_SIF)
+
 dataset_sizes = {'train': len(train_metadata),
                  'val': len(val_metadata)}
 
 
-tile2vec_model, embedding_to_sif_model, train_losses, val_losses, best_loss = train_model(tile2vec_model, embedding_to_sif_model, FREEZE_TILE2VEC, dataloaders, dataset_sizes, criterion, optimizer, device, sif_mean, sif_std, subtile_dim=SUBTILE_DIM, num_epochs=NUM_EPOCHS)
-
-torch.save(tile2vec_model.state_dict(), FINETUNED_TILE2VEC_MODEL_FILE)
-torch.save(embedding_to_sif_model.state_dict(), EMBEDDING_TO_SIF_MODEL_FILE)
+tile2vec_model, embedding_to_sif_model, train_losses, val_losses, best_loss = train_model(tile2vec_model, embedding_to_sif_model, FREEZE_TILE2VEC, dataloaders, dataset_sizes, criterion, tile2vec_optimizer, embedding_to_sif_optimizer, device, sif_mean, sif_std, subtile_dim=SUBTILE_DIM, num_epochs=NUM_EPOCHS)
 
 # Plot loss curves
 print("Train losses:", train_losses)

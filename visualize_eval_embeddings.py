@@ -13,12 +13,12 @@ from eval_subtile_dataset import EvalSubtileDataset
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
 EVAL_SUBTILE_DATASET_FILE = os.path.join(DATA_DIR, "dataset_2016-08-01/eval_subtiles.csv")
-TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_dim256_neighborhood100/TileNet.ckpt")
+TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_dim512_neighborhood100/TileNet.ckpt")
 TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-08-01")
 BAND_STATISTICS_FILE = os.path.join(TRAIN_DATASET_DIR, "band_statistics_train.csv")
 
 eval_metadata = pd.read_csv(EVAL_SUBTILE_DATASET_FILE)
-Z_DIM = 256
+Z_DIM = 512
 INPUT_CHANNELS = 43
 RGB_BANDS = [3, 2, 1]
 COVER_BANDS = list(range(12, 42))

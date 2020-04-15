@@ -36,10 +36,12 @@ TRAINING_PLOT_FILE = 'exploratory_plots/losses_subtile_cnn.png'
 
 SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn")
 INPUT_CHANNELS = 43
-LEARNING_RATE = 1e-3
+LEARNING_RATE = 1e-4
 NUM_EPOCHS = 50
 SUBTILE_DIM = 10
 BATCH_SIZE = 4 
+NUM_WORKERS = 4
+FROM_PRETRAINED = True
 
 # TODO should there be 2 separate models?
 def train_model(subtile_sif_model, dataloaders, dataset_sizes, criterion, optimizer, device, sif_mean, sif_std, subtile_dim, num_epochs=25):
@@ -110,7 +112,8 @@ def train_model(subtile_sif_model, dataloaders, dataset_sizes, criterion, optimi
                     #print('Predicted', predicted_sif_non_standardized)
                     #print('True', true_sif_non_standardized)
                     non_standardized_loss = criterion(predicted_sif_non_standardized, true_sif_non_standardized)
-                    running_loss += non_standardized_loss.item()
+                    #print('batch loss', (math.sqrt(non_standardized_loss.item()) / sif_mean).item())
+                    running_loss += non_standardized_loss.item() * len(sample['SIF'])
 
             epoch_loss = math.sqrt(running_loss / dataset_sizes[phase]) / sif_mean
 
@@ -180,12 +183,15 @@ datasets = {'train': ReflectanceCoverSIFDataset(train_metadata, transform),
             'val': ReflectanceCoverSIFDataset(val_metadata, transform)}
 
 dataloaders = {x: torch.utils.data.DataLoader(datasets[x], batch_size=BATCH_SIZE,
-                                              shuffle=True, num_workers=1)
+                                              shuffle=True, num_workers=NUM_WORKERS)
               for x in ['train', 'val']}
 
 print("Dataloaders")
 
 subtile_sif_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, output_dim=1).to(device)
+if FROM_PRETRAINED:
+    subtile_sif_model.load_state_dict(torch.load(SUBTILE_SIF_MODEL_FILE, map_location=device))
+
 criterion = nn.MSELoss(reduction='mean')
 optimizer = optim.Adam(subtile_sif_model.parameters(), lr=LEARNING_RATE)
 dataset_sizes = {'train': len(train_metadata),
