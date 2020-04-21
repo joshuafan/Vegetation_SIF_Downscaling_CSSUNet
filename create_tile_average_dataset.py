@@ -13,7 +13,7 @@ import sklearn.model_selection
 from sif_utils import plot_histogram
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-DATASET_DIR = os.path.join(DATA_DIR, "dataset_2016-08-01")
+DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-07-17")
 INFO_CSV_FILE = os.path.join(DATASET_DIR, "reflectance_cover_to_sif.csv")
 SPLIT_INFO_CSV_FILES = {"train": os.path.join(DATASET_DIR, "tile_info_train.csv"),
                         "val": os.path.join(DATASET_DIR, "tile_info_val.csv")}
@@ -22,6 +22,7 @@ TILE_AVERAGE_CSV_FILES = {"train": os.path.join(DATASET_DIR, "tile_averages_trai
 BAND_STATISTICS_CSV_FILES = {"train": os.path.join(DATASET_DIR, "band_statistics_train.csv"),
                              "val": os.path.join(DATASET_DIR, "band_statistics_val.csv")}
 MAX_CLOUD_COVER = 0.1
+MIN_SIF = 0.2
 
 tile_metadata = pd.read_csv(INFO_CSV_FILE)
 
@@ -48,7 +49,7 @@ for split in ["train", "val"]:
     band_averages_all_tiles = []
     dataset = datasets[split]
     valid_indices = []  # Indices of tiles which have low cloud cover
-    # sifs = []
+    sifs = []
 
     i = 0
     for index, row in dataset.iterrows():
@@ -61,11 +62,14 @@ for split in ["train", "val"]:
         # data is missing), throw this tile out
         if tile_averages[-1] > MAX_CLOUD_COVER:
             continue
+        if float(row.loc['SIF']) < MIN_SIF:
+            continue
+
         csv_row = [row.loc['lat'], row.loc['lon']] + tile_averages.tolist() + [row.loc['SIF']]
         csv_rows.append(csv_row)
         band_averages_all_tiles.append(tile_averages)
         valid_indices.append(index)
-        # sifs.append(row.loc['SIF'])
+        sifs.append(row.loc['SIF'])
         i += 1
         print('Processing tile', i)
 
@@ -99,8 +103,8 @@ for split in ["train", "val"]:
     statistics_rows = [['mean', 'std']]
     for i in range(len(band_means)):
         statistics_rows.append([band_means[i], band_stds[i]])
-    sifs = dataset['SIF']
-    statistics_rows.append([sifs.mean(), sifs.std()])
+
+    statistics_rows.append([np.mean(sifs), np.std(sifs)])
     with open(BAND_STATISTICS_CSV_FILES[split], 'w') as output_csv_file:
         csv_writer = csv.writer(output_csv_file, delimiter=",", quoting=csv.QUOTE_MINIMAL)
         for row in statistics_rows:

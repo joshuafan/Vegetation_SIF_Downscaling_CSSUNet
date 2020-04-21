@@ -13,21 +13,23 @@ import matplotlib.pyplot as plt
 from sif_utils import plot_histogram
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-TRAIN_DATE = "2018-08-01"
+TRAIN_DATE = "2018-07-17"
 TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_" + TRAIN_DATE)
 TILE_AVERAGE_TRAIN_FILE = os.path.join(TRAIN_DATASET_DIR, "tile_averages_train.csv")
 TILE_AVERAGE_VAL_FILE = os.path.join(TRAIN_DATASET_DIR, "tile_averages_val.csv")
+BAND_STATISTICS_FILE = os.path.join(TRAIN_DATASET_DIR, "band_statistics_train.csv")
 
 EVAL_DATE = "2016-08-01"
 EVAL_DATASET_DIR = os.path.join(DATA_DIR, "dataset_" + EVAL_DATE)
-EVAL_SUBTILE_AVERAGE_FILE = os.path.join(EVAL_DATASET_DIR, "eval_subtile_averages.csv")
-
-METHOD = "Gradient_Boosting_Regressor"
+EVAL_SUBTILE_AVERAGE_FILE = os.path.join(EVAL_DATASET_DIR, "filtered_eval_subtile_averages.csv")
+METHOD = "Linear_Regression"  # "Gradient_Boosting_Regressor"
 
 train_set = pd.read_csv(TILE_AVERAGE_TRAIN_FILE).dropna()
 val_set = pd.read_csv(TILE_AVERAGE_VAL_FILE).dropna()
 eval_subtile_set = pd.read_csv(EVAL_SUBTILE_AVERAGE_FILE).dropna()
-average_sif = train_set['SIF'].mean()
+
+band_statistics = pd.read_csv(BAND_STATISTICS_FILE)
+average_sif = band_statistics['mean'].iloc[-1]
 
 print('Train samples:', len(train_set))
 print('Val samples;', len(val_set))
@@ -54,11 +56,11 @@ Y_eval_subtile = eval_subtile_set[OUTPUT_COLUMN].values.ravel()
 
 
 
-linear_regression = GradientBoostingRegressor().fit(X_train, Y_train)
+linear_regression = LinearRegression().fit(X_train, Y_train)
 linear_predictions_train = linear_regression.predict(X_train)
 linear_predictions_val = linear_regression.predict(X_val)
 linear_predictions_eval_subtile = linear_regression.predict(X_eval_subtile)
-
+print('Coef', linear_regression.coef_)
 print('Predicted val', linear_predictions_val)
 print('True val', Y_val)
 

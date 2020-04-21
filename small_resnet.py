@@ -122,7 +122,7 @@ class Bottleneck(nn.Module):
 
 class ResNet(nn.Module):
 
-    def __init__(self, block, layers, input_channels, output_dim=1, zero_init_residual=False,
+    def __init__(self, block, layers, input_channels, output_dim=1, reduced_channels=20, zero_init_residual=False,
                  groups=1, width_per_group=64, replace_stride_with_dilation=None,
                  norm_layer=None):
         super(ResNet, self).__init__()
@@ -141,7 +141,8 @@ class ResNet(nn.Module):
                              "or a 3-element tuple, got {}".format(replace_stride_with_dilation))
         self.groups = groups
         self.base_width = width_per_group
-        self.conv1 = nn.Conv2d(input_channels, self.inplanes, kernel_size=3, stride=1, padding=1,
+        self.dimensionality_reduction = conv1x1(input_channels, reduced_channels)
+        self.conv1 = nn.Conv2d(reduced_channels, self.inplanes, kernel_size=3, stride=1, padding=1,
                                bias=False)
         self.bn1 = norm_layer(self.inplanes)
         self.relu = nn.ReLU(inplace=True)
@@ -199,6 +200,9 @@ class ResNet(nn.Module):
 
     def _forward_impl(self, x):
         # See note [TorchScript super()]
+        #print('before dim red', x.shape)
+        x = self.dimensionality_reduction(x)
+        #print('After dim red', x.shape)
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)

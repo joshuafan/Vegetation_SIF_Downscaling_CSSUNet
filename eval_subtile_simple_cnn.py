@@ -27,10 +27,10 @@ import tile_transforms
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
 EVAL_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2016-08-01")
-TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-08-01")
-EVAL_FILE = os.path.join(EVAL_DATASET_DIR, "eval_subtiles.csv") 
+TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-07-17")
+EVAL_FILE = os.path.join(EVAL_DATASET_DIR, "filtered_eval_subtiles.csv") 
 BAND_STATISTICS_FILE = os.path.join(TRAIN_DATASET_DIR, "band_statistics_train.csv")
-SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn")
+SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_2")
 TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_eval_subtile_simple_cnn.png'
 
 INPUT_CHANNELS = 43
@@ -50,7 +50,7 @@ def eval_model(subtile_sif_model, dataloader, dataset_size, criterion, device, s
     for sample in dataloader:
         input_tile_standardized = sample['subtile'].to(device)
         true_sif_non_standardized = sample['SIF'].to(device)
-        # print('Input tile shape', input_tile_standardized.shape)
+        #print('Sample tile', input_tile_standardized[0, :, 8, 8])
 
         # forward
         with torch.set_grad_enabled(False):
@@ -76,8 +76,6 @@ print("Device", device)
 
 # Read train/val tile metadata
 eval_metadata = pd.read_csv(EVAL_FILE)
-average_sif = eval_metadata['SIF'].mean()
-print("Average sif", average_sif)
 print("Eval samples", len(eval_metadata))
 
 # Read mean/standard deviation for each band, for standardization purposes

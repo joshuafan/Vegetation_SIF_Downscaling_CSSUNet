@@ -22,17 +22,17 @@ import xarray as xr
 from rasterio.plot import show
 from sif_utils import lat_long_to_index, plot_histogram
 
-DATE_RANGE = pd.date_range(start="2016-08-01", end="2016-08-16")
+DATE_RANGE = pd.date_range(start="2018-07-17", end="2018-08-16")
 START_DATE = str(DATE_RANGE.date[0])
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
 REFLECTANCE_DIR = os.path.join(DATA_DIR, "LandsatReflectance", START_DATE)
-COVER_FILE = os.path.join(DATA_DIR, "CDL_2016/corn_belt_cdl_2016-08-01_epsg.tif")  # "CDL_2016_big.tif"
+COVER_FILE = os.path.join(DATA_DIR, "CDL_2018/corn_belt_cdl_2018-08-01_epsg.tif")  # "CDL_2016_big.tif"
 OUTPUT_DATASET_DIR = os.path.join(DATA_DIR, "dataset_" + START_DATE)  # Directory containing list of tiles
 OUTPUT_IMAGES_DIR = os.path.join(DATA_DIR, "images_" + START_DATE)  # Directory containing large images
 OUTPUT_TILES_DIR = os.path.join(DATA_DIR, "tiles_" + START_DATE)  # Directory containing 0.1x0.1 degree tiles
 OUTPUT_CSV_FILE = os.path.join(OUTPUT_DATASET_DIR, "reflectance_cover_to_sif.csv")
 SIF_FILE = os.path.join(DATA_DIR, "TROPOMI_SIF/TROPO-SIF_01deg_biweekly_Apr18-Jan20.nc")
-FLDAS_FILE = os.path.join(DATA_DIR, "FLDAS/FLDAS_NOAH01_C_GL_M.A201608.001.nc.SUB.nc4")
+FLDAS_FILE = os.path.join(DATA_DIR, "FLDAS/FLDAS_NOAH01_C_GL_M.A201808.001.nc.SUB.nc4")
 
 # List of cover types to include (see https://developers.google.com/earth-engine/datasets/catalog/USDA_NASS_CDL
 # for what these numbers correspond to). I included all cover types that are >1% of the region.

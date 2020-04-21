@@ -3,9 +3,10 @@ import torch.nn.functional as F
 
 
 class SimpleCNN(nn.Module):
-    def __init__(self, input_channels, output_dim):
+    def __init__(self, input_channels, output_dim, reduced_channels=15):
         super(SimpleCNN, self).__init__()
-        self.conv1 = nn.Conv2d(input_channels, 64, kernel_size=3, stride=1)
+        self.dimensionality_reduction = nn.Conv2d(input_channels, reduced_channels, kernel_size=1, stride=1)
+        self.conv1 = nn.Conv2d(reduced_channels, 64, kernel_size=3, stride=1)
         self.pool = nn.MaxPool2d(2, 2)
         self.conv2 = nn.Conv2d(64, 128, kernel_size=3, stride=1)
         self.fc1 = nn.Linear(128 * 2 * 2, 256)
@@ -13,6 +14,7 @@ class SimpleCNN(nn.Module):
         self.fc3 = nn.Linear(64, output_dim)
 
     def forward(self, x):
+        x = self.dimensionality_reduction(x)
         x = self.pool(F.relu(self.conv1(x)))
         #print('After layer 1', x.shape)
         x = F.relu(self.conv2(x))

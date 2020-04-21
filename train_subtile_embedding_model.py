@@ -46,7 +46,7 @@ EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_embedding_
 # LOAD_EMBEDDINGS = False
 SUBTILE_EMBEDDING_DATASET_TRAIN = os.path.join(DATASET_DIR, "tile2vec_embeddings_train.csv")
 SUBTILE_EMBEDDING_DATASET_VAL = os.path.join(DATASET_DIR, "tile2vec_embeddings_val.csv")
-FROM_PRETRAINED = False
+FROM_PRETRAINED = True
 
 # Ignore this comment,.
 # If EMBEDDING_TYPE is 'average', the embedding is just the average of each band.
@@ -59,7 +59,7 @@ Z_DIM = 512
 HIDDEN_SIZE = 1024
 INPUT_CHANNELS = 43
 NUM_EPOCHS = 20
-LEARNING_RATE = 1e-3 #1e-2
+LEARNING_RATE = 1e-5 #1e-2
 WEIGHT_DECAY = 0 # 1e-8 #0.01
 BATCH_SIZE = 8
 NUM_WORKERS = 4
@@ -125,11 +125,11 @@ def train_embedding_to_sif_model(embedding_to_sif_model, dataloaders, dataset_si
                     # statistics
                     predicted_sif_non_standardized = torch.tensor(predicted_sif_standardized * sif_std + sif_mean, dtype=torch.float).to(device)
                     #print('========================')
-                    #print('Predicted', predicted_sif_non_standardized)
-                    #print('True', true_sif_non_standardized)
+                    #print('***** Predicted', predicted_sif_non_standardized)
+                    #print('***** True', true_sif_non_standardized)
                     non_standardized_loss = criterion(predicted_sif_non_standardized, true_sif_non_standardized)
                     running_loss += non_standardized_loss.item() * len(sample['SIF'])
-                    #print('batch loss', (math.sqrt(non_standardized_loss.item()) / sif_mean).item())
+                    #print('***** batch loss', (math.sqrt(non_standardized_loss.item()) / sif_mean).item())
  
             epoch_loss = (math.sqrt(running_loss / dataset_sizes[phase]) / sif_mean).item()
 

@@ -3,14 +3,18 @@ import torch
 
 class StandardizeTile(object):
     """
-    Standardizes images so that each band has mean 0, standard deviation 1 
+    Standardizes the given bands (listed in "bands_to_transform") so that each band has
+    mean 0, standard deviation 1.
+    Note: do not standardize bands that are already binary masks
     """
-    def __init__(self, band_means, band_stds):
-        self.band_means = band_means[:, np.newaxis, np.newaxis]
-        self.band_stds = band_stds[:, np.newaxis, np.newaxis]
+    def __init__(self, band_means, band_stds, bands_to_transform=list(range(0,12))):
+        self.bands_to_transform = bands_to_transform 
+        self.band_means = band_means[bands_to_transform, np.newaxis, np.newaxis]
+        self.band_stds = band_stds[bands_to_transform, np.newaxis, np.newaxis]
 
     def __call__(self, tile):
-        return (tile - self.band_means) / self.band_stds
+        tile[self.bands_to_transform, :, :] = (tile[self.bands_to_transform, :, :] - self.band_means) / self.band_stds
+        return tile
 
 
 class ShrinkTile(object):
@@ -59,6 +63,7 @@ class ShrinkTile(object):
                 # set by default)
                 # if pixels_with_reflectance >= 1:
                 #   resized_tile[self.continuous_bands, i, j] = np.sum(original_pixels[self.continuous_bands, :, :], axis=(1,2)) / pixels_with_reflectance
+                # print('Shape of mean',  np.mean(original_pixels[self.continuous_bands, :, :], axis=(1,2)).shape)
                 resized_tile[self.continuous_bands, i, j] = np.mean(original_pixels[self.continuous_bands, :, :], axis=(1,2)) 
 
                 # Compute percent covered by each crop type.

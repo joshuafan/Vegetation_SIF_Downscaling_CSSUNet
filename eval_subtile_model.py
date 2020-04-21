@@ -23,6 +23,7 @@ import sys
 sys.path.append('../')
 from tile2vec.src.tilenet import make_tilenet
 from embedding_to_sif_model import EmbeddingToSIFModel
+from embedding_to_sif_nonlinear_model import EmbeddingToSIFNonlinearModel
 import tile_transforms
 
 
@@ -34,15 +35,16 @@ BAND_STATISTICS_FILE = os.path.join(TRAIN_DATASET_DIR, "band_statistics_train.cs
 TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_dim512_neighborhood100/TileNet.ckpt")
 # TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_dim512_neighborhood100/finetuned_tile2vec.ckpt"
 
-EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_embedding_to_sif")
+EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/avg_embedding_to_sif")
 # EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/finetuned_embedding_to_sif.ckpt")
 
-TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_eval_subtile_tile2vec_subtile.png'
+TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_eval_subtile_avg_subtile.png'
 # TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_eval_subtile_finetuned_tile2vec.ping'
 
-Z_DIM = 256
+Z_DIM = 43 # 512
+HIDDEN_DIM = 1024
 INPUT_CHANNELS = 43
-EMBEDDING_TYPE = 'tile2vec'  # average'  # 'tile2vec'  # average'  # 'tile2vec'
+EMBEDDING_TYPE = 'average'  # average'  # 'tile2vec'  # average'  # 'tile2vec'
 
 eval_points = pd.read_csv(EVAL_FILE)
 
@@ -129,12 +131,11 @@ dataloader = torch.utils.data.DataLoader(dataset, batch_size=4,
 # Load trained models from file
 if EMBEDDING_TYPE == 'tile2vec':
     tile2vec_model = make_tilenet(in_channels=INPUT_CHANNELS, z_dim=Z_DIM).to(device)
-    tile2vec_model.load_state_dict(torch.load(TILE2VEC_MODEL_FILE), map_location=device)
+    tile2vec_model.load_state_dict(torch.load(TILE2VEC_MODEL_FILE, map_location=device))
 else:
     tile2vec_model = None
-embedding_to_sif_model = EmbeddingToSIFModel(embedding_size=Z_DIM)
-embedding_to_sif_model.load_state_dict(torch.load(EMBEDDING_TO_SIF_MODEL_FILE), map_device=device)
-embedding_to_sif_model = embedding_to_sif_model.to(device)
+embedding_to_sif_model = EmbeddingToSIFNonlinearModel(embedding_size=Z_DIM, hidden_size=HIDDEN_DIM).to(device)
+embedding_to_sif_model.load_state_dict(torch.load(EMBEDDING_TO_SIF_MODEL_FILE, map_location=device))
 
 criterion = nn.MSELoss(reduction='mean')
 

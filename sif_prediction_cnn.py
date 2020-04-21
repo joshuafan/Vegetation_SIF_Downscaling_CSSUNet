@@ -31,16 +31,16 @@ DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
 DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-08-01")
 INFO_FILE_TRAIN = os.path.join(DATASET_DIR, "tile_info_train.csv")
 INFO_FILE_VAL = os.path.join(DATASET_DIR, "tile_info_val.csv")
-TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/small_tile_resnet_shrink_average")
-LOSS_PLOT_FILE = "exploratory_plots/losses_small_tile_resnet_shrink_average.png"
+TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/test_small_tile_resnet")
+LOSS_PLOT_FILE = "exploratory_plots/losses_test_small_tile_resnet.png"
 BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
 FROM_PRETRAINED = False
 RGB_BANDS = [1, 2, 3]
-NUM_EPOCHS = 20
+NUM_EPOCHS = 50
 INPUT_CHANNELS = 43
-LEARNING_RATE = 0.00001  # 1e-3
+LEARNING_RATE = 1e-3  # 0.00001  # 1e-3
 WEIGHT_DECAY = 0  # 1e-8
-BATCH_SIZE = 20
+BATCH_SIZE = 8
 NUM_WORKERS = 4
 
 # Visualize images (RGB bands only)
@@ -189,8 +189,8 @@ else:
 print("Device", device)
 
 # Read train/val tile metadata
-train_metadata = pd.read_csv(INFO_FILE_TRAIN).iloc[0:5]
-val_metadata = pd.read_csv(INFO_FILE_VAL).iloc[0:5]
+train_metadata = pd.read_csv(INFO_FILE_TRAIN) #.iloc[0:100]
+val_metadata = pd.read_csv(INFO_FILE_VAL) # .iloc[0:100]
 
 # Read mean/standard deviation for each band, for standardization purposes
 train_statistics = pd.read_csv(BAND_STATISTICS_FILE)
@@ -207,7 +207,7 @@ sif_std = train_stds[-1]
 
 # Set up image transforms
 transform_list = []
-transform_list.append(tile_transforms.ShrinkTile())
+#transform_list.append(tile_transforms.ShrinkTile())
 transform_list.append(tile_transforms.StandardizeTile(band_means, band_stds))
 transform = transforms.Compose(transform_list)
 

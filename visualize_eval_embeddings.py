@@ -13,13 +13,13 @@ from eval_subtile_dataset import EvalSubtileDataset
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
 EVAL_SUBTILE_DATASET_FILE = os.path.join(DATA_DIR, "dataset_2016-08-01/eval_subtiles.csv")
-TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_dim512_neighborhood100/TileNet.ckpt")
+TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_dim256_rgb/TileNet.ckpt")  #"models/tile2vec_dim512_neighborhood100/TileNet.ckpt")
 TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-08-01")
 BAND_STATISTICS_FILE = os.path.join(TRAIN_DATASET_DIR, "band_statistics_train.csv")
 
 eval_metadata = pd.read_csv(EVAL_SUBTILE_DATASET_FILE)
-Z_DIM = 512
-INPUT_CHANNELS = 43
+Z_DIM = 256  #512
+INPUT_CHANNELS = 3 # 43
 RGB_BANDS = [3, 2, 1]
 COVER_BANDS = list(range(12, 42))
 BATCH_SIZE = 4
@@ -41,7 +41,7 @@ print("Means", train_means)
 print("Stds", train_stds)
 band_means = train_means[:-1]
 sif_mean = train_means[-1]
-band_stds = train_stds[:-1] * 371
+band_stds = train_stds[:-1]
 sif_std = train_stds[-1]
 
 # Set up image transforms
@@ -63,7 +63,9 @@ tile2vec_model.load_state_dict(torch.load(TILE2VEC_MODEL_FILE, map_location=devi
 subtile_embeddings = np.zeros((2000, Z_DIM))  # (len(eval_dataset)z_dim))
 i = 0
 for sample in dataloader:
-    input_tile_standardized = sample['subtile'].to(device)
+    input_tile_standardized = sample['subtile'][:, RGB_BANDS, :, :].to(device)
+    print('Input tile standardized dims', input_tile_standardized.shape)
+
     batch = input_tile_standardized.shape[0]
     with torch.set_grad_enabled(False):
         subtile_embeddings[i:i+batch] = tile2vec_model(input_tile_standardized)

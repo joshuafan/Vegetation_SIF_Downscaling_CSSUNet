@@ -39,6 +39,10 @@ class ReflectanceCoverSIFDataset(Dataset):
         
         if self.transform:
             tile = self.transform(tile)
+        
+        #BANDS = list(range(0,12))
+        #tile = tile[BANDS, :, :]
+
         tile = torch.tensor(tile, dtype=torch.float)
  
         sample = {'lon': current_tile_info.loc['lon'],

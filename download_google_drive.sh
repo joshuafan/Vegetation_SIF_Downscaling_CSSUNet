@@ -21,9 +21,18 @@
 # DOCUMENT_IDS=("1XCaN8ai9No_4wmbZCKLPOc_8UVQQDVnA" "15cMs1JuBvIeKH5blnPTFb2Bifmf9Tdsm" "1EtvhnsbXUaGmUlVxtCoioCXWVPQHaUEn" "15Gmg3JxyWsTO06x-qGJye1TPkZyhK85r" "1zkZlyMejJJP4w9-aQ_SIAbw0nIw4xvWy" "1MnvD7qGYpZ7GZ7BlCKHfGPbj3CQR3-XX" "1x69y-M7KzInzaifkWcsBMS-E-YDBgQ4x" "1j6JBUXNwqjnQ2DHtNM0j14F5mAwhFiqd" "1_SAvLkqT5kId7jN_8iOaglqA2pvl0xZp" "1aOs_Y1MgoDR2CZTyJKEqsgJxDexrBYk-" "1ZYF2lsEj4OtTCNaiC67Zj_sVgl0M3WlX" "1Vdy_DiC0_HZsZN7zDzPQ7ayh5iW1feG4")
 
 # DOCUMENT_IDS=("1Mqqka_Od8DT0RYG9x7CfU8l2gypkbxEJ")
-DOCUMENT_IDS=("1xgaEwFaUe_mQAbq_NXua0_RjoNo0-qpj" "1mE7JggzWMZSqSIr5v0r3xucKZn2OwAf8" "196d_4jnvht8Kqy0CG7z8nkrry1OM2XOV" "1KyNf9bQa3WpSZtgM41en82nYPfmAhouN" "1Xncl3uy92r5qgurgJWxmFbHXzxyV3jm2" "1XhWsgYiAxkpnuiwnNrn0cH4ndpMlmEVr" "1I0Hq5iFlGST596ofiWIeFw5askW_m7Sa" "1RzXKVokf9xaQTByiOUd4S5iEbhUKiYAr" "1W1B_MbbRE1uCqBaPDXmLX8YoQevZEnw-" "1fTQ0NxfSDonfxqkk6dPf2DrVZ7suqFVN" "10Ve8DO9WxCBDgQJXV0HBhQIbyzsK67Q5" "1Ybc_cY2BxvG-zMrdAYtvC6z4qgVvJ-pT")
+#DOCUMENT_IDS=("1xgaEwFaUe_mQAbq_NXua0_RjoNo0-qpj" "1mE7JggzWMZSqSIr5v0r3xucKZn2OwAf8" "196d_4jnvht8Kqy0CG7z8nkrry1OM2XOV" "1KyNf9bQa3WpSZtgM41en82nYPfmAhouN" "1Xncl3uy92r5qgurgJWxmFbHXzxyV3jm2" "1XhWsgYiAxkpnuiwnNrn0cH4ndpMlmEVr" "1I0Hq5iFlGST596ofiWIeFw5askW_m7Sa" "1RzXKVokf9xaQTByiOUd4S5iEbhUKiYAr" "1W1B_MbbRE1uCqBaPDXmLX8YoQevZEnw-" "1fTQ0NxfSDonfxqkk6dPf2DrVZ7suqFVN" "10Ve8DO9WxCBDgQJXV0HBhQIbyzsK67Q5" "1Ybc_cY2BxvG-zMrdAYtvC6z4qgVvJ-pT")
 
-DOWNLOAD_FOLDER="datasets/LandsatReflectance/test_2018-08-01"
+# 2016-07-17
+DOCUMENT_IDS=("1VE7ZRvbTMA3ZKFDwTOprkys5ZK8Gh3F8" "1H0jKkDhENC_WNPbHCSmhkl87IJlALWet" "1i2XC0gXRxudF5bFU9YjwJ-o7kUraoArj" "1-_pjIXEnKo0VtduAr2Mp06vkDQk1aCrM" "1c2tbZDWOhVQ3X5vs1jRh1h-L3CVb-Bj-" "11EPC7Nf0F0fNu6p-zBm4OUYZvKJG2c6G" "1j627_U3NHqS94fxWq4c-sLY78taeZstO" "1NHK-avHlHELimWpkkTeLwfPKixlrZnre" "1DMKq1KGvu_ksM83VwyRwNfILAhtlcH5g" "1Wk9kQymOPo7p_-426zPPDc79xAq4VGsS" "11se21tXGt-13dBBP6Gp-u4JOmXpKAZQr" "1D7YH1rmmOZSNhtsXK3T56I5bP_0WIKTP")
+
+# 2016-07-17
+#DOCUMENT_IDS=("1FRlvgpRx4pHUS8iY7S2wxwrV0C9vQE5O" "1HnlE6_k6wOHPwSQOj1VS0GTixOu_3APq" "180RKC0N4JTxmQtwMYNhPpADHEG90kotK" "1FM4uJrjQlLCQQV2lB3nH9kxysa7-qEZl" "1QGHuix4rfdaVNohDAsoqFlME-Jn2_46g" "1mHAZQQU2ns7g4Dm8A1VCxafnuyjFeBDr" "105yzZ1_3tE6TlrJId2X-qa8V2ReKV6fY" "1gysoePbjMb6yW6ZtdGVmvDCkGuBvIzsR" "1ysvrNs2cw2RD2cwZo_j0ui_magg141Sw" "1vojRgI5cJpVj56e_vc3vQrQZcNs3LhLz" "1evIJzb1DkYOM55IUGzuQI-oJ4bXEO8Ns" "18HkT1gTlvmEHhFwNY7E_5JsD8x8pFXKV")
+
+# 2018-07-17
+#DOCUMENT_IDS=("13C-SmkZrH8qnizsqi0tXXBHhQtQJlkyF" "1W7riQ7jIerB4wp4fEWoUnWQuoS8XXoQD" "1qDjWWvEzV6x4tH-pDkykAv54Sa7QFeO9" "1jPNEVGQLK1gjDU5Uzl_dnAAvFOzApypa" "1TyxJqcxo22H_Fv_OmQZ1Go_AWXUK4B_h" "18PIhxxHUUDKXs84kQshodGdwx53B5_5S" "1M4Hp1gOJhYG_Yzza8z1-Efu0fZkMsnEX" "1hXq3G6DNDcHtts6TLjiLHXJPhcQ1eSXi" "1EGxLc56PyDu5Hpp6MqiwXDeSfF_gRNU0" "1EVFwDYq9YFHFrSpf2tPjE7A-Fs75o-Q_" "1mgf0iCmVDcBw1CM2TxzhGR1kzyaAag3o" "1eRd8KWUndXSnIal3aJmYKQrfFOpJ6U4b")
+
+DOWNLOAD_FOLDER="/mnt/beegfs/bulk/mirror/jyf6/datasets/LandsatReflectance/test_2016-07-17"
 
 mkdir ./tmp
 mkdir ${DOWNLOAD_FOLDER}
@@ -31,10 +40,10 @@ mkdir ${DOWNLOAD_FOLDER}
 for i in ${!DOCUMENT_IDS[@]}; do
   x=$((${i} / 4))
   y=$((${i} % 4))
-  FINAL_DOWNLOADED_FILENAME="${DOWNLOAD_FOLDER}/corn_belt_reflectance_2016-08-01_box_${x}_${y}.tif"
-  curl -sc ./tmp/cookie "https://drive.google.com/uc?export=download&id=${DOCUMENT_IDS[${i}]}" > /dev/null
+  FINAL_DOWNLOADED_FILENAME="${DOWNLOAD_FOLDER}/corn_belt_reflectance_2016-07-17_box_${x}_${y}.tif"
+  curl -sc ./tmp/cookie "https://drive.google.com/open?export=download&id=${DOCUMENT_IDS[${i}]}" > /dev/null
   code="$(awk '/_warning_/ {print $NF}' ./tmp/cookie)"  
-  curl -Lb ./tmp/cookie "https://drive.google.com/uc?export=download&confirm=${code}&id=${DOCUMENT_IDS[${i}]}" -o ${FINAL_DOWNLOADED_FILENAME}
+  curl -Lb ./tmp/cookie "https://drive.google.com/open?export=download&confirm=${code}&id=${DOCUMENT_IDS[${i}]}" -o ${FINAL_DOWNLOADED_FILENAME}
 
   #wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=${DOCUMENT_IDS[${i}]}' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=${DOCUMENT_IDS[${i}]}" -O ${FINAL_DOWNLOADED_FILENAME} && rm -rf /tmp/cookies.txt
   #curl -c ./tmp/cookies "https://drive.google.com/uc?export=download&id=${DOCUMENT_IDS[${i}]}" > "./tmp/intermezzo_${i}"

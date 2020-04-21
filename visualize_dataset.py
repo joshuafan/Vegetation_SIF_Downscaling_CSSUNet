@@ -3,12 +3,16 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 import pandas as pd
+import torch
+import torchvision.transforms as transforms
 import xarray as xr
 from sklearn.metrics import mean_squared_error, r2_score
 from scipy.stats import pearsonr
 from numpy import poly1d
 
-from sif_utils import plot_histogram
+from sif_utils import plot_histogram, get_subtiles_list
+import simple_cnn
+import tile_transforms
 
 # Taken from https://stackoverflow.com/questions/11159436/multiple-figures-in-a-single-window
 def plot_figures(output_file, figures, nrows = 1, ncols=1):
@@ -51,6 +55,55 @@ EVAL_SUBTILE_DATASET = os.path.join(DATA_DIR, "dataset_2016-08-01/eval_subtiles.
 TRAIN_TILE_DATASET = os.path.join(DATA_DIR, "dataset_2018-08-01/tile_info_train.csv")
 ALL_TILE_DATASET = os.path.join(DATA_DIR, "dataset_2018-08-01/reflectance_cover_to_sif.csv")
 RGB_BANDS = [3, 2, 1]
+SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_2")
+INPUT_CHANNELS = 43
+SUBTILE_DIM = 10
+
+# Check if any CUDA devices are visible. If so, pick a default visible device.
+# If not, use CPU.
+if 'CUDA_VISIBLE_DEVICES' in os.environ:
+    print('CUDA_VISIBLE_DEVICES:', os.environ['CUDA_VISIBLE_DEVICES'])
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+else:
+    device = "cpu"
+print("Device", device)
+
+# Load subtile SIF model
+subtile_sif_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, output_dim=1).to(device)
+subtile_sif_model.load_state_dict(torch.load(SUBTILE_SIF_MODEL_FILE, map_location=device))
+
+# Read mean/standard deviation for each band, for standardization purposes
+train_statistics = pd.read_csv(BAND_STATISTICS_FILE)
+train_means = train_statistics['mean'].values
+train_stds = train_statistics['std'].values
+band_means = train_means[:-1]
+sif_mean = train_means[-1]
+band_stds = train_stds[:-1]
+sif_std = train_stds[-1]
+
+# Set up image transforms
+transform_list = []
+transform_list.append(tile_transforms.StandardizeTile(band_means, band_stds))
+transform = transforms.Compose(transform_list)
+
+# Read an input tile
+tile = np.load(IMAGE_FILE)
+input_tile_standardized = torch.tensor(transform(tile), dtype=torch.float).unsqueeze(0).to(device)
+print('Input tile dim', input_tile_standardized.shape)
+print('Random pixel', input_tile_standardized[:, :, 8, 8])
+
+# Obtain model's subtile SIF predictions
+subtiles = get_subtiles_list(input_tile_standardized, SUBTILE_DIM, device)[0]  # (batch x num subtiles x bands x subtile_dim x subtile_dim)
+print('Subtile shape', subtiles.shape)
+with torch.set_grad_enabled(False):
+    predicted_sifs_standardized = subtile_sif_model(subtiles).detach().numpy()
+print('Predicted SIFs standardized', predicted_sifs_standardized.shape)
+predicted_sifs_non_standardized = (predicted_sifs_standardized * sif_std + sif_mean).reshape((37, 37))
+plt.imshow(predicted_sifs_non_standardized, cmap='Greens', vmin=0, vmax=1)
+plt.savefig("exploratory_plots/subtile_sif_map.png")
+plt.close()
+exit(1)
+
 
 # Display tiles with largest/smallest TROPOMI SIFs
 train_metadata = pd.read_csv(TRAIN_TILE_DATASET)
@@ -105,6 +158,15 @@ plt.title('CFIS points (all)')
 plt.savefig('exploratory_plots/cfis_points_all.png')
 plt.close()
 
+cfis_area = all_cfis_points[all_cfis_points[:, 1] > -95]
+plt.scatter(cfis_area[:, 1], cfis_area[:, 2], c=cfis_area[:, 0], cmap=green_cmap)
+plt.xlabel('Longitude')
+plt.ylabel('Latitude')
+plt.title('CFIS points (area)')
+plt.savefig('exploratory_plots/cfis_points_area.png')
+plt.close()
+
+
 # Scatterplot of CFIS points (eval)
 green_cmap = plt.get_cmap('Greens')
 plt.scatter(eval_metadata['lon'], eval_metadata['lat'], c=eval_metadata['SIF'], cmap=green_cmap)
@@ -134,14 +196,15 @@ print('NRMSE', round(nrmse, 3))
 print('Correlation', round(corr, 3))
 
 # Show example tiles (RGB)
-array = np.load(IMAGE_FILE).transpose((1, 2, 0))
+tile = np.load(IMAGE_FILE)
+array = tile.transpose((1, 2, 0))
 print('Array shape', array.shape)
 plt.imshow(array[:, :, RGB_BANDS] / 1000)
 plt.savefig("exploratory_plots/dataset_rgb_2016.png")
 plt.close()
 
-fig, axeslist = plt.subplots(ncols=5, nrows=6, figsize=(20, 24))
-for band in range(0, 29):
+fig, axeslist = plt.subplots(ncols=6, nrows=8, figsize=(24, 24))
+for band in range(0, 43):
     layer = array[:, :, band]
     axeslist.ravel()[band].imshow(layer, cmap='Greens', vmin=np.min(layer), vmax=np.max(layer))
     axeslist.ravel()[band].set_title('Band ' + str(band))
@@ -149,4 +212,7 @@ for band in range(0, 29):
 plt.tight_layout() # optional
 plt.savefig('exploratory_plots/dataset_' + LAT_LON +'.png')
 plt.close()
+
+
+
 
