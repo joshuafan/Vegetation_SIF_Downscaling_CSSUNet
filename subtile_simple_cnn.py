@@ -18,6 +18,7 @@ import torch.optim as optim
 from reflectance_cover_sif_dataset import ReflectanceCoverSIFDataset
 from sif_utils import get_subtiles_list
 import simple_cnn
+import small_resnet
 import tile_transforms
 
 
@@ -28,20 +29,20 @@ from tile2vec.src.tilenet import make_tilenet
 from embedding_to_sif_model import EmbeddingToSIFModel
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-08-01")
+DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-07-17")
 INFO_FILE_TRAIN = os.path.join(DATASET_DIR, "tile_info_train.csv")
 INFO_FILE_VAL = os.path.join(DATASET_DIR, "tile_info_val.csv")
 BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
-TRAINING_PLOT_FILE = 'exploratory_plots/losses_subtile_cnn.png'
+TRAINING_PLOT_FILE = 'exploratory_plots/losses_subtile_simple_cnn_8.png'
 
-SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn")
+SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_8")
 INPUT_CHANNELS = 43
-LEARNING_RATE = 1e-4
+LEARNING_RATE = 1e-4  # 0.001  #1e-4i
 NUM_EPOCHS = 50
 SUBTILE_DIM = 10
-BATCH_SIZE = 4 
+BATCH_SIZE = 8 
 NUM_WORKERS = 4
-FROM_PRETRAINED = True
+FROM_PRETRAINED = False  # True
 
 # TODO should there be 2 separate models?
 def train_model(subtile_sif_model, dataloaders, dataset_sizes, criterion, optimizer, device, sif_mean, sif_std, subtile_dim, num_epochs=25):
@@ -63,16 +64,21 @@ def train_model(subtile_sif_model, dataloaders, dataset_sizes, criterion, optimi
         # Each epoch has a training and validation phase
         for phase in ['train', 'val']:
             if phase == 'train':
-                subtile_sif_model.eval()
-            else:
                 subtile_sif_model.train()
+            else:
+                subtile_sif_model.eval()
 
             running_loss = 0.0
 
             # Iterate over data.
+            j = 0
             for sample in dataloaders[phase]:
                 batch_size = len(sample['SIF'])
                 input_tile_standardized = sample['tile'].to(device)
+                #print(' ====== Random pixels =======')
+                #print(input_tile_standardized[0, :, 8, 8])
+                #print(input_tile_standardized[0, :, 8, 9])
+                #print(input_tile_standardized[0, :, 9, 9])
                 true_sif_non_standardized = sample['SIF'].to(device)
                 true_sif_standardized = ((true_sif_non_standardized - sif_mean) / sif_std).to(device)
 
@@ -108,11 +114,13 @@ def train_model(subtile_sif_model, dataloaders, dataset_sizes, criterion, optimi
 
                     # statistics
                     predicted_sif_non_standardized = torch.tensor(predicted_sif_standardized * sif_std + sif_mean, dtype=torch.float).to(device)
-                    #print('========================')
-                    #print('Predicted', predicted_sif_non_standardized)
-                    #print('True', true_sif_non_standardized)
                     non_standardized_loss = criterion(predicted_sif_non_standardized, true_sif_non_standardized)
-                    #print('batch loss', (math.sqrt(non_standardized_loss.item()) / sif_mean).item())
+                    j += 1
+                    if j % 100 == 0:
+                        print('========================')
+                        print('*** Predicted', predicted_sif_non_standardized)
+                        print('*** True', true_sif_non_standardized)
+                        print('*** batch loss', (math.sqrt(non_standardized_loss.item()) / sif_mean).item())
                     running_loss += non_standardized_loss.item() * len(sample['SIF'])
 
             epoch_loss = math.sqrt(running_loss / dataset_sizes[phase]) / sif_mean
@@ -156,8 +164,8 @@ else:
 print("Device", device)
 
 # Read train/val tile metadata
-train_metadata = pd.read_csv(INFO_FILE_TRAIN)  #.iloc[0:200]
-val_metadata = pd.read_csv(INFO_FILE_VAL)  # .iloc[0:200]
+train_metadata = pd.read_csv(INFO_FILE_TRAIN) #.iloc[0:200]
+val_metadata = pd.read_csv(INFO_FILE_VAL) #.iloc[0:200]
 
 # Read mean/standard deviation for each band, for standardization purposes
 train_statistics = pd.read_csv(BAND_STATISTICS_FILE)
@@ -188,7 +196,8 @@ dataloaders = {x: torch.utils.data.DataLoader(datasets[x], batch_size=BATCH_SIZE
 
 print("Dataloaders")
 
-subtile_sif_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, output_dim=1).to(device)
+# subtile_sif_model = small_resnet.resnet18(input_channels=INPUT_CHANNELS)
+subtile_sif_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, reduced_channels=25, output_dim=1).to(device)
 if FROM_PRETRAINED:
     subtile_sif_model.load_state_dict(torch.load(SUBTILE_SIF_MODEL_FILE, map_location=device))
 

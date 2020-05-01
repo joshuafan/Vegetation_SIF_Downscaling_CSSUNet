@@ -36,10 +36,10 @@ class ReflectanceCoverSIFDataset(Dataset):
         #year, month, day_of_year = sif_utils.parse_date_string(current_tile_info.loc['date'])
         tile = np.load(current_tile_info.loc['tile_file']) 
         #print('Tile shape', tile.shape)
-        
+        #print('Band means before transform', np.mean(tile, axis=(1, 2)))
         if self.transform:
             tile = self.transform(tile)
-        
+        #print('Band means after transform', np.mean(tile, axis=(1,2)))
         #BANDS = list(range(0,12))
         #tile = tile[BANDS, :, :]
 

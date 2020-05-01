@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, r2_score
-from scipy.stats import pearsonr
+from scipy.stats import pearsonr, spearmanr
 from torch.optim import lr_scheduler
 from reflectance_cover_sif_dataset import ReflectanceCoverSIFDataset
 from eval_subtile_dataset import EvalSubtileDataset
@@ -26,14 +26,14 @@ from tile2vec.src.tilenet import make_tilenet
 
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-08-01")
-EVAL_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2016-08-01")
+TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-07-17")
+EVAL_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2016-07-17")
 EVAL_FILE = os.path.join(EVAL_DATASET_DIR, "eval_subtiles.csv")
 # EVAL_FILE = os.path.join(TRAIN_DATASET_DIR, "tile_info_val.csv")
 
-TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/small_tile_resnet_shrink_sample")  # small_tile_sif_prediction")
+TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/test_large_tile_simple")  # small_tile_sif_prediction")
 BAND_STATISTICS_FILE = os.path.join(TRAIN_DATASET_DIR, "band_statistics_train.csv")
-TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_eval_subtile_small_tile_resnet_shrink_sample.png' 
+TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_eval_subtile_small_tile_simple.png' 
 PLOT_TITLE = 'Small tile Resnet (trained by resizing large tiles, eval subtile)'
 INPUT_CHANNELS = 43
 eval_points = pd.read_csv(EVAL_FILE)
@@ -109,10 +109,10 @@ dataloader = torch.utils.data.DataLoader(dataset, batch_size=4,
                                          shuffle=True, num_workers=4)
 
 # Load trained model from file
-# resnet_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, output_dim=1)  
-resnet_model = small_resnet.resnet18(input_channels=INPUT_CHANNELS)
+resnet_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, output_dim=1)  
+# resnet_model = small_resnet.resnet18(input_channels=INPUT_CHANNELS)
 # resnet_model = make_tilenet(in_channels=INPUT_CHANNELS, z_dim=1)  #.to(device)
-resnet_model.load_state_dict(torch.load(TRAINED_MODEL_FILE))
+resnet_model.load_state_dict(torch.load(TRAINED_MODEL_FILE, map_location=device))
 resnet_model = resnet_model.to(device)
 criterion = nn.MSELoss(reduction='mean')
 
@@ -127,6 +127,8 @@ nrmse = math.sqrt(mean_squared_error(predicted, true)) / sif_mean
 corr, _ = pearsonr(predicted, true)
 print('NRMSE:', round(nrmse, 3))
 print("Pearson's correlation:", round(corr, 3))
+rank_corr, _ = spearmanr(predicted, true)
+print('Rank correlation', round(rank_corr, 3))
 
 # Scatter plot of true vs predicted
 plt.scatter(true, predicted)

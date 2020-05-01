@@ -208,9 +208,10 @@ class ResNet(nn.Module):
         print('after layer1', x.shape)
         x = self.layer2(x)
         print('after layer2', x.shape)
-        # x = self.layer3(x)
-        #x = self.layer4(x)
-
+        x = self.layer3(x)
+        print('after layer3', x.shape)
+        x = self.layer4(x)
+        print('after layer4', x.shape)
         x = self.avgpool(x)
         print('after avgpool', x.shape)
         x = torch.flatten(x, 1)

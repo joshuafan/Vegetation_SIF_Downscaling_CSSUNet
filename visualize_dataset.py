@@ -3,6 +3,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 import pandas as pd
+
+from sklearn.linear_model import Lasso, Ridge, LinearRegression
 import torch
 import torchvision.transforms as transforms
 import xarray as xr
@@ -39,23 +41,36 @@ def plot_images(image_rows, image_filename_column, output_file):
     for idx, image_row in image_rows.iterrows():
         subtile = np.load(image_row[image_filename_column]).transpose((1, 2, 0))
         title = 'Lat' + str(round(image_row['lat'], 6)) + ', Lon' + str(round(image_row['lon'], 6)) + ' (SIF = ' + str(round(image_row['SIF'], 3)) + ')'
-        images[title] = subtile[:, :, RGB_BANDS] / 1000
+        #print('BLUE: max', np.max(subtile[:, :, 1]), 'min', np.min(subtile[:, :, 1]))
+        #print('GREEN: max', np.max(subtile[:, :, 2]), 'min', np.min(subtile[:, :, 2]))
+        #print('RED: max', np.max(subtile[:, :, 3]), 'min', np.min(subtile[:, :, 3]))
+        images[title] = subtile[:, :, RGB_BANDS] / 2000
+
     plot_figures(output_file, images, nrows=math.ceil(len(images) / 5), ncols=5)
  
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-BAND_STATISTICS_FILE = os.path.join(DATA_DIR, "dataset_2018-08-01/band_statistics_train.csv")
-TILES_DIR = os.path.join(DATA_DIR, "tiles_2016-08-01")
-LAT_LON = 'lat_47.55_lon_-101.35'
+TRAIN_DATE = "2018-07-17"
+TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_" + TRAIN_DATE)
+TILE_AVERAGE_TRAIN_FILE = os.path.join(TRAIN_DATASET_DIR, "tile_averages_train.csv")
+TILE_AVERAGE_VAL_FILE = os.path.join(TRAIN_DATASET_DIR, "tile_averages_val.csv")
+BAND_STATISTICS_FILE = os.path.join(TRAIN_DATASET_DIR, "band_statistics_train.csv")
+TRAIN_TILE_DATASET = os.path.join(TRAIN_DATASET_DIR, "tile_info_train.csv")
+ALL_TILE_DATASET = os.path.join(TRAIN_DATASET_DIR, "reflectance_cover_to_sif.csv")
+
+
+TILES_DIR = os.path.join(DATA_DIR, "tiles_2016-07-17")
+LAT = 42.45
+LON = -93.85
+LAT_LON = 'lat_' + str(LAT) + '_lon_' + str(LON)
+eps = 0.05
 IMAGE_FILE = os.path.join(TILES_DIR, "reflectance_" + LAT_LON + ".npy")
 CFIS_SIF_FILE = os.path.join(DATA_DIR, "CFIS/CFIS_201608a_300m.npy")
 TROPOMI_SIF_FILE = os.path.join(DATA_DIR, "TROPOMI_SIF/TROPO-SIF_01deg_biweekly_Apr18-Jan20.nc")
 TROPOMI_DATE_RANGE = slice("2018-08-01", "2018-08-16")
-EVAL_SUBTILE_DATASET = os.path.join(DATA_DIR, "dataset_2016-08-01/eval_subtiles.csv")
-TRAIN_TILE_DATASET = os.path.join(DATA_DIR, "dataset_2018-08-01/tile_info_train.csv")
-ALL_TILE_DATASET = os.path.join(DATA_DIR, "dataset_2018-08-01/reflectance_cover_to_sif.csv")
+EVAL_SUBTILE_DATASET = os.path.join(DATA_DIR, "dataset_2016-07-17/eval_subtiles.csv")
 RGB_BANDS = [3, 2, 1]
-SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_2")
+SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_7")
 INPUT_CHANNELS = 43
 SUBTILE_DIM = 10
 
@@ -69,7 +84,7 @@ else:
 print("Device", device)
 
 # Load subtile SIF model
-subtile_sif_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, output_dim=1).to(device)
+subtile_sif_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, reduced_channels=15, output_dim=1).to(device)
 subtile_sif_model.load_state_dict(torch.load(SUBTILE_SIF_MODEL_FILE, map_location=device))
 
 # Read mean/standard deviation for each band, for standardization purposes
@@ -88,21 +103,62 @@ transform = transforms.Compose(transform_list)
 
 # Read an input tile
 tile = np.load(IMAGE_FILE)
+input_tile_non_standardized = torch.tensor(tile, dtype=torch.float).unsqueeze(0).to(device)
+subtiles_non_standardized = get_subtiles_list(input_tile_non_standardized, SUBTILE_DIM, device)[0]
+subtile_averages = torch.mean(subtiles_non_standardized, dim=(2,3))
+
+# Train linear regression model
+train_set = pd.read_csv(TILE_AVERAGE_TRAIN_FILE).dropna()
+EXCLUDE_FROM_INPUT = ['lat', 'lon', 'SIF']
+INPUT_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
+                    'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg', 
+                    'grassland_pasture', 'corn', 'soybean', 'shrubland',
+                    'deciduous_forest', 'evergreen_forest', 'spring_wheat', 'developed_open_space',
+                    'other_hay_non_alfalfa', 'winter_wheat', 'herbaceous_wetlands',
+                    'woody_wetlands', 'open_water', 'alfalfa', 'fallow_idle_cropland',
+                    'sorghum', 'developed_low_intensity', 'barren', 'durum_wheat',
+                    'canola', 'sunflower', 'dry_beans', 'developed_med_intensity',
+                    'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
+                    'lentils', 'missing_reflectance']
+
+print('input columns', INPUT_COLUMNS)
+OUTPUT_COLUMN = ['SIF']
+
+
+# Obtain linear regression SIF predictions
+X_train = train_set[INPUT_COLUMNS]
+Y_train = train_set[OUTPUT_COLUMN].values.ravel()
+linear_regression = LinearRegression().fit(X_train, Y_train)
+#print('First train tile', X_train.iloc[0])
+#print('Second train tile', X_train.iloc[1])
+#print('subtile averages', subtile_averages[0])
+predicted_sifs_linear = linear_regression.predict(subtile_averages).reshape((37, 37))
+print('Predicted sifs linear', predicted_sifs_linear)
+
+# Plot map of linear_regression's subtile SIF predictions
+plt.imshow(predicted_sifs_linear, cmap='Greens', vmin=0, vmax=1)
+plt.savefig("exploratory_plots/" + LAT_LON + "_subtile_sif_map_linear.png")
+plt.close()
+
+# Standardize input tile
 input_tile_standardized = torch.tensor(transform(tile), dtype=torch.float).unsqueeze(0).to(device)
 print('Input tile dim', input_tile_standardized.shape)
 print('Random pixel', input_tile_standardized[:, :, 8, 8])
 
 # Obtain model's subtile SIF predictions
-subtiles = get_subtiles_list(input_tile_standardized, SUBTILE_DIM, device)[0]  # (batch x num subtiles x bands x subtile_dim x subtile_dim)
-print('Subtile shape', subtiles.shape)
+subtiles_standardized = get_subtiles_list(input_tile_standardized, SUBTILE_DIM, device)[0]  # (batch x num subtiles x bands x subtile_dim x subtile_dim)
+print('Subtile shape', subtiles_standardized.shape)
 with torch.set_grad_enabled(False):
-    predicted_sifs_standardized = subtile_sif_model(subtiles).detach().numpy()
+    predicted_sifs_standardized = subtile_sif_model(subtiles_standardized).detach().numpy()
 print('Predicted SIFs standardized', predicted_sifs_standardized.shape)
 predicted_sifs_non_standardized = (predicted_sifs_standardized * sif_std + sif_mean).reshape((37, 37))
+
+# Plot map of CNN's subtile SIF predictions
 plt.imshow(predicted_sifs_non_standardized, cmap='Greens', vmin=0, vmax=1)
-plt.savefig("exploratory_plots/subtile_sif_map.png")
+plt.savefig("exploratory_plots/" + LAT_LON + "_subtile_sif_map_7.png")
 plt.close()
-exit(1)
+
+
 
 
 # Display tiles with largest/smallest TROPOMI SIFs
@@ -151,30 +207,43 @@ print('SIF mean (TROPOMI, train set)', sif_mean)
 
 # Scatterplot of CFIS points (all)
 green_cmap = plt.get_cmap('Greens')
-plt.scatter(all_cfis_points[:, 1], all_cfis_points[:, 2], c=all_cfis_points[:, 0], cmap=green_cmap)
+plt.figure(figsize=(10, 10))
+plt.scatter(all_cfis_points[:, 1], all_cfis_points[:, 2], c=all_cfis_points[:, 0], cmap=green_cmap, vmin=0, vmax=1)
 plt.xlabel('Longitude')
 plt.ylabel('Latitude')
 plt.title('CFIS points (all)')
 plt.savefig('exploratory_plots/cfis_points_all.png')
 plt.close()
 
-cfis_area = all_cfis_points[all_cfis_points[:, 1] > -95]
-plt.scatter(cfis_area[:, 1], cfis_area[:, 2], c=cfis_area[:, 0], cmap=green_cmap)
-plt.xlabel('Longitude')
-plt.ylabel('Latitude')
-plt.title('CFIS points (area)')
-plt.savefig('exploratory_plots/cfis_points_area.png')
-plt.close()
-
-
 # Scatterplot of CFIS points (eval)
-green_cmap = plt.get_cmap('Greens')
-plt.scatter(eval_metadata['lon'], eval_metadata['lat'], c=eval_metadata['SIF'], cmap=green_cmap)
+plt.figure(figsize=(10, 10))
+plt.scatter(eval_metadata['lon'], eval_metadata['lat'], c=eval_metadata['SIF'], cmap=green_cmap, vmin=0, vmax=1)
 plt.xlabel('Longitude')
 plt.ylabel('Latitude')
 plt.title('CFIS points (reflectance data available, eval set)')
 plt.savefig('exploratory_plots/cfis_points_filtered.png')
 plt.close()
+
+# Scatterplot of CFIS points in the dense area
+plt.figure(figsize=(10, 10))
+cfis_dense_area = all_cfis_points[all_cfis_points[:, 1] > -94]
+plt.scatter(cfis_dense_area[:, 1], cfis_dense_area[:, 2], c=cfis_dense_area[:, 0], cmap=green_cmap, vmin=0, vmax=1)
+plt.xlabel('Longitude')
+plt.ylabel('Latitude')
+plt.title('CFIS points (area)')
+plt.savefig('exploratory_plots/cfis_points_dense.png')
+plt.close()
+
+# Scatterplot of CFIS points in the particular area
+plt.figure(figsize=(10, 10))
+cfis_area = all_cfis_points[(all_cfis_points[:, 1] > LON-eps) & (all_cfis_points[:, 1] < LON+eps) & (all_cfis_points[:, 2] > LAT-eps) & (all_cfis_points[:, 2] < LAT+eps)]
+plt.scatter(cfis_area[:, 1], cfis_area[:, 2], c=cfis_area[:, 0], cmap=green_cmap, vmin=0, vmax=1)
+plt.xlabel('Longitude')
+plt.ylabel('Latitude')
+plt.title('CFIS points (area)')
+plt.savefig('exploratory_plots/' + LAT_LON + '_cfis_points.png')
+plt.close()
+
 
 # Plot TROPOMI vs SIF (and linear regression)
 x = eval_metadata['SIF']  # cfis_points[:, 0]
@@ -199,8 +268,8 @@ print('Correlation', round(corr, 3))
 tile = np.load(IMAGE_FILE)
 array = tile.transpose((1, 2, 0))
 print('Array shape', array.shape)
-plt.imshow(array[:, :, RGB_BANDS] / 1000)
-plt.savefig("exploratory_plots/dataset_rgb_2016.png")
+plt.imshow(array[:, :, RGB_BANDS] / 2000)
+plt.savefig("exploratory_plots/" + LAT_LON + "_rgb.png")
 plt.close()
 
 fig, axeslist = plt.subplots(ncols=6, nrows=8, figsize=(24, 24))
@@ -210,7 +279,7 @@ for band in range(0, 43):
     axeslist.ravel()[band].set_title('Band ' + str(band))
     axeslist.ravel()[band].set_axis_off()
 plt.tight_layout() # optional
-plt.savefig('exploratory_plots/dataset_' + LAT_LON +'.png')
+plt.savefig('exploratory_plots/' + LAT_LON +'_all_bands.png')
 plt.close()
 
 

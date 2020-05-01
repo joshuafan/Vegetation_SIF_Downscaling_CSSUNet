@@ -28,6 +28,8 @@ def plot_histogram(column, plot_filename):
     print('Number of datapoints:', len(column))
     print('Mean:', round(np.mean(column), 4))
     print('Std:', round(np.std(column), 4))
+    print('Max:', round(np.max(column), 4))
+    print('Min:', round(np.min(column), 4))
     n, bins, patches = plt.hist(column, 20, facecolor='blue', alpha=0.5)
     plt.savefig('exploratory_plots/' + plot_filename)
     plt.close()

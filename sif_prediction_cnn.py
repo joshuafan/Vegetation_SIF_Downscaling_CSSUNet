@@ -15,6 +15,7 @@ import time
 import torch
 import torchvision
 import torchvision.transforms as transforms
+import resnet
 import small_resnet
 import simple_cnn
 import torch.nn as nn
@@ -28,19 +29,19 @@ from tile2vec.src.tilenet import make_tilenet
 
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-08-01")
+DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-07-17")
 INFO_FILE_TRAIN = os.path.join(DATASET_DIR, "tile_info_train.csv")
 INFO_FILE_VAL = os.path.join(DATASET_DIR, "tile_info_val.csv")
-TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/test_small_tile_resnet")
-LOSS_PLOT_FILE = "exploratory_plots/losses_test_small_tile_resnet.png"
+TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/test_large_tile_simple")
+LOSS_PLOT_FILE = "exploratory_plots/losses_test_small_tile_simple.png"
 BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
-FROM_PRETRAINED = False
+FROM_PRETRAINED = True
 RGB_BANDS = [1, 2, 3]
 NUM_EPOCHS = 50
 INPUT_CHANNELS = 43
-LEARNING_RATE = 1e-3  # 0.00001  # 1e-3
+LEARNING_RATE = 1e-4 # 0.00001  # 1e-3
 WEIGHT_DECAY = 0  # 1e-8
-BATCH_SIZE = 8
+BATCH_SIZE = 32
 NUM_WORKERS = 4
 
 # Visualize images (RGB bands only)
@@ -90,6 +91,7 @@ def train_model(model, dataloaders, dataset_sizes, criterion, optimizer, device,
             running_loss = 0.0
 
             # Iterate over data.
+            j = 0
             for sample in dataloaders[phase]:
                 #print("Tile shape", sample['tile'].shape)
 
@@ -134,12 +136,13 @@ def train_model(model, dataloaders, dataset_sizes, criterion, optimizer, device,
                 # statistics
                 with torch.set_grad_enabled(False):
                     predicted_sif_non_standardized = torch.tensor(predicted_sif_standardized * sif_std + sif_mean, dtype=torch.float).to(device)
-                    #print('========================')
-                    #print('Predicted', predicted_sif_non_standardized)
-                    #print('True', true_sif_non_standardized)
-                    #print('len SIF', len(sample['SIF']))
                     non_standardized_loss = criterion(predicted_sif_non_standardized, true_sif_non_standardized)
-                    print('batch loss', (math.sqrt(non_standardized_loss.item()) / sif_mean).item())
+                    j += 1
+                    if j % 100 == 0:
+                        print('========================')
+                        print('Predicted', predicted_sif_non_standardized)
+                        print('True', true_sif_non_standardized)
+                        print('batch loss', (math.sqrt(non_standardized_loss.item()) / sif_mean).item())
                     running_loss += non_standardized_loss.item() * len(sample['SIF'])
 
             epoch_loss = math.sqrt(running_loss / dataset_sizes[phase]) / sif_mean
@@ -207,7 +210,7 @@ sif_std = train_stds[-1]
 
 # Set up image transforms
 transform_list = []
-#transform_list.append(tile_transforms.ShrinkTile())
+transform_list.append(tile_transforms.ShrinkTile())
 transform_list.append(tile_transforms.StandardizeTile(band_means, band_stds))
 transform = transforms.Compose(transform_list)
 
@@ -221,8 +224,8 @@ dataloaders = {x: torch.utils.data.DataLoader(datasets[x], batch_size=BATCH_SIZE
               for x in ['train', 'val']}
 
 print("Dataloaders")
-# resnet_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, output_dim=1)
-resnet_model = small_resnet.resnet18(input_channels=INPUT_CHANNELS)
+resnet_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, output_dim=1)
+# resnet_model = resnet.resnet18(input_channels=INPUT_CHANNELS)
 # resnet_model = make_tilenet(in_channels=INPUT_CHANNELS, z_dim=1)  #.to(device)
 if FROM_PRETRAINED:
     resnet_model.load_state_dict(torch.load(TRAINED_MODEL_FILE))

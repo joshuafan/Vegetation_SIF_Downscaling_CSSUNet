@@ -20,7 +20,7 @@ import xarray as xr
 import matplotlib.pyplot as plt
 from sif_utils import lat_long_to_index, plot_histogram
 
-DATE = "2016-08-01"
+DATE = "2016-07-17"
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
 TILES_DIR = os.path.join(DATA_DIR, "tiles_" + DATE)
 SUBTILES_DIR = os.path.join(DATA_DIR, "subtiles_" + DATE)  # Directory to output subtiles to
@@ -35,14 +35,14 @@ if not os.path.exists(DATASET_DIR):
 OUTPUT_CSV_FILE = os.path.join(DATASET_DIR, "eval_subtiles.csv")
 TILE_AVERAGE_CSV_FILE = os.path.join(DATASET_DIR, "eval_large_tile_averages.csv")
 SUBTILE_AVERAGE_CSV_FILE = os.path.join(DATASET_DIR, "eval_subtile_averages.csv")
-CFIS_FILE = os.path.join(DATA_DIR, "CFIS/CFIS_201608a_300m.npy")
-headers = ["lat", "lon", "SIF", "tile_file", "subtile_file"]
+CFIS_FILE = os.path.join(DATA_DIR, "CFIS/CFIS_201608a_300m_soundings.npy")
+headers = ["lat", "lon", "SIF", "tile_file", "subtile_file", "num_soundings"]
 csv_rows = [headers]
 TILE_SIZE_DEGREES = 0.1
 SUBTILE_SIZE_PIXELS = 10
 MAX_FRACTION_MISSING = 0.1  # If more than this fraction of reflectance pixels is missing, ignore the data point
 MIN_SIF = 0.2
-
+MIN_SOUNDINGS = 100
 column_names = ['lat', 'lon', 'ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
                     'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg', 
                     'grassland_pasture', 'corn', 'soybean', 'shrubland',
@@ -57,10 +57,18 @@ column_names = ['lat', 'lon', 'ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_
 tile_averages = [column_names]
 subtile_averages = [column_names]
 
-
 # Each row is a datapoint. First column is the dc_sif. Second/third columns lon/lat of the grid center.
 validation_points = np.load(CFIS_FILE)
 print("Validation points shape", validation_points.shape)
+
+plot_histogram(validation_points[:, 3], "cfis_soundings.png")
+print('Total points', validation_points.shape[0])
+print('More than 100 soundings', validation_points[validation_points[:, 3] >= 100].shape[0])
+print('More than 200 soundings', validation_points[validation_points[:, 3] >= 200].shape[0])
+print('More than 500 soundings', validation_points[validation_points[:, 3] >= 500].shape[0])
+
+
+
 
 
 # Scatterplot of CFIS points
@@ -87,6 +95,9 @@ for i in range(validation_points.shape[0]):
     if math.isnan(sif):
         continue
     if sif < MIN_SIF:
+        continue
+    num_soundings = validation_points[i, 3]
+    if num_soundings < MIN_SOUNDINGS:
         continue
 
     #sif *= 1.52  # TROPOMI SIF is roughly 1.52 times CFIS SIF
@@ -146,7 +157,7 @@ for i in range(validation_points.shape[0]):
     # We're constructing 3 datasets. "csv_rows" contains the filename of the surrounding large
     # tile and the subtile. "tile_averages" contains the band averages of the surrounding large
     # tile. "subtile_averages" contains the band averages of the subtile.
-    csv_rows.append([point_lat, point_lon, sif, large_tile_filename, subtile_filename])
+    csv_rows.append([point_lat, point_lon, sif, large_tile_filename, subtile_filename, num_soundings])
     tile_averages.append([point_lat, point_lon] + np.nanmean(large_tile, axis=(1,2)).tolist() + [sif])
     subtile_averages.append([point_lat, point_lon] + np.nanmean(subtile, axis=(1,2)).tolist() + [sif])
     sifs.append(sif)

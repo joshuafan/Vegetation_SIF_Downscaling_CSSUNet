@@ -27,23 +27,36 @@ from embedding_to_sif_nonlinear_model import EmbeddingToSIFNonlinearModel
 import tile_transforms
 
 
+
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-EVAL_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2016-08-01")
-TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-08-01")
+EVAL_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2016-07-17")
+TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-07-17")
 EVAL_FILE = os.path.join(EVAL_DATASET_DIR, "eval_subtiles.csv") 
 BAND_STATISTICS_FILE = os.path.join(TRAIN_DATASET_DIR, "band_statistics_train.csv")
-TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_dim512_neighborhood100/TileNet.ckpt")
+TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_recon/TileNet.ckpt")
 # TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_dim512_neighborhood100/finetuned_tile2vec.ckpt"
 
 EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/avg_embedding_to_sif")
 # EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/finetuned_embedding_to_sif.ckpt")
 
-TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_eval_subtile_avg_subtile.png'
+METHOD = "avg_embedding"
+TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_eval_subtile_' + METHOD
 # TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_eval_subtile_finetuned_tile2vec.ping'
 
-Z_DIM = 43 # 512
+COLUMN_NAMES = ['predicted','true',
+                    'grassland_pasture', 'corn', 'soybean', 'shrubland',
+                    'deciduous_forest', 'evergreen_forest', 'spring_wheat', 'developed_open_space',
+                    'other_hay_non_alfalfa', 'winter_wheat', 'herbaceous_wetlands',
+                    'woody_wetlands', 'open_water', 'alfalfa', 'fallow_idle_cropland',
+                    'sorghum', 'developed_low_intensity', 'barren', 'durum_wheat',
+                    'canola', 'sunflower', 'dry_beans', 'developed_med_intensity',
+                    'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
+                    'lentils']
+RESULTS_CSV_FILE = os.path.join(EVAL_DATASET_DIR, 'results_' + METHOD + '.csv')
+Z_DIM = 43
 HIDDEN_DIM = 1024
 INPUT_CHANNELS = 43
+COVER_INDICES = list(range(12, 42))
 EMBEDDING_TYPE = 'average'  # average'  # 'tile2vec'  # average'  # 'tile2vec'
 
 eval_points = pd.read_csv(EVAL_FILE)
@@ -55,9 +68,9 @@ def eval_model(tile2vec_model, embedding_to_sif_model, dataloader, dataset_size,
     embedding_to_sif_model.eval()
     sif_mean = torch.tensor(sif_mean).to(device)
     sif_std = torch.tensor(sif_std).to(device)
-    predicted = []
-    true = []
+    results = np.zeros((dataset_size, 2+len(COVER_INDICES)))
     running_loss = 0.0
+    j = 0
 
     # Iterate over data.
     for sample in dataloader:
@@ -84,10 +97,16 @@ def eval_model(tile2vec_model, embedding_to_sif_model, dataloader, dataset_size,
         loss = criterion(predicted_sif_non_standardized, true_sif_non_standardized)
 
         # statistics
-        running_loss += loss.item() * len(sample['SIF'])
-        predicted += predicted_sif_non_standardized.tolist()
-        true += true_sif_non_standardized.tolist()
-    return predicted, true
+        batch_size = len(sample['SIF'])
+        running_loss += loss.item() * batch_size
+        band_means = torch.mean(input_tile_standardized[:, COVER_INDICES, :, :], dim=(2,3))
+        results[j:j+batch_size, 0] = predicted_sif_non_standardized.numpy()
+        results[j:j+batch_size, 1] = true_sif_non_standardized.numpy()
+        results[j:j+batch_size, 2:] = band_means
+        j += batch_size
+        #if j > 50:
+        #    break
+    return results
 
 
 # Check if any CUDA devices are visible. If so, pick a default visible device.
@@ -140,7 +159,13 @@ embedding_to_sif_model.load_state_dict(torch.load(EMBEDDING_TO_SIF_MODEL_FILE, m
 criterion = nn.MSELoss(reduction='mean')
 
 # Evaluate the model
-predicted, true = eval_model(tile2vec_model, embedding_to_sif_model, dataloader, dataset_size, criterion, device, sif_mean, sif_std)
+results_numpy = eval_model(tile2vec_model, embedding_to_sif_model, dataloader, dataset_size, criterion, device, sif_mean, sif_std)
+results_df = pd.DataFrame(results_numpy, columns=COLUMN_NAMES)
+
+results_df.to_csv(RESULTS_CSV_FILE)
+
+predicted = results_df['predicted'].tolist()
+true = results_df['true'].tolist()
 print('Predicted', predicted[0:50])
 print('True', true[0:50])
 
@@ -154,6 +179,20 @@ print("Pearson's correlation coefficient:", round(corr, 3))
 plt.scatter(true, predicted)
 plt.xlabel('True')
 plt.ylabel('Predicted')
-plt.title('Subtile prediction with Tile2Vec')
-plt.savefig(TRUE_VS_PREDICTED_PLOT)
+plt.title('True vs predicted SIF (CFIS):' + METHOD)
+plt.savefig(TRUE_VS_PREDICTED_PLOT + '.png')
 plt.close()
+
+for crop_type in COLUMN_NAMES[2:]:
+    crop_rows = results_df.loc[results_df[crop_type] > 0.5]
+    print(len(crop_rows), 'subtiles that are majority', crop_type)
+
+    # Scatter plot of true vs predicted
+    plt.scatter(crop_rows['true'], crop_rows['predicted'])
+    plt.xlabel('True')
+    plt.ylabel('Predicted')
+    plt.title('True vs predicted SIF (CFIS, pure ' + crop_type + '): ' + METHOD)
+    plt.savefig(TRUE_VS_PREDICTED_PLOT + '_' + crop_type + '.png')
+    plt.close()
+
+

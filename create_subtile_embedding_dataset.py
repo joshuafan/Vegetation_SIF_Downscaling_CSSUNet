@@ -39,26 +39,27 @@ from embedding_to_sif_model import EmbeddingToSIFModel
 
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-START_DATE = "2018-08-01"
+START_DATE = "2018-07-17"
 DATASET_DIR = os.path.join(DATA_DIR, "dataset_" + START_DATE)
 INFO_FILE_TRAIN = os.path.join(DATASET_DIR, "tile_info_train.csv")
 INFO_FILE_VAL = os.path.join(DATASET_DIR, "tile_info_val.csv")
 BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
-SUBTILE_EMBEDDING_FILE_TRAIN = os.path.join(DATASET_DIR, "avg_embeddings_train.csv")
-SUBTILE_EMBEDDING_FILE_VAL = os.path.join(DATASET_DIR, "avg_embeddings_val.csv")
-EMBEDDING_FILE_SUFFIX = '_avg_embeddings.npy'
-TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_dim512_neighborhood100/TileNet.ckpt")
+SUBTILE_EMBEDDING_FILE_TRAIN = os.path.join(DATASET_DIR, "tile2vec_embeddings_train.csv")
+SUBTILE_EMBEDDING_FILE_VAL = os.path.join(DATASET_DIR, "tile2vec_embeddings_val.csv")
+EMBEDDING_FILE_SUFFIX = '_tile2vec_embeddings.npy'
+TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_recon_no_bn/TileNet.ckpt")
 
 # If EMBEDDING_TYPE is 'average', the embedding is just the average of each band.
 # If it is 'tile2vec', we use the Tile2Vec model 
-EMBEDDING_TYPE ='average' # 'tile2vec'
+EMBEDDING_TYPE ='tile2vec' # 'tile2vec'
 # TRAINING_PLOT_FILE = 'exploratory_plots/tile2vec_subtile_sif_prediction.png'
 SUBTILE_DIM = 10
-Z_DIM = 512
+Z_DIM = 256
 INPUT_CHANNELS = 43
 
 
-# 
+# For each tile returned by the dataloader, obtain a list of embeddings for each subtile. Save
+# it to a .npy file.
 def compute_subtile_embeddings_to_sif_dataset(tile2vec_model, dataloader, subtile_dim, device):
     if tile2vec_model is not None:
         tile2vec_model.eval()
@@ -119,7 +120,7 @@ dataloaders = {x: torch.utils.data.DataLoader(datasets[x], batch_size=2,
                    for x in ['train', 'val']}
 
 # Load pre-trained Tile2Vec embedding model
-tile2vec_model = make_tilenet(in_channels=INPUT_CHANNELS, z_dim=Z_DIM)
+tile2vec_model = make_tilenet(in_channels=INPUT_CHANNELS, z_dim=Z_DIM).to(device)
 tile2vec_model.load_state_dict(torch.load(TILE2VEC_MODEL_FILE, map_location=device))
 #tile2vec_model = None
 print('loaded tile2vec')

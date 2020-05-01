@@ -12,14 +12,14 @@ import torchvision.transforms as transforms
 from eval_subtile_dataset import EvalSubtileDataset
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-EVAL_SUBTILE_DATASET_FILE = os.path.join(DATA_DIR, "dataset_2016-08-01/eval_subtiles.csv")
-TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_dim256_rgb/TileNet.ckpt")  #"models/tile2vec_dim512_neighborhood100/TileNet.ckpt")
-TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-08-01")
+EVAL_SUBTILE_DATASET_FILE = os.path.join(DATA_DIR, "dataset_2016-07-17/eval_subtiles.csv")
+TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_recon_no_bn/TileNet.ckpt")  #"models/tile2vec_dim512_neighborhood100/TileNet.ckpt")
+TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-07-17")
 BAND_STATISTICS_FILE = os.path.join(TRAIN_DATASET_DIR, "band_statistics_train.csv")
 
 eval_metadata = pd.read_csv(EVAL_SUBTILE_DATASET_FILE)
-Z_DIM = 256  #512
-INPUT_CHANNELS = 3 # 43
+Z_DIM = 256  # 256  #512
+INPUT_CHANNELS = 43
 RGB_BANDS = [3, 2, 1]
 COVER_BANDS = list(range(12, 42))
 BATCH_SIZE = 4
@@ -58,20 +58,20 @@ dataloader = torch.utils.data.DataLoader(dataset, batch_size=BATCH_SIZE,
 # Load Tile2Vec model
 tile2vec_model = make_tilenet(in_channels=INPUT_CHANNELS, z_dim=Z_DIM)
 tile2vec_model.load_state_dict(torch.load(TILE2VEC_MODEL_FILE, map_location=device))
-
+tile2vec_model.eval()
 # Calculate all subtile embeddings
-subtile_embeddings = np.zeros((2000, Z_DIM))  # (len(eval_dataset)z_dim))
+subtile_embeddings = np.zeros((len(eval_metadata), INPUT_CHANNELS)) #Z_DIM))
 i = 0
 for sample in dataloader:
-    input_tile_standardized = sample['subtile'][:, RGB_BANDS, :, :].to(device)
+    input_tile_standardized = sample['subtile'].to(device)
     print('Input tile standardized dims', input_tile_standardized.shape)
 
     batch = input_tile_standardized.shape[0]
     with torch.set_grad_enabled(False):
-        subtile_embeddings[i:i+batch] = tile2vec_model(input_tile_standardized)
+        subtile_embeddings[i:i+batch] = torch.mean(input_tile_standardized, dim=(2, 3))  # tile2vec_model(input_tile_standardized)
     i += batch
-    if i >= 2000:
-        break
+    #if i >= 2000:
+    #    break
 
 # Loads tile from file and transforms it into the format that imshow wants
 def tile_to_image(tile):

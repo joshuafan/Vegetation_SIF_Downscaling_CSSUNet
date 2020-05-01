@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, r2_score
-from scipy.stats import pearsonr
+from scipy.stats import pearsonr, spearmanr
 from torch.optim import lr_scheduler
 from eval_subtile_dataset import EvalSubtileDataset
 import time
@@ -26,11 +26,11 @@ import tile_transforms
 
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-EVAL_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2016-08-01")
+EVAL_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2016-07-17")
 TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-07-17")
-EVAL_FILE = os.path.join(EVAL_DATASET_DIR, "filtered_eval_subtiles.csv") 
+EVAL_FILE = os.path.join(EVAL_DATASET_DIR, "eval_subtiles.csv") 
 BAND_STATISTICS_FILE = os.path.join(TRAIN_DATASET_DIR, "band_statistics_train.csv")
-SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_2")
+SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_6")  # "models/subtile_sif_simple_cnn_4")
 TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_eval_subtile_simple_cnn.png'
 
 INPUT_CHANNELS = 43
@@ -101,7 +101,7 @@ dataset = EvalSubtileDataset(eval_metadata, transform=transform)
 dataloader = torch.utils.data.DataLoader(dataset, batch_size=4,
                                          shuffle=True, num_workers=4)
 
-subtile_sif_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, output_dim=1).to(device)
+subtile_sif_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, reduced_channels=20, output_dim=1).to(device)
 subtile_sif_model.load_state_dict(torch.load(SUBTILE_SIF_MODEL_FILE, map_location=device))
 
 criterion = nn.MSELoss(reduction='mean')
@@ -115,7 +115,7 @@ print('True', true[0:50])
 nrmse = math.sqrt(mean_squared_error(predicted, true)) / sif_mean
 corr, _ = pearsonr(predicted, true)
 print('NRMSE:', round(nrmse, 3))
-print("Pearson's correlation coefficient:", round(corr, 3))
+print("Pearson correlation coefficient:", round(corr, 3))
 
 # Scatter plot of true vs predicted
 plt.scatter(true, predicted)

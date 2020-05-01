@@ -24,15 +24,18 @@
 #DOCUMENT_IDS=("1xgaEwFaUe_mQAbq_NXua0_RjoNo0-qpj" "1mE7JggzWMZSqSIr5v0r3xucKZn2OwAf8" "196d_4jnvht8Kqy0CG7z8nkrry1OM2XOV" "1KyNf9bQa3WpSZtgM41en82nYPfmAhouN" "1Xncl3uy92r5qgurgJWxmFbHXzxyV3jm2" "1XhWsgYiAxkpnuiwnNrn0cH4ndpMlmEVr" "1I0Hq5iFlGST596ofiWIeFw5askW_m7Sa" "1RzXKVokf9xaQTByiOUd4S5iEbhUKiYAr" "1W1B_MbbRE1uCqBaPDXmLX8YoQevZEnw-" "1fTQ0NxfSDonfxqkk6dPf2DrVZ7suqFVN" "10Ve8DO9WxCBDgQJXV0HBhQIbyzsK67Q5" "1Ybc_cY2BxvG-zMrdAYtvC6z4qgVvJ-pT")
 
 # 2016-07-17
-DOCUMENT_IDS=("1VE7ZRvbTMA3ZKFDwTOprkys5ZK8Gh3F8" "1H0jKkDhENC_WNPbHCSmhkl87IJlALWet" "1i2XC0gXRxudF5bFU9YjwJ-o7kUraoArj" "1-_pjIXEnKo0VtduAr2Mp06vkDQk1aCrM" "1c2tbZDWOhVQ3X5vs1jRh1h-L3CVb-Bj-" "11EPC7Nf0F0fNu6p-zBm4OUYZvKJG2c6G" "1j627_U3NHqS94fxWq4c-sLY78taeZstO" "1NHK-avHlHELimWpkkTeLwfPKixlrZnre" "1DMKq1KGvu_ksM83VwyRwNfILAhtlcH5g" "1Wk9kQymOPo7p_-426zPPDc79xAq4VGsS" "11se21tXGt-13dBBP6Gp-u4JOmXpKAZQr" "1D7YH1rmmOZSNhtsXK3T56I5bP_0WIKTP")
-
-# 2016-07-17
-#DOCUMENT_IDS=("1FRlvgpRx4pHUS8iY7S2wxwrV0C9vQE5O" "1HnlE6_k6wOHPwSQOj1VS0GTixOu_3APq" "180RKC0N4JTxmQtwMYNhPpADHEG90kotK" "1FM4uJrjQlLCQQV2lB3nH9kxysa7-qEZl" "1QGHuix4rfdaVNohDAsoqFlME-Jn2_46g" "1mHAZQQU2ns7g4Dm8A1VCxafnuyjFeBDr" "105yzZ1_3tE6TlrJId2X-qa8V2ReKV6fY" "1gysoePbjMb6yW6ZtdGVmvDCkGuBvIzsR" "1ysvrNs2cw2RD2cwZo_j0ui_magg141Sw" "1vojRgI5cJpVj56e_vc3vQrQZcNs3LhLz" "1evIJzb1DkYOM55IUGzuQI-oJ4bXEO8Ns" "18HkT1gTlvmEHhFwNY7E_5JsD8x8pFXKV")
+#DOCUMENT_IDS=("1D8giJEBymHHpjKotc_tqaL08eMaUD_eB" "1e4k80762WlCXnEUXyUiDdX76sj7LN7Qk" "1WObDxI_pJRCPapUB1wApvYgdtB5qyLhX" "1aQ95Xnz0KAIrebXM4AHCs7Xy1vhN_wUC" "1qlyHlisc0zvS-6zRnOA_fSqPxbwq6Xwy" "1IJHa-CPO3Jt7munxtm4YPpkhoa3ubbpC" "1fAD_z8bLeXlIk2RXcDM_lpBRyDYgFmEe" "1ruVnOmKFd6PpV1mA5u7DN_aTPvi-h_op" "1uVhcUEQeQzVIC16IaYzXLjXUKmLhwcuV" "1Y0cjQYAFdpIXVArOUtKeXiZEk6AHWAM_" "1q-a_GHQY3tr_BHZbIRQ9asJUKcIUmxg6" "1jKiRqU0x0Kvs5T3yh-PT7cNXbsjomGmP")
 
 # 2018-07-17
 #DOCUMENT_IDS=("13C-SmkZrH8qnizsqi0tXXBHhQtQJlkyF" "1W7riQ7jIerB4wp4fEWoUnWQuoS8XXoQD" "1qDjWWvEzV6x4tH-pDkykAv54Sa7QFeO9" "1jPNEVGQLK1gjDU5Uzl_dnAAvFOzApypa" "1TyxJqcxo22H_Fv_OmQZ1Go_AWXUK4B_h" "18PIhxxHUUDKXs84kQshodGdwx53B5_5S" "1M4Hp1gOJhYG_Yzza8z1-Efu0fZkMsnEX" "1hXq3G6DNDcHtts6TLjiLHXJPhcQ1eSXi" "1EGxLc56PyDu5Hpp6MqiwXDeSfF_gRNU0" "1EVFwDYq9YFHFrSpf2tPjE7A-Fs75o-Q_" "1mgf0iCmVDcBw1CM2TxzhGR1kzyaAag3o" "1eRd8KWUndXSnIal3aJmYKQrfFOpJ6U4b")
 
-DOWNLOAD_FOLDER="/mnt/beegfs/bulk/mirror/jyf6/datasets/LandsatReflectance/test_2016-07-17"
+# 2016-07-16
+#DOCUMENT_IDS=("1YHGlcqnyXpwxLVwhftl0sVbEO0QP-_xF" "18fPUfmPSL3M5lbA76QhiNGIzdAHm5yjS" "1gMGpdD95JSzBHIza_lj3f4EvoMDKZ2zZ" "1u4dp_TGxxcjvIRZ2KlJJIAN6hsftFvHT" "1mJL9xFhN6Qcl6V3kOkLQZioiYvo-hLPH" "15dorDHIU1deOsvz7_Gftp9lCeOhTv4lO" "1PLihGzpgCWv7niAWteBQdVW3o5zrVlzn" "1KlSJL8x4y0tvS0UpimgTkiQ2xp6gtP8I" "1ABALsgTLCrxtB9ENNmTErpyZb9tbi3AF" "1zAgmXYgzIAnXVXVJt2Zl9hUBr_MWC4Cd" "1EAu6uPl2EBYHx65BGFdOuU2fFhZw-3mC" "19b-0MOu95eimE3shZPlKPeDcwYgkamH4")
+
+# 2018-07-16
+DOCUMENT_IDS=("1kXGHW6CM2P6dKKYO44Sq26LhtVnrosbr" "1wzUzSmMV_SVGs9tfrxYAm9wEef8OmNDh" "1o2eAqpSs_6Sa4ItY-a1wp_5lVwtIC9K_" "1L-4UsCrPjqZ1CQfNfhOnGAJh8uMBdLhj" "1TPamt9cB0b6to0COIADDpzooME90Krns" "1djuMEJ5N7qNt52pIGX_rzU4gHzuh3da1" "14Zdlsg3c61Gjg4YbwB27lJiP8USmJhXz" "19oMpn_4zbAD-b1kfcfU2EqDlOSmehOwG" "12CP5HFb6aTf5makt_nAylGIuTyvn8Cr0" "1fjojFowriteUSuRjl7jDHCZoJvhTd_gF" "15YlzncAruTd2xudjpU6nEAYUaVjvKZrk" "1ofXMjlclJCTulFM7IDL0MWUhVBC7EAjP")
+
+DOWNLOAD_FOLDER="/mnt/beegfs/bulk/mirror/jyf6/datasets/LandsatReflectance/2018-07-16"
 
 mkdir ./tmp
 mkdir ${DOWNLOAD_FOLDER}
@@ -40,10 +43,10 @@ mkdir ${DOWNLOAD_FOLDER}
 for i in ${!DOCUMENT_IDS[@]}; do
   x=$((${i} / 4))
   y=$((${i} % 4))
-  FINAL_DOWNLOADED_FILENAME="${DOWNLOAD_FOLDER}/corn_belt_reflectance_2016-07-17_box_${x}_${y}.tif"
-  curl -sc ./tmp/cookie "https://drive.google.com/open?export=download&id=${DOCUMENT_IDS[${i}]}" > /dev/null
+  FINAL_DOWNLOADED_FILENAME="${DOWNLOAD_FOLDER}/corn_belt_reflectance_2018-07-16_box_${x}_${y}.tif"
+  curl -sc ./tmp/cookie "https://drive.google.com/uc?export=download&id=${DOCUMENT_IDS[${i}]}" > /dev/null
   code="$(awk '/_warning_/ {print $NF}' ./tmp/cookie)"  
-  curl -Lb ./tmp/cookie "https://drive.google.com/open?export=download&confirm=${code}&id=${DOCUMENT_IDS[${i}]}" -o ${FINAL_DOWNLOADED_FILENAME}
+  curl -Lb ./tmp/cookie "https://drive.google.com/uc?export=download&confirm=${code}&id=${DOCUMENT_IDS[${i}]}" -o ${FINAL_DOWNLOADED_FILENAME}
 
   #wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=${DOCUMENT_IDS[${i}]}' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=${DOCUMENT_IDS[${i}]}" -O ${FINAL_DOWNLOADED_FILENAME} && rm -rf /tmp/cookies.txt
   #curl -c ./tmp/cookies "https://drive.google.com/uc?export=download&id=${DOCUMENT_IDS[${i}]}" > "./tmp/intermezzo_${i}"
