@@ -22,6 +22,7 @@ import torch.nn as nn
 import torch.optim as optim
 
 from reflectance_cover_sif_dataset import ReflectanceCoverSIFDataset
+from sif_utils import train_single_model
 import tile_transforms
 import sys
 sys.path.append('../')
@@ -36,13 +37,13 @@ TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/large_tile_resnet50")
 LOSS_PLOT_FILE = "exploratory_plots/losses_large_tile_resnet50.png"
 BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
 FROM_PRETRAINED = False  # True
-RGB_BANDS = [1, 2, 3]
 NUM_EPOCHS = 50
 INPUT_CHANNELS = 43
 LEARNING_RATE = 1e-4 # 0.01 # 1e-5 # 0.00001  # 1e-3
 WEIGHT_DECAY = 0  # 1e-8
 BATCH_SIZE = 32
 NUM_WORKERS = 4
+RGB_BANDS = [1, 2, 3]
 
 # Visualize images (RGB bands only)
 # Image is assumed to be standardized. You need to pass in band_means and band_stds
@@ -65,7 +66,7 @@ def imshow(tile, band_means, band_stds):
 # Train CNN to predict total SIF of tile.
 # "model" should take in a (standardized) tile (with dimensions CxWxH), and output standardized SIF.
 # "dataloader" should return, for each training example: 'tile' (standardized CxWxH tile), and 'SIF' (non-standardized SIF) 
-def train_model(model, dataloaders, dataset_sizes, criterion, optimizer, device, sif_mean, sif_std, MODEL_FILE, num_epochs=25):
+def OLD_train_model(model, dataloaders, dataset_sizes, criterion, optimizer, device, sif_mean, sif_std, MODEL_FILE, num_epochs=25):
     since = time.time()
 
     best_model_wts = copy.deepcopy(model.state_dict())
@@ -243,7 +244,7 @@ dataset_sizes = {'train': len(train_metadata),
 
 # Train model
 print("Starting to train")
-resnet_model, train_losses, val_losses, best_loss = train_model(resnet_model, dataloaders,
+resnet_model, train_losses, val_losses, best_loss = train_single_model(resnet_model, dataloaders,
     dataset_sizes, criterion, optimizer, device, sif_mean, sif_std, TRAINED_MODEL_FILE,
     num_epochs=NUM_EPOCHS)
 
