@@ -122,7 +122,7 @@ class Bottleneck(nn.Module):
 
 class ResNet(nn.Module):
 
-    def __init__(self, block, layers, input_channels, output_dim=1, zero_init_residual=False,
+    def __init__(self, block, layers, input_channels, reduced_channels=20, output_dim=1, zero_init_residual=False,
                  groups=1, width_per_group=64, replace_stride_with_dilation=None,
                  norm_layer=None):
         super(ResNet, self).__init__()
@@ -141,7 +141,8 @@ class ResNet(nn.Module):
                              "or a 3-element tuple, got {}".format(replace_stride_with_dilation))
         self.groups = groups
         self.base_width = width_per_group
-        self.conv1 = nn.Conv2d(input_channels, self.inplanes, kernel_size=7, stride=2, padding=3,
+        self.dim_red = nn.Conv2d(input_channels, reduced_channels, kernel_size=1, stride=1, padding=0, bias=True)
+        self.conv1 = nn.Conv2d(reduced_channels, self.inplanes, kernel_size=7, stride=2, padding=3,
                                bias=False)
         self.bn1 = norm_layer(self.inplanes)
         self.relu = nn.ReLU(inplace=True)
@@ -199,21 +200,22 @@ class ResNet(nn.Module):
 
     def _forward_impl(self, x):
         # See note [TorchScript super()]
+        x = self.dim_red(x)
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
         x = self.maxpool(x)
-        print('before layer1', x.shape)
+        #print('before layer1', x.shape)
         x = self.layer1(x)
-        print('after layer1', x.shape)
+        #print('after layer1', x.shape)
         x = self.layer2(x)
-        print('after layer2', x.shape)
+        #print('after layer2', x.shape)
         x = self.layer3(x)
-        print('after layer3', x.shape)
+        #print('after layer3', x.shape)
         x = self.layer4(x)
-        print('after layer4', x.shape)
+        #print('after layer4', x.shape)
         x = self.avgpool(x)
-        print('after avgpool', x.shape)
+        #print('after avgpool', x.shape)
         x = torch.flatten(x, 1)
         x = self.fc(x)
 

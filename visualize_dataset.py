@@ -12,7 +12,7 @@ from sklearn.metrics import mean_squared_error, r2_score
 from scipy.stats import pearsonr
 from numpy import poly1d
 
-from sif_utils import plot_histogram, get_subtiles_list
+from sif_utils import lat_long_to_index, plot_histogram, get_subtiles_list
 import simple_cnn
 import tile_transforms
 
@@ -60,10 +60,11 @@ ALL_TILE_DATASET = os.path.join(TRAIN_DATASET_DIR, "reflectance_cover_to_sif.csv
 
 
 TILES_DIR = os.path.join(DATA_DIR, "tiles_2016-07-17")
-LAT = 42.45
-LON = -93.85
+LAT = 42.65
+LON = -93.35
 LAT_LON = 'lat_' + str(LAT) + '_lon_' + str(LON)
-eps = 0.05
+TILE_DEGREES = 0.1
+eps = TILE_DEGREES / 2
 IMAGE_FILE = os.path.join(TILES_DIR, "reflectance_" + LAT_LON + ".npy")
 CFIS_SIF_FILE = os.path.join(DATA_DIR, "CFIS/CFIS_201608a_300m.npy")
 TROPOMI_SIF_FILE = os.path.join(DATA_DIR, "TROPOMI_SIF/TROPO-SIF_01deg_biweekly_Apr18-Jan20.nc")
@@ -136,7 +137,7 @@ predicted_sifs_linear = linear_regression.predict(subtile_averages).reshape((37,
 print('Predicted sifs linear', predicted_sifs_linear)
 
 # Plot map of linear_regression's subtile SIF predictions
-plt.imshow(predicted_sifs_linear, cmap='Greens', vmin=0, vmax=1)
+plt.imshow(predicted_sifs_linear, cmap='Greens', vmin=0, vmax=1.5)
 plt.savefig("exploratory_plots/" + LAT_LON + "_subtile_sif_map_linear.png")
 plt.close()
 
@@ -154,7 +155,7 @@ print('Predicted SIFs standardized', predicted_sifs_standardized.shape)
 predicted_sifs_non_standardized = (predicted_sifs_standardized * sif_std + sif_mean).reshape((37, 37))
 
 # Plot map of CNN's subtile SIF predictions
-plt.imshow(predicted_sifs_non_standardized, cmap='Greens', vmin=0, vmax=1)
+plt.imshow(predicted_sifs_non_standardized, cmap='Greens', vmin=0, vmax=1.5)
 plt.savefig("exploratory_plots/" + LAT_LON + "_subtile_sif_map_7.png")
 plt.close()
 
@@ -188,9 +189,9 @@ tropomi_array = tropomi_dataset.sif_dc.sel(time=TROPOMI_DATE_RANGE).mean(dim='ti
 # For each CFIS SIF point, find TROPOMI SIF of surrounding tile
 tropomi_sifs = []  # TROPOMI SIF corresponding to each CFIS point
 for i in range(len(eval_metadata)):  # range(cfis_points.shape[0]):
-    lon = eval_metadata['lon'][i]  # cfis_points[i, 1]
-    lat = eval_metadata['lat'][i]  # cfis_points[i, 2]
-    tropomi_sif = tropomi_array.sel(lat=lat, lon=lon, method='nearest')
+    point_lon = eval_metadata['lon'][i]  # cfis_points[i, 1]
+    point_lat = eval_metadata['lat'][i]  # cfis_points[i, 2]
+    tropomi_sif = tropomi_array.sel(lat=point_lat, lon=point_lon, method='nearest')
     tropomi_sifs.append(tropomi_sif)
 
 # Plot histogram of CFIS and TROPOMI SIFs
@@ -208,7 +209,7 @@ print('SIF mean (TROPOMI, train set)', sif_mean)
 # Scatterplot of CFIS points (all)
 green_cmap = plt.get_cmap('Greens')
 plt.figure(figsize=(10, 10))
-plt.scatter(all_cfis_points[:, 1], all_cfis_points[:, 2], c=all_cfis_points[:, 0], cmap=green_cmap, vmin=0, vmax=1)
+plt.scatter(all_cfis_points[:, 1], all_cfis_points[:, 2], c=all_cfis_points[:, 0], cmap=green_cmap, vmin=0, vmax=1.5)
 plt.xlabel('Longitude')
 plt.ylabel('Latitude')
 plt.title('CFIS points (all)')
@@ -217,7 +218,7 @@ plt.close()
 
 # Scatterplot of CFIS points (eval)
 plt.figure(figsize=(10, 10))
-plt.scatter(eval_metadata['lon'], eval_metadata['lat'], c=eval_metadata['SIF'], cmap=green_cmap, vmin=0, vmax=1)
+plt.scatter(eval_metadata['lon'], eval_metadata['lat'], c=eval_metadata['SIF'], cmap=green_cmap, vmin=0, vmax=1.5)
 plt.xlabel('Longitude')
 plt.ylabel('Latitude')
 plt.title('CFIS points (reflectance data available, eval set)')
@@ -227,7 +228,7 @@ plt.close()
 # Scatterplot of CFIS points in the dense area
 plt.figure(figsize=(10, 10))
 cfis_dense_area = all_cfis_points[all_cfis_points[:, 1] > -94]
-plt.scatter(cfis_dense_area[:, 1], cfis_dense_area[:, 2], c=cfis_dense_area[:, 0], cmap=green_cmap, vmin=0, vmax=1)
+plt.scatter(cfis_dense_area[:, 1], cfis_dense_area[:, 2], c=cfis_dense_area[:, 0], cmap=green_cmap, vmin=0, vmax=1.5)
 plt.xlabel('Longitude')
 plt.ylabel('Latitude')
 plt.title('CFIS points (area)')
@@ -237,13 +238,34 @@ plt.close()
 # Scatterplot of CFIS points in the particular area
 plt.figure(figsize=(10, 10))
 cfis_area = all_cfis_points[(all_cfis_points[:, 1] > LON-eps) & (all_cfis_points[:, 1] < LON+eps) & (all_cfis_points[:, 2] > LAT-eps) & (all_cfis_points[:, 2] < LAT+eps)]
-plt.scatter(cfis_area[:, 1], cfis_area[:, 2], c=cfis_area[:, 0], cmap=green_cmap, vmin=0, vmax=1)
+plt.scatter(cfis_area[:, 1], cfis_area[:, 2], c=cfis_area[:, 0], cmap=green_cmap, vmin=0, vmax=1.5)
 plt.xlabel('Longitude')
 plt.ylabel('Latitude')
 plt.title('CFIS points (area)')
 plt.savefig('exploratory_plots/' + LAT_LON + '_cfis_points.png')
 plt.close()
 
+# Convert CFIS into matrix
+cfis_tile = np.zeros_like(predicted_sifs_non_standardized)
+print('CFIS tile shape', cfis_tile.shape)
+top_bound = LAT + eps
+left_bound = LON - eps
+for p in range(cfis_area.shape[0]):
+    res = (TILE_DEGREES / cfis_tile.shape[0], TILE_DEGREES / cfis_tile.shape[1])
+    height_idx, width_idx = lat_long_to_index(cfis_area[p, 2], cfis_area[p, 1], top_bound, left_bound, res)
+    cfis_tile[height_idx, width_idx] = cfis_area[p, 0] * 1.52
+
+plt.imshow(cfis_tile, cmap='Greens', vmin=0, vmax=1.5)
+plt.savefig("exploratory_plots/" + LAT_LON + "_cfis_sifs.png")
+plt.close()
+
+# Compare stats!
+print('===================== Comparing stats ======================')
+print('Ground-truth CFIS SIF for this tile: mean', np.mean(cfis_area[:, 0]), 'std', np.std(cfis_area[:,0]), 'min', np.min(cfis_area[:, 0]), 'max', np.max(cfis_area[:, 0]))
+print('Linear predictions for this tile: mean', np.mean(predicted_sifs_linear), 'std', np.std(predicted_sifs_linear), 'min', np.min(predicted_sifs_linear), 'max', np.max(predicted_sifs_linear))
+print('CNN predictions for this tile: mean', np.mean(predicted_sifs_non_standardized), 'std', np.std(predicted_sifs_non_standardized), 'min', np.min(predicted_sifs_non_standardized), 'max', np.max(predicted_sifs_non_standardized))
+print('TROPOMI SIF for this tile', tropomi_array.sel(lat=LAT, lon=LON, method='nearest'))
+print('============================================================')
 
 # Plot TROPOMI vs SIF (and linear regression)
 x = eval_metadata['SIF']  # cfis_points[:, 0]

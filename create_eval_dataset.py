@@ -20,7 +20,7 @@ import xarray as xr
 import matplotlib.pyplot as plt
 from sif_utils import lat_long_to_index, plot_histogram
 
-DATE = "2016-07-17"
+DATE = "2016-07-16"
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
 TILES_DIR = os.path.join(DATA_DIR, "tiles_" + DATE)
 SUBTILES_DIR = os.path.join(DATA_DIR, "subtiles_" + DATE)  # Directory to output subtiles to

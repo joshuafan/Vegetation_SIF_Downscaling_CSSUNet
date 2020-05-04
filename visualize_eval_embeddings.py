@@ -13,7 +13,7 @@ from eval_subtile_dataset import EvalSubtileDataset
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
 EVAL_SUBTILE_DATASET_FILE = os.path.join(DATA_DIR, "dataset_2016-07-17/eval_subtiles.csv")
-TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_recon_no_bn/TileNet.ckpt")  #"models/tile2vec_dim512_neighborhood100/TileNet.ckpt")
+TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_recon/TileNet.ckpt")  #"models/tile2vec_dim512_neighborhood100/TileNet.ckpt")
 TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-07-17")
 BAND_STATISTICS_FILE = os.path.join(TRAIN_DATASET_DIR, "band_statistics_train.csv")
 
@@ -59,8 +59,9 @@ dataloader = torch.utils.data.DataLoader(dataset, batch_size=BATCH_SIZE,
 tile2vec_model = make_tilenet(in_channels=INPUT_CHANNELS, z_dim=Z_DIM)
 tile2vec_model.load_state_dict(torch.load(TILE2VEC_MODEL_FILE, map_location=device))
 tile2vec_model.eval()
+
 # Calculate all subtile embeddings
-subtile_embeddings = np.zeros((len(eval_metadata), INPUT_CHANNELS)) #Z_DIM))
+subtile_embeddings = np.zeros((len(eval_metadata), Z_DIM)) # INPUT_CHANNELS))
 i = 0
 for sample in dataloader:
     input_tile_standardized = sample['subtile'].to(device)
@@ -68,7 +69,7 @@ for sample in dataloader:
 
     batch = input_tile_standardized.shape[0]
     with torch.set_grad_enabled(False):
-        subtile_embeddings[i:i+batch] = torch.mean(input_tile_standardized, dim=(2, 3))  # tile2vec_model(input_tile_standardized)
+        subtile_embeddings[i:i+batch] = tile2vec_model(input_tile_standardized) # torch.mean(input_tile_standardized[:, :10], dim=(2, 3))  # tile2vec_model(input_tile_standardized)
     i += batch
     #if i >= 2000:
     #    break
@@ -76,7 +77,7 @@ for sample in dataloader:
 # Loads tile from file and transforms it into the format that imshow wants
 def tile_to_image(tile):
     tile = tile.transpose((1, 2, 0))
-    return tile[:, :, RGB_BANDS] / 1000
+    return tile[:, :, RGB_BANDS] / 2000
 
 def get_title_string(image_row):
     return 'Lat' + str(round(image_row['lat'], 6)) + ', Lon' + str(round(image_row['lon'], 6)) + ' (SIF = ' + str(round(image_row['SIF'], 3)) + ')'

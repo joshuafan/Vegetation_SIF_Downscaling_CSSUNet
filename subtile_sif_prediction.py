@@ -33,11 +33,11 @@ INFO_FILE_TRAIN = os.path.join(TRAIN_DATASET_DIR, "tile_info_train.csv")
 INFO_FILE_VAL = os.path.join(TRAIN_DATASET_DIR, "tile_info_val.csv")
 BAND_STATISTICS_FILE = os.path.join(TRAIN_DATASET_DIR, "band_statistics_train.csv")
 
-TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_recon_no_bn/TileNet.ckpt")
+PRETRAINED_TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_recon/TileNet.ckpt")
 #ILE2VEC_MODEL_FILE = "models/tile2vec_dim10_v2/TileNet_epoch50.ckpt"
-FINETUNED_TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_recon_no_bn/finetuned_tile2vec.ckpt")
-PRETRAINED_EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/finetuned_embedding_to_sif.ckpt")
-EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/finetuned_embedding_to_sif.ckpt")
+FINETUNED_TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_recon/finetuned_tile2vec.ckpt")
+PRETRAINED_EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/finetuned_tile2vec_embedding_to_sif.ckpt")
+EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/finetuned_tile2vec_embedding_to_sif.ckpt")
 TRAINING_PLOT_FILE = 'exploratory_plots/losses_finetuned_tile2vec.png'
 EMBEDDING_TYPE = 'tile2vec'
 
@@ -48,9 +48,9 @@ HIDDEN_DIM = 1024
 INPUT_CHANNELS = 43
 LEARNING_RATE_TILE2VEC = 1e-4
 LEARNING_RATE_EMBEDDING_TO_SIF = 1e-2  # 0.01  #1e-3
-NUM_EPOCHS = 10
+NUM_EPOCHS = 20
 SUBTILE_DIM = 10
-BATCH_SIZE = 8
+BATCH_SIZE = 16
 NUM_WORKERS = 4
 
 # TODO should there be 2 separate models?
@@ -78,7 +78,6 @@ def train_model(tile2vec_model, embedding_to_sif_model, freeze_tile2vec, dataloa
                     tile2vec_model.eval()
                 else:
                     tile2vec_model.train()
-                #tile2vec_model.eval()
                 embedding_to_sif_model.train()
             else:
                 tile2vec_model.eval()
@@ -204,7 +203,7 @@ print("Validation samples", len(val_metadata))
 print("Means", train_means)
 print("Stds", train_stds)
 band_means = train_means[:-1]
-sif_mean = train_means[-1]
+sif_mean = train_means[-1]band_stds = train_stds[:-1]
 band_stds = train_stds[:-1]
 sif_std = train_stds[-1]
 
@@ -226,16 +225,14 @@ print("Dataloaders")
 
 tile2vec_model = make_tilenet(in_channels=INPUT_CHANNELS, z_dim=Z_DIM).to(device)
 # tile2vec_model.load_state_dict(torch.load(FINETUNED_TILE2VEC_MODEL_FILE, map_location=device))
-tile2vec_model.load_state_dict(torch.load(FINETUNED_TILE2VEC_MODEL_FILE, map_location=device))
+tile2vec_model.load_state_dict(torch.load(PRETRAINED_TILE2VEC_MODEL_FILE, map_location=device))
 embedding_to_sif_model = EmbeddingToSIFNonlinearModel(embedding_size=Z_DIM, hidden_size=HIDDEN_DIM).to(device)  # TODO
 if FROM_PRETRAINED_EMBEDDING_TO_SIF:
     embedding_to_sif_model.load_state_dict(torch.load(PRETRAINED_EMBEDDING_TO_SIF_MODEL_FILE, map_location=device))
 
 criterion = nn.MSELoss(reduction='mean')
-#optimizer = optim.SGD(resnet_model.parameters(), lr=1e-4, momentum=0.9)
 
 # Don't optimize Tile2vec model; just use pre-trained version
-tile2vec_optimizer = None
 if FREEZE_TILE2VEC:
     tile2vec_optimizer = None
 else:
