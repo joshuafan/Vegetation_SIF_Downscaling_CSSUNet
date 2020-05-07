@@ -12,9 +12,9 @@ import torchvision.transforms as transforms
 from eval_subtile_dataset import EvalSubtileDataset
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-EVAL_SUBTILE_DATASET_FILE = os.path.join(DATA_DIR, "dataset_2016-07-17/eval_subtiles.csv")
+EVAL_SUBTILE_DATASET_FILE = os.path.join(DATA_DIR, "dataset_2016-07-16/eval_subtiles.csv")
 TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_recon/TileNet.ckpt")  #"models/tile2vec_dim512_neighborhood100/TileNet.ckpt")
-TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-07-17")
+TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-07-16")
 BAND_STATISTICS_FILE = os.path.join(TRAIN_DATASET_DIR, "band_statistics_train.csv")
 
 eval_metadata = pd.read_csv(EVAL_SUBTILE_DATASET_FILE)
@@ -56,7 +56,7 @@ dataloader = torch.utils.data.DataLoader(dataset, batch_size=BATCH_SIZE,
                                          shuffle=True, num_workers=4)
 
 # Load Tile2Vec model
-tile2vec_model = make_tilenet(in_channels=INPUT_CHANNELS, z_dim=Z_DIM)
+tile2vec_model = make_tilenet(in_channels=INPUT_CHANNELS, z_dim=Z_DIM).to(device)
 tile2vec_model.load_state_dict(torch.load(TILE2VEC_MODEL_FILE, map_location=device))
 tile2vec_model.eval()
 
@@ -69,10 +69,10 @@ for sample in dataloader:
 
     batch = input_tile_standardized.shape[0]
     with torch.set_grad_enabled(False):
-        subtile_embeddings[i:i+batch] = tile2vec_model(input_tile_standardized) # torch.mean(input_tile_standardized[:, :10], dim=(2, 3))  # tile2vec_model(input_tile_standardized)
+        subtile_embeddings[i:i+batch] = tile2vec_model(input_tile_standardized).cpu().numpy() # torch.mean(input_tile_standardized[:, :10], dim=(2, 3))  # tile2vec_model(input_tile_standardized)
     i += batch
-    #if i >= 2000:
-    #    break
+    if i >= 1000:
+        break
 
 # Loads tile from file and transforms it into the format that imshow wants
 def tile_to_image(tile):

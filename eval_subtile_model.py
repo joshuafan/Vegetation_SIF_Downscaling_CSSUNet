@@ -29,17 +29,17 @@ import tile_transforms
 
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-EVAL_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2016-07-17")
-TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-07-17")
+EVAL_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2016-07-16")
+TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-07-16")
 EVAL_FILE = os.path.join(EVAL_DATASET_DIR, "eval_subtiles.csv") 
 BAND_STATISTICS_FILE = os.path.join(TRAIN_DATASET_DIR, "band_statistics_train.csv")
-TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_recon/TileNet.ckpt")
+TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_recon/finetuned_tile2vec.ckpt")
 # TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_dim512_neighborhood100/finetuned_tile2vec.ckpt"
 
-EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/avg_embedding_to_sif")
+EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/finetuned_tile2vec_embedding_to_sif.ckpt")
 # EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/finetuned_embedding_to_sif.ckpt")
 
-METHOD = "avg_embedding"
+METHOD = "tile2vec_finetuned"
 TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_eval_subtile_' + METHOD
 # TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_eval_subtile_finetuned_tile2vec.ping'
 
@@ -53,11 +53,11 @@ COLUMN_NAMES = ['predicted','true',
                     'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
                     'lentils']
 RESULTS_CSV_FILE = os.path.join(EVAL_DATASET_DIR, 'results_' + METHOD + '.csv')
-Z_DIM = 43
+Z_DIM = 256 # 43
 HIDDEN_DIM = 1024
 INPUT_CHANNELS = 43
 COVER_INDICES = list(range(12, 42))
-EMBEDDING_TYPE = 'average'  # average'  # 'tile2vec'  # average'  # 'tile2vec'
+EMBEDDING_TYPE = 'tile2vec'  #'tile2vec' # 'average'  # average'  # 'tile2vec'  # average'  # 'tile2vec'
 
 eval_points = pd.read_csv(EVAL_FILE)
 
@@ -100,9 +100,9 @@ def eval_model(tile2vec_model, embedding_to_sif_model, dataloader, dataset_size,
         batch_size = len(sample['SIF'])
         running_loss += loss.item() * batch_size
         band_means = torch.mean(input_tile_standardized[:, COVER_INDICES, :, :], dim=(2,3))
-        results[j:j+batch_size, 0] = predicted_sif_non_standardized.numpy()
-        results[j:j+batch_size, 1] = true_sif_non_standardized.numpy()
-        results[j:j+batch_size, 2:] = band_means
+        results[j:j+batch_size, 0] = predicted_sif_non_standardized.cpu().numpy()
+        results[j:j+batch_size, 1] = true_sif_non_standardized.cpu().numpy()
+        results[j:j+batch_size, 2:] = band_means.cpu().numpy()
         j += batch_size
         #if j > 50:
         #    break
@@ -165,6 +165,7 @@ results_df = pd.DataFrame(results_numpy, columns=COLUMN_NAMES)
 results_df.to_csv(RESULTS_CSV_FILE)
 
 predicted = results_df['predicted'].tolist()
+results_df['true'] *= 1.52
 true = results_df['true'].tolist()
 print('Predicted', predicted[0:50])
 print('True', true[0:50])

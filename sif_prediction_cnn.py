@@ -33,14 +33,16 @@ DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
 DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-07-16")
 INFO_FILE_TRAIN = os.path.join(DATASET_DIR, "tile_info_train.csv")
 INFO_FILE_VAL = os.path.join(DATASET_DIR, "tile_info_val.csv")
-TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/large_tile_resnet50")
-LOSS_PLOT_FILE = "exploratory_plots/losses_large_tile_resnet50.png"
+TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/small_tile_simple") #arge_tile_resnet18") #small_tile_simple")  # "models/large_tile_resnet50")
+LOSS_PLOT_FILE = "exploratory_plots/losses_small_tile_simple" #large_tile_resnet18" # small_tile_simple.png"  #losses_large_tile_resnet50.png"
 BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
-FROM_PRETRAINED = False  # True
+FROM_PRETRAINED = False  #True # False  # Truei
+SHRINK = True # True
+AUGMENT = True
 NUM_EPOCHS = 50
 INPUT_CHANNELS = 43
-LEARNING_RATE = 1e-4 # 0.01 # 1e-5 # 0.00001  # 1e-3
-WEIGHT_DECAY = 0  # 1e-8
+LEARNING_RATE = 1e-3 # 0.01 # 1e-5 # 0.00001  # 1e-3
+WEIGHT_DECAY = 1e-4
 BATCH_SIZE = 32
 NUM_WORKERS = 4
 RGB_BANDS = [1, 2, 3]
@@ -63,125 +65,6 @@ def imshow(tile, band_means, band_stds):
     plt.show()
 
 
-# Train CNN to predict total SIF of tile.
-# "model" should take in a (standardized) tile (with dimensions CxWxH), and output standardized SIF.
-# "dataloader" should return, for each training example: 'tile' (standardized CxWxH tile), and 'SIF' (non-standardized SIF) 
-def OLD_train_model(model, dataloaders, dataset_sizes, criterion, optimizer, device, sif_mean, sif_std, MODEL_FILE, num_epochs=25):
-    since = time.time()
-
-    best_model_wts = copy.deepcopy(model.state_dict())
-    best_loss = float('inf')
-    train_losses = []
-    val_losses = []
-    print('SIF mean', sif_mean)
-    print('SIF std', sif_std)
-    sif_mean = torch.tensor(sif_mean).to(device)
-    sif_std = torch.tensor(sif_std).to(device)
-
-    for epoch in range(num_epochs):
-        print('Epoch {}/{}'.format(epoch, num_epochs - 1))
-        print('-' * 10)
-
-        # Each epoch has a training and validation phase
-        for phase in ['train', 'val']:
-            if phase == 'train':
-                model.train()  # Set model to training mode
-            else:
-                model.eval()   # Set model to evaluate mode
-
-            running_loss = 0.0
-
-            # Iterate over data.
-            j = 0
-            for sample in dataloaders[phase]:
-                #print("Tile shape", sample['tile'].shape)
-
-                # Recall: sample['tile'] has shape (batch x band x lat x long)
-                #batch_size = sample['tile'].shape[0]
-
-                # If batch size changed (or if this is the first time), compute repeated mean/std vectors 
-                #if band_means_batch is None or band_means_batch.shape[0] != batch_size:
-                #    band_means_batch = torch.tensor(np.repeat(band_means[np.newaxis, :, np.newaxis, np.newaxis], batch_size, axis=0), dtype=torch.float)
-                #    band_stds_batch = torch.tensor(np.repeat(band_stds[np.newaxis, :, np.newaxis, np.newaxis], batch_size, axis=0), dtype=torch.float)
-                #    print('Now band means shape', band_means_batch.shape)
-                #input_tile_standardized = ((sample['tile'] - band_means_batch) / band_stds_batch).to(device)
-                
-                # Standardized input tile, (batch x C x W x H)
-                input_tile_standardized = sample['tile'].to(device)
-                #print('=========================')
-                #print('Input band means')
-                #print(torch.mean(input_tile_standardized[0], dim=(1,2)))
-
-                # Real SIF value (non-standardized)
-                true_sif_non_standardized = sample['SIF'].to(device)
-
-                # Standardize SIF to have distribution with mean 0, standard deviation 1
-                true_sif_standardized = ((true_sif_non_standardized - sif_mean) / sif_std).to(device)
-
-                # zero the parameter gradients
-                optimizer.zero_grad()
-
-                # forward
-                # track history if only in train
-                with torch.set_grad_enabled(phase == 'train'):
-                    #print('Input tile std', input_tile_standardized.shape)
-                    predicted_sif_standardized = model(input_tile_standardized).flatten()
-                    # print('Predicted sif std', predicted_sif_standardized)
-                    loss = criterion(predicted_sif_standardized, true_sif_standardized)
-
-                    # backward + optimize only if in training phase
-                    if phase == 'train':
-                        loss.backward()
-                        optimizer.step()
-
-                # statistics
-                with torch.set_grad_enabled(False):
-                    predicted_sif_non_standardized = torch.tensor(predicted_sif_standardized * sif_std + sif_mean, dtype=torch.float).to(device)
-                    non_standardized_loss = criterion(predicted_sif_non_standardized, true_sif_non_standardized)
-                    j += 1
-                    if j % 20 == 0:
-                        print('========================')
-                        print('> Predicted', predicted_sif_non_standardized)
-                        print('> True', true_sif_non_standardized)
-                        print('> batch loss', (math.sqrt(non_standardized_loss.item()) / sif_mean).item())
-                    running_loss += non_standardized_loss.item() * len(sample['SIF'])
-
-            epoch_loss = math.sqrt(running_loss / dataset_sizes[phase]) / sif_mean
-            print('{} Loss: {:.4f}'.format(
-                phase, epoch_loss))
- 
-            # deep copy the model
-            if phase == 'val' and epoch_loss < best_loss:
-                best_loss = epoch_loss
-                best_model_wts = copy.deepcopy(model.state_dict())
-
-                # save model in case
-                torch.save(model.state_dict(), TRAINED_MODEL_FILE)
-
-
-            # Record loss
-            if phase == 'train':
-                train_losses.append(epoch_loss)
-            else:
-                val_losses.append(epoch_loss)
-
-        print()
-
-    time_elapsed = time.time() - since
-    print('Training complete in {:.0f}m {:.0f}s'.format(
-        time_elapsed // 60, time_elapsed % 60))
-    print('Best val loss: {:4f}'.format(best_loss))
-
-    # load best model weights
-    model.load_state_dict(best_model_wts)
-    return model, train_losses, val_losses, best_loss
-
-
-# get some random training images
-#dataiter = iter(dataloaders['train'])
-#samples = dataiter.next()
-#for sample in samples:
-#    imshow(sample['tile'])
 
 # Check if any CUDA devices are visible. If so, pick a default visible device.
 # If not, use CPU.
@@ -211,8 +94,11 @@ sif_std = train_stds[-1]
 
 # Set up image transforms
 transform_list = []
-#transform_list.append(tile_transforms.ShrinkTile())
+if SHRINK:
+    transform_list.append(tile_transforms.ShrinkTile())
 transform_list.append(tile_transforms.StandardizeTile(band_means, band_stds))
+if AUGMENT:
+    transform_list.append(tile_transforms.RandomFlipAndRotate())
 transform = transforms.Compose(transform_list)
 
 # Set up Datasets and Dataloaders
@@ -225,8 +111,8 @@ dataloaders = {x: torch.utils.data.DataLoader(datasets[x], batch_size=BATCH_SIZE
               for x in ['train', 'val']}
 
 print("Dataloaders")
-#resnet_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, output_dim=1)
-resnet_model = resnet.resnet50(input_channels=INPUT_CHANNELS).to(device)
+resnet_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, output_dim=1).to(device)
+# resnet_model = resnet.resnet18(input_channels=INPUT_CHANNELS).to(device)
 # resnet_model = make_tilenet(in_channels=INPUT_CHANNELS, z_dim=1)  #.to(device)
 if FROM_PRETRAINED:
     resnet_model.load_state_dict(torch.load(TRAINED_MODEL_FILE, map_location=device))

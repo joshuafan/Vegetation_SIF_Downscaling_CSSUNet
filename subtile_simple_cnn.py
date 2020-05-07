@@ -29,20 +29,21 @@ from tile2vec.src.tilenet import make_tilenet
 from embedding_to_sif_model import EmbeddingToSIFModel
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-07-17")
+DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-07-16")
 INFO_FILE_TRAIN = os.path.join(DATASET_DIR, "tile_info_train.csv")
 INFO_FILE_VAL = os.path.join(DATASET_DIR, "tile_info_val.csv")
 BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
-TRAINING_PLOT_FILE = 'exploratory_plots/losses_subtile_simple_cnn_8.png'
+TRAINING_PLOT_FILE = 'exploratory_plots/losses_subtile_simple_cnn_9.png'
 
-SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_8")
+SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_9")
 INPUT_CHANNELS = 43
-LEARNING_RATE = 1e-4  # 0.001  #1e-4i
+LEARNING_RATE = 1e-3  # 0.001  #1e-4i
+WEIGHT_DECAY = 1e-6
 NUM_EPOCHS = 50
 SUBTILE_DIM = 10
-BATCH_SIZE = 8 
+BATCH_SIZE = 16 
 NUM_WORKERS = 4
-FROM_PRETRAINED = False  # True
+FROM_PRETRAINED = False # True  #False  # True
 
 # TODO should there be 2 separate models?
 def train_model(subtile_sif_model, dataloaders, dataset_sizes, criterion, optimizer, device, sif_mean, sif_std, subtile_dim, num_epochs=25):
@@ -197,12 +198,12 @@ dataloaders = {x: torch.utils.data.DataLoader(datasets[x], batch_size=BATCH_SIZE
 print("Dataloaders")
 
 # subtile_sif_model = small_resnet.resnet18(input_channels=INPUT_CHANNELS)
-subtile_sif_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, reduced_channels=25, output_dim=1).to(device)
+subtile_sif_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, reduced_channels=30, output_dim=1).to(device)
 if FROM_PRETRAINED:
     subtile_sif_model.load_state_dict(torch.load(SUBTILE_SIF_MODEL_FILE, map_location=device))
 
 criterion = nn.MSELoss(reduction='mean')
-optimizer = optim.Adam(subtile_sif_model.parameters(), lr=LEARNING_RATE)
+optimizer = optim.Adam(subtile_sif_model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
 dataset_sizes = {'train': len(train_metadata),
                  'val': len(val_metadata)}
 

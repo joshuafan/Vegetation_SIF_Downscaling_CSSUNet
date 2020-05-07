@@ -61,6 +61,12 @@ def get_subtiles_list(tile, subtile_dim, device):
     return subtiles
 
 
+def get_top_bound(point_lat):
+    return math.ceil(point_lat * 10) / 10
+
+def get_left_bound(point_lon):
+    return math.floor(point_lon * 10) / 10
+
 # Train CNN to predict total SIF of tile.
 # "model" should take in a (standardized) tile (with dimensions CxWxH), and output standardized SIF.
 # "dataloader" should return, for each training example: 'tile' (standardized CxWxH tile), and 'SIF' (non-standardized SIF) 
@@ -92,6 +98,7 @@ def train_single_model(model, dataloaders, dataset_sizes, criterion, optimizer, 
             for sample in dataloaders[phase]: 
                 # Standardized input tile, (batch x C x W x H)
                 input_tile_standardized = sample['tile'].to(device)
+                #print(input_tile_standardized.shape)
                 #print('=========================')
                 #print('Input band means')
                 #print(torch.mean(input_tile_standardized[0], dim=(1,2)))
@@ -108,7 +115,12 @@ def train_single_model(model, dataloaders, dataset_sizes, criterion, optimizer, 
                 # forward
                 # track history if only in train
                 with torch.set_grad_enabled(phase == 'train'):
-                    predicted_sif_standardized = model(input_tile_standardized)[0].flatten()
+                    output = model(input_tile_standardized)
+                    #print('pred sif std', predicted_sif_standardized.shape)
+                    #print('pred shape', pred.shape)
+                    if type(output) is tuple:
+                        output = output[0]
+                    predicted_sif_standardized = output.flatten()
                     loss = criterion(predicted_sif_standardized, true_sif_standardized)
 
                     # backward + optimize only if in training phase
@@ -121,7 +133,7 @@ def train_single_model(model, dataloaders, dataset_sizes, criterion, optimizer, 
                     predicted_sif_non_standardized = torch.tensor(predicted_sif_standardized * sif_std + sif_mean, dtype=torch.float).to(device)
                     non_standardized_loss = criterion(predicted_sif_non_standardized, true_sif_non_standardized)
                     j += 1
-                    if j % 1 == 0:
+                    if j % 20 == 1:
                         print('========================')
                         print('> Predicted', predicted_sif_non_standardized)
                         print('> True', true_sif_non_standardized)
@@ -138,7 +150,7 @@ def train_single_model(model, dataloaders, dataset_sizes, criterion, optimizer, 
                 best_model_wts = copy.deepcopy(model.state_dict())
 
                 # save model in case
-                torch.save(model.state_dict(), TRAINED_MODEL_FILE)
+                torch.save(model.state_dict(), MODEL_FILE)
 
 
             # Record loss

@@ -18,8 +18,7 @@ import os
 import pandas as pd
 import xarray as xr
 import matplotlib.pyplot as plt
-from sif_utils import lat_long_to_index, plot_histogram
-
+from sif_utils import lat_long_to_index, plot_histogram, top_bound, left_bound
 DATE = "2016-07-16"
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
 TILES_DIR = os.path.join(DATA_DIR, "tiles_" + DATE)

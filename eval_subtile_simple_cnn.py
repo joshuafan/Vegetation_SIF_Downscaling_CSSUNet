@@ -26,11 +26,11 @@ import tile_transforms
 
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-EVAL_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2016-07-17")
-TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-07-17")
+EVAL_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2016-07-16")
+TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-07-16")
 EVAL_FILE = os.path.join(EVAL_DATASET_DIR, "eval_subtiles.csv") 
 BAND_STATISTICS_FILE = os.path.join(TRAIN_DATASET_DIR, "band_statistics_train.csv")
-SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_6")  # "models/subtile_sif_simple_cnn_4")
+SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_9")  # "models/subtile_sif_simple_cnn_4")
 TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_eval_subtile_simple_cnn.png'
 
 INPUT_CHANNELS = 43
@@ -49,13 +49,14 @@ def eval_model(subtile_sif_model, dataloader, dataset_size, criterion, device, s
     # Iterate over data.
     for sample in dataloader:
         input_tile_standardized = sample['subtile'].to(device)
-        true_sif_non_standardized = sample['SIF'].to(device)
+        true_sif_non_standardized = 1.52 * sample['SIF'].to(device)
         #print('Sample tile', input_tile_standardized[0, :, 8, 8])
 
         # forward
         with torch.set_grad_enabled(False):
             predicted_sif_standardized = subtile_sif_model(input_tile_standardized).flatten()
         predicted_sif_non_standardized = predicted_sif_standardized * sif_std + sif_mean
+        predicted_sif_non_standardized = torch.clamp(predicted_sif_non_standardized, min=0.2, max=1.7)
         loss = criterion(predicted_sif_non_standardized, true_sif_non_standardized)
 
         # statistics
@@ -101,7 +102,7 @@ dataset = EvalSubtileDataset(eval_metadata, transform=transform)
 dataloader = torch.utils.data.DataLoader(dataset, batch_size=4,
                                          shuffle=True, num_workers=4)
 
-subtile_sif_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, reduced_channels=20, output_dim=1).to(device)
+subtile_sif_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, reduced_channels=30, output_dim=1).to(device)
 subtile_sif_model.load_state_dict(torch.load(SUBTILE_SIF_MODEL_FILE, map_location=device))
 
 criterion = nn.MSELoss(reduction='mean')
@@ -124,3 +125,21 @@ plt.ylabel('Predicted')
 plt.title('Subtile prediction with simple CNN')
 plt.savefig(TRUE_VS_PREDICTED_PLOT)
 plt.close()
+
+# Quantile analysis
+true = np.array(true)
+predicted = np.array(predicted)
+squared_errors = (true - predicted) ** 2
+indices = squared_errors.argsort() #Ascending order of squared error
+
+percentiles = [0, 0.05, 0.1, 0.2]
+for percentile in percentiles:
+    cutoff_idx = int((1 - percentile) * len(true))
+    indices_to_include = indices[:cutoff_idx]
+    nrmse = math.sqrt(np.mean(squared_errors[indices_to_include])) / sif_mean
+    corr, _ = pearsonr(true[indices_to_include], predicted[indices_to_include])
+    print('Excluding ' + str(int(percentile*100)) + '% worst predictions')
+    print('NRMSE', round(nrmse, 3))
+    print('Corr', round(corr, 3))
+
+

@@ -15,6 +15,14 @@ from numpy import poly1d
 from sif_utils import lat_long_to_index, plot_histogram, get_subtiles_list
 import simple_cnn
 import tile_transforms
+import resnet
+from SAN import SAN
+import sys
+sys.path.append('../')
+from tile2vec.src.tilenet import make_tilenet
+from embedding_to_sif_model import EmbeddingToSIFModel
+from embedding_to_sif_nonlinear_model import EmbeddingToSIFNonlinearModel
+
 
 # Taken from https://stackoverflow.com/questions/11159436/multiple-figures-in-a-single-window
 def plot_figures(output_file, figures, nrows = 1, ncols=1):
@@ -44,13 +52,13 @@ def plot_images(image_rows, image_filename_column, output_file):
         #print('BLUE: max', np.max(subtile[:, :, 1]), 'min', np.min(subtile[:, :, 1]))
         #print('GREEN: max', np.max(subtile[:, :, 2]), 'min', np.min(subtile[:, :, 2]))
         #print('RED: max', np.max(subtile[:, :, 3]), 'min', np.min(subtile[:, :, 3]))
-        images[title] = subtile[:, :, RGB_BANDS] / 2000
+        images[title] = subtile[:, :, RGB_BANDS] / 1000
 
     plot_figures(output_file, images, nrows=math.ceil(len(images) / 5), ncols=5)
  
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-TRAIN_DATE = "2018-07-17"
+TRAIN_DATE = "2018-07-16"
 TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_" + TRAIN_DATE)
 TILE_AVERAGE_TRAIN_FILE = os.path.join(TRAIN_DATASET_DIR, "tile_averages_train.csv")
 TILE_AVERAGE_VAL_FILE = os.path.join(TRAIN_DATASET_DIR, "tile_averages_val.csv")
@@ -59,9 +67,16 @@ TRAIN_TILE_DATASET = os.path.join(TRAIN_DATASET_DIR, "tile_info_train.csv")
 ALL_TILE_DATASET = os.path.join(TRAIN_DATASET_DIR, "reflectance_cover_to_sif.csv")
 
 
-TILES_DIR = os.path.join(DATA_DIR, "tiles_2016-07-17")
-LAT = 42.65
-LON = -93.35
+#TILES_DIR = os.path.join(DATA_DIR, "tiles_2016-07-16")
+TILES_DIR = os.path.join(DATA_DIR, "tiles_2018-07-16")
+LAT = 48.65
+LON = -84.45
+#LAT = 42.55
+#LON = -93.45 #-101.35  #-93.35
+#LAT = 42.65
+#LON = -93.35
+#LAT = 47.55
+#LON = -101.35
 LAT_LON = 'lat_' + str(LAT) + '_lon_' + str(LON)
 TILE_DEGREES = 0.1
 eps = TILE_DEGREES / 2
@@ -69,11 +84,21 @@ IMAGE_FILE = os.path.join(TILES_DIR, "reflectance_" + LAT_LON + ".npy")
 CFIS_SIF_FILE = os.path.join(DATA_DIR, "CFIS/CFIS_201608a_300m.npy")
 TROPOMI_SIF_FILE = os.path.join(DATA_DIR, "TROPOMI_SIF/TROPO-SIF_01deg_biweekly_Apr18-Jan20.nc")
 TROPOMI_DATE_RANGE = slice("2018-08-01", "2018-08-16")
-EVAL_SUBTILE_DATASET = os.path.join(DATA_DIR, "dataset_2016-07-17/eval_subtiles.csv")
+EVAL_SUBTILE_DATASET = os.path.join(DATA_DIR, "dataset_2016-07-16/eval_subtiles.csv")
 RGB_BANDS = [3, 2, 1]
-SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_7")
+SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_9")
+TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_recon/TileNet.ckpt")
+EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_embedding_to_sif")
+EMBEDDING_TYPE = 'tile2vec'
+Z_DIM = 256
+HIDDEN_DIM = 1024
+SAN_MODEL_FILE = os.path.join(DATA_DIR, "models/SAN")
 INPUT_CHANNELS = 43
 SUBTILE_DIM = 10
+TILE_SIZE_DEGREES = 0.1
+INPUT_SIZE = 371
+OUTPUT_SIZE = int(INPUT_SIZE / SUBTILE_DIM)
+
 
 # Check if any CUDA devices are visible. If so, pick a default visible device.
 # If not, use CPU.
@@ -85,8 +110,30 @@ else:
 print("Device", device)
 
 # Load subtile SIF model
-subtile_sif_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, reduced_channels=15, output_dim=1).to(device)
+subtile_sif_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, reduced_channels=30, output_dim=1).to(device)
 subtile_sif_model.load_state_dict(torch.load(SUBTILE_SIF_MODEL_FILE, map_location=device))
+subtile_sif_model.eval()
+
+# Load trained models from file
+if EMBEDDING_TYPE == 'tile2vec':
+    tile2vec_model = make_tilenet(in_channels=INPUT_CHANNELS, z_dim=Z_DIM).to(device)
+    tile2vec_model.load_state_dict(torch.load(TILE2VEC_MODEL_FILE, map_location=device))
+    tile2vec_model.eval()
+else:
+    tile2vec_model = None
+embedding_to_sif_model = EmbeddingToSIFNonlinearModel(embedding_size=Z_DIM, hidden_size=HIDDEN_DIM).to(device)
+embedding_to_sif_model.load_state_dict(torch.load(EMBEDDING_TO_SIF_MODEL_FILE, map_location=device))
+embedding_to_sif_model.eval()
+
+# Load SAN model
+resnet_model = resnet.resnet18(input_channels=INPUT_CHANNELS) 
+san_model = SAN(resnet_model, input_height=INPUT_SIZE, input_width=INPUT_SIZE,
+                output_height=OUTPUT_SIZE, output_width=OUTPUT_SIZE,
+                feat_width=4*OUTPUT_SIZE, feat_height=4*OUTPUT_SIZE,
+                in_channels=INPUT_CHANNELS).to(device)
+san_model.load_state_dict(torch.load(SAN_MODEL_FILE, map_location=device))
+san_model.eval()
+
 
 # Read mean/standard deviation for each band, for standardization purposes
 train_statistics = pd.read_csv(BAND_STATISTICS_FILE)
@@ -107,6 +154,26 @@ tile = np.load(IMAGE_FILE)
 input_tile_non_standardized = torch.tensor(tile, dtype=torch.float).unsqueeze(0).to(device)
 subtiles_non_standardized = get_subtiles_list(input_tile_non_standardized, SUBTILE_DIM, device)[0]
 subtile_averages = torch.mean(subtiles_non_standardized, dim=(2,3))
+
+# Visualize the input tile
+array = tile.transpose((1, 2, 0))
+print('Array shape', array.shape)
+plt.imshow(array[:, :, RGB_BANDS] / 1000)
+plt.savefig("exploratory_plots/" + LAT_LON + "_rgb.png")
+plt.close()
+
+fig, axeslist = plt.subplots(ncols=6, nrows=8, figsize=(24, 24))
+for band in range(0, 43):
+    layer = array[:, :, band]
+    axeslist.ravel()[band].imshow(layer, cmap='Greens', vmin=np.min(layer), vmax=np.max(layer))
+    axeslist.ravel()[band].set_title('Band ' + str(band))
+    axeslist.ravel()[band].set_axis_off()
+plt.tight_layout() # optional
+plt.savefig('exploratory_plots/' + LAT_LON +'_all_bands.png')
+plt.close()
+
+
+
 
 # Train linear regression model
 train_set = pd.read_csv(TILE_AVERAGE_TRAIN_FILE).dropna()
@@ -146,18 +213,42 @@ input_tile_standardized = torch.tensor(transform(tile), dtype=torch.float).unsqu
 print('Input tile dim', input_tile_standardized.shape)
 print('Random pixel', input_tile_standardized[:, :, 8, 8])
 
-# Obtain model's subtile SIF predictions
+# Obtain simple CNN model's subtile SIF predictions
 subtiles_standardized = get_subtiles_list(input_tile_standardized, SUBTILE_DIM, device)[0]  # (batch x num subtiles x bands x subtile_dim x subtile_dim)
 print('Subtile shape', subtiles_standardized.shape)
 with torch.set_grad_enabled(False):
-    predicted_sifs_standardized = subtile_sif_model(subtiles_standardized).detach().numpy()
-print('Predicted SIFs standardized', predicted_sifs_standardized.shape)
-predicted_sifs_non_standardized = (predicted_sifs_standardized * sif_std + sif_mean).reshape((37, 37))
+    predicted_sifs_simple_cnn_standardized = subtile_sif_model(subtiles_standardized).detach().numpy()
+print('Predicted SIFs standardized', predicted_sifs_simple_cnn_standardized.shape)
+predicted_sifs_simple_cnn_non_standardized = (predicted_sifs_simple_cnn_standardized * sif_std + sif_mean).reshape((37, 37))
 
 # Plot map of CNN's subtile SIF predictions
-plt.imshow(predicted_sifs_non_standardized, cmap='Greens', vmin=0, vmax=1.5)
-plt.savefig("exploratory_plots/" + LAT_LON + "_subtile_sif_map_7.png")
+plt.imshow(predicted_sifs_simple_cnn_non_standardized, cmap='Greens', vmin=0, vmax=1.5)
+plt.savefig("exploratory_plots/" + LAT_LON + "_subtile_sif_map_9.png")
 plt.close()
+
+# Obtain tile2vec model's subtile SIF predictions
+with torch.set_grad_enabled(False):
+    embeddings = tile2vec_model(subtiles_standardized)
+    predicted_sifs_tile2vec_fixed_standardized = embedding_to_sif_model(embeddings).detach().numpy()
+print('Predicted SIFs standardized', predicted_sifs_tile2vec_fixed_standardized.shape)
+predicted_sifs_tile2vec_fixed_non_standardized = (predicted_sifs_tile2vec_fixed_standardized * sif_std + sif_mean).reshape((37, 37))
+
+# Plot map of CNN's subtile SIF predictions
+plt.imshow(predicted_sifs_tile2vec_fixed_non_standardized, cmap='Greens', vmin=0, vmax=1.5)
+plt.savefig("exploratory_plots/" + LAT_LON + "_subtile_sif_tile2vec_fixed.png")
+plt.close()
+
+
+# Obtain SAN model predictions
+_, _, _, _, predicted_sifs_san_standardized = san_model(input_tile_standardized)
+predicted_sifs_san_standardized = predicted_sifs_san_standardized.detach().numpy()
+predicted_sifs_san = (predicted_sifs_san_standardized * sif_std + sif_mean).reshape((37, 37))
+
+# Plot map of SAN's subtile SIF predictions
+plt.imshow(predicted_sifs_san, cmap='Greens', vmin=0, vmax=1.5)
+plt.savefig("exploratory_plots/" + LAT_LON + "_subtile_sif_SAN.png")
+plt.close()
+
 
 
 
@@ -237,8 +328,11 @@ plt.close()
 
 # Scatterplot of CFIS points in the particular area
 plt.figure(figsize=(10, 10))
-cfis_area = all_cfis_points[(all_cfis_points[:, 1] > LON-eps) & (all_cfis_points[:, 1] < LON+eps) & (all_cfis_points[:, 2] > LAT-eps) & (all_cfis_points[:, 2] < LAT+eps)]
-plt.scatter(cfis_area[:, 1], cfis_area[:, 2], c=cfis_area[:, 0], cmap=green_cmap, vmin=0, vmax=1.5)
+#cfis_area = all_cfis_points[(all_cfis_points[:, 1] > LON-eps) & (all_cfis_points[:, 1] < LON+eps) & (all_cfis_points[:, 2] > LAT-eps) & (all_cfis_points[:, 2] < LAT+eps)]
+cfis_area = eval_metadata.loc[(eval_metadata['lon'] > LON-eps) & (eval_metadata['lon'] < LON+eps) & (eval_metadata['lat'] > LAT-eps) & (eval_metadata['lat'] < LAT+eps)]
+cfis_area['SIF'] = cfis_area['SIF']
+plt.scatter(cfis_area['lon'], cfis_area['lat'], c=cfis_area['SIF'], cmap=green_cmap, vmin=0, vmax=1.5)
+# plt.scatter(cfis_area[:, 1], cfis_area[:, 2], c=cfis_area[:, 0], cmap=green_cmap, vmin=0, vmax=1.5)
 plt.xlabel('Longitude')
 plt.ylabel('Latitude')
 plt.title('CFIS points (area)')
@@ -246,25 +340,31 @@ plt.savefig('exploratory_plots/' + LAT_LON + '_cfis_points.png')
 plt.close()
 
 # Convert CFIS into matrix
-cfis_tile = np.zeros_like(predicted_sifs_non_standardized)
+cfis_tile = np.zeros_like(predicted_sifs_simple_cnn_non_standardized)
 print('CFIS tile shape', cfis_tile.shape)
 top_bound = LAT + eps
 left_bound = LON - eps
-for p in range(cfis_area.shape[0]):
+for index, row in cfis_area.iterrows():
     res = (TILE_DEGREES / cfis_tile.shape[0], TILE_DEGREES / cfis_tile.shape[1])
-    height_idx, width_idx = lat_long_to_index(cfis_area[p, 2], cfis_area[p, 1], top_bound, left_bound, res)
-    cfis_tile[height_idx, width_idx] = cfis_area[p, 0] * 1.52
+    height_idx, width_idx = lat_long_to_index(row['lat'], row['lon'], top_bound, left_bound, res)
+    # height_idx, width_idx = lat_long_to_index(cfis_area[p, 2], cfis_area[p, 1], top_bound, left_bound, res)
+    cfis_tile[height_idx, width_idx] = row['SIF'] * 1.3  #p, 0] # * 1.52
 
 plt.imshow(cfis_tile, cmap='Greens', vmin=0, vmax=1.5)
 plt.savefig("exploratory_plots/" + LAT_LON + "_cfis_sifs.png")
 plt.close()
 
-# Compare stats!
+# Compare stats
+predicted_sifs_simple_cnn_non_standardized = np.clip(predicted_sifs_simple_cnn_non_standardized, a_min=0.2, a_max=1.7)
 print('===================== Comparing stats ======================')
-print('Ground-truth CFIS SIF for this tile: mean', np.mean(cfis_area[:, 0]), 'std', np.std(cfis_area[:,0]), 'min', np.min(cfis_area[:, 0]), 'max', np.max(cfis_area[:, 0]))
-print('Linear predictions for this tile: mean', np.mean(predicted_sifs_linear), 'std', np.std(predicted_sifs_linear), 'min', np.min(predicted_sifs_linear), 'max', np.max(predicted_sifs_linear))
-print('CNN predictions for this tile: mean', np.mean(predicted_sifs_non_standardized), 'std', np.std(predicted_sifs_non_standardized), 'min', np.min(predicted_sifs_non_standardized), 'max', np.max(predicted_sifs_non_standardized))
+print('Linear predictions for this tile: mean', round(np.mean(predicted_sifs_linear), 3), 'std', round(np.std(predicted_sifs_linear), 3)) #, 'min', np.min(predicted_sifs_linear), 'max', np.max(predicted_sifs_linear))
+print('CNN predictions for this tile: mean', round(np.mean(predicted_sifs_simple_cnn_non_standardized), 3), 'std', round(np.std(predicted_sifs_simple_cnn_non_standardized), 3)) #'min', np.min(predicted_sifs_simple_cnn_non_standardized), 'max', np.max(predicted_sifs_simple_cnn_non_standardized))
+print('Tile2Vec Fixed predictions for this tile: mean', round(np.mean(predicted_sifs_tile2vec_fixed_non_standardized), 3), 'std', round(np.std(predicted_sifs_tile2vec_fixed_non_standardized), 3)) # 'min', np.min(predicted_sifs_tile2vec_fixed_non_standardized), 'max', np.max(predicted_sifs_tile2vec_fixed_non_standardized))
+print('SAN predictions for this tile: mean', round(np.mean(predicted_sifs_san), 3), 'std', round(np.std(predicted_sifs_san), 3)) # 'min', np.min(predicted_sifs_san), 'max', np.max(predicted_sifs_san))
+print('Ground-truth CFIS SIF for this tile: mean', round(np.mean(cfis_area['SIF']), 3), 'std', round(np.std(cfis_area['SIF']), 3)) # 'min', np.min(cfis_area['SIF']), 'max', np.max(cfis_area['SIF']))
+print('Linear / Ground-truth', round(np.mean(predicted_sifs_linear) / np.mean(cfis_area['SIF']), 3))
 print('TROPOMI SIF for this tile', tropomi_array.sel(lat=LAT, lon=LON, method='nearest'))
+
 print('============================================================')
 
 # Plot TROPOMI vs SIF (and linear regression)
@@ -285,25 +385,5 @@ nrmse = math.sqrt(mean_squared_error(y, x)) / sif_mean
 corr, _ = pearsonr(y, x)
 print('NRMSE', round(nrmse, 3))
 print('Correlation', round(corr, 3))
-
-# Show example tiles (RGB)
-tile = np.load(IMAGE_FILE)
-array = tile.transpose((1, 2, 0))
-print('Array shape', array.shape)
-plt.imshow(array[:, :, RGB_BANDS] / 2000)
-plt.savefig("exploratory_plots/" + LAT_LON + "_rgb.png")
-plt.close()
-
-fig, axeslist = plt.subplots(ncols=6, nrows=8, figsize=(24, 24))
-for band in range(0, 43):
-    layer = array[:, :, band]
-    axeslist.ravel()[band].imshow(layer, cmap='Greens', vmin=np.min(layer), vmax=np.max(layer))
-    axeslist.ravel()[band].set_title('Band ' + str(band))
-    axeslist.ravel()[band].set_axis_off()
-plt.tight_layout() # optional
-plt.savefig('exploratory_plots/' + LAT_LON +'_all_bands.png')
-plt.close()
-
-
 
 

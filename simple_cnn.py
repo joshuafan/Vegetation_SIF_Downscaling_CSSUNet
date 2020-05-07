@@ -9,12 +9,12 @@ class SimpleCNN(nn.Module):
         self.conv1 = nn.Conv2d(reduced_channels, 64, kernel_size=3, stride=1)
         self.pool = nn.MaxPool2d(2, 2)
         self.conv2 = nn.Conv2d(64, 128, kernel_size=3, stride=1)
-        self.fc1 = nn.Linear(128 * 2 * 2, 256)
+        self.fc1 = nn.Linear(128 * 2 * 2, 1024)
         #self.conv2 = nn.Conv2d(64, 128, kernel_size=2, stride=1)
         #self.conv3 = nn.Conv2d(128, 256, kernel_size=2, stride=1)
         #self.fc1 = nn.Linear(256 * 2 * 2, 256)
-        self.fc2 = nn.Linear(256, 64)
-        self.fc3 = nn.Linear(64, output_dim)
+        self.fc2 = nn.Linear(1024, 1024)
+        self.fc3 = nn.Linear(1024, output_dim)
 
     def forward(self, x):
         x = self.dimensionality_reduction(x)

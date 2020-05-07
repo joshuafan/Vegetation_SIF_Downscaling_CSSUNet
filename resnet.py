@@ -141,8 +141,8 @@ class ResNet(nn.Module):
                              "or a 3-element tuple, got {}".format(replace_stride_with_dilation))
         self.groups = groups
         self.base_width = width_per_group
-        self.dim_red = nn.Conv2d(input_channels, reduced_channels, kernel_size=1, stride=1, padding=0, bias=True)
-        self.conv1 = nn.Conv2d(reduced_channels, self.inplanes, kernel_size=7, stride=2, padding=3,
+        #self.dim_red = nn.Conv2d(input_channels, reduced_channels, kernel_size=1, stride=1, padding=0, bias=True)
+        self.conv1 = nn.Conv2d(input_channels, self.inplanes, kernel_size=1, stride=1, padding=0,
                                bias=False)
         self.bn1 = norm_layer(self.inplanes)
         self.relu = nn.ReLU(inplace=True)
@@ -200,7 +200,7 @@ class ResNet(nn.Module):
 
     def _forward_impl(self, x):
         # See note [TorchScript super()]
-        x = self.dim_red(x)
+        #x = self.dim_red(x)
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)

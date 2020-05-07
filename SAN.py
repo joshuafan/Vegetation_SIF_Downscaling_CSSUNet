@@ -78,7 +78,7 @@ class SAN(nn.Module):
     Based on ResNet-50
     """
 
-    def __init__(self, pretrained_model, input_height, input_width, output_height, output_width, in_channels=3, feat_num=512, feat_width=80, feat_height=24, pretrained=True):
+    def __init__(self, pretrained_model, input_height, input_width, output_height, output_width, in_channels=3, feat_num=64, feat_width=128, feat_height=24, pretrained=True):
         super(SAN, self).__init__()
 
         # backbone Net: ResNet
@@ -89,7 +89,7 @@ class SAN(nn.Module):
         self.output_height = output_height
         self.output_width = output_width
 
-        self.dim_red = pretrained_model._modules['dim_red']
+        #self.dim_red = pretrained_model._modules['dim_red']
         self.conv1 = pretrained_model._modules['conv1']
         self.bn1 = pretrained_model._modules['bn1']
         self.relu = pretrained_model._modules['relu']
@@ -101,11 +101,11 @@ class SAN(nn.Module):
 
         # generating multi-scale features with the same dimension
         # in paper,  type = 'gaussian'
-        self.res4f_dec_1 = nn.ConvTranspose2d(1024, feat_num, kernel_size=4, stride=2, padding=1)  # Used to be 1024
+        self.res4f_dec_1 = nn.ConvTranspose2d(128, feat_num, kernel_size=2, stride=2, padding=1)  # Used to be 1024
         self.res4f_dec_1_relu = nn.ReLU(inplace=True)
 
         # in paper,  type = 'gaussian'
-        self.res5c_dec_1 = nn.ConvTranspose2d(2048, feat_num, kernel_size=8, stride=4, padding=2)  # Used to be 2048
+        self.res5c_dec_1 = nn.ConvTranspose2d(256, feat_num, kernel_size=2, stride=2, padding=1)  # Used to be 2048
         self.res5c_dec_1_relu = nn.ReLU(inplace=True)
 
         self.res4f_dec = nn.UpsamplingBilinear2d(size=(feat_height, feat_width))
@@ -143,11 +143,11 @@ class SAN(nn.Module):
         self.meanFieldUpdate5_3 = MeanFieldUpdate(feat_num, feat_num, feat_num)
 
         # produce the output
-        self.pred_1 = nn.ConvTranspose2d(feat_num, feat_num // 2, kernel_size=4, stride=2, padding=1)
+        self.pred_1 = nn.ConvTranspose2d(feat_num, feat_num // 2, kernel_size=1, stride=1, padding=0)
         self.pred_1_relu = nn.ReLU(inplace=True)
-        self.pred_2 = nn.ConvTranspose2d(feat_num // 2, feat_num // 4, kernel_size=4, stride=2, padding=1)
+        self.pred_2 = nn.ConvTranspose2d(feat_num // 2, feat_num // 4, kernel_size=1, stride=1, padding=0)
         self.pred_2_relu = nn.ReLU(inplace=True)
-        self.pred_3 = nn.Conv2d(feat_num // 4, 1, kernel_size=3, stride=1, padding=1)
+        self.pred_3 = nn.Conv2d(feat_num // 4, 1, kernel_size=1, stride=1, padding=0)
 
         # weights init
         self.res4f_dec_1.apply(weights_init)
@@ -177,34 +177,42 @@ class SAN(nn.Module):
         self.meanFieldUpdate5_3.apply(weights_init)
 
     def forward(self, x):
-        x = self.dim_red(x)
+        #x = self.dim_red(x)
         x = self.conv1(x)
         x = F.relu(self.bn1(x))
         x = self.relu(x)
         x = self.maxpool(x)
 
         x = self.layer1(x)
-        x = self.layer2(x)
         res3d = x
-        x = self.layer3(x)
+        x = self.layer2(x)
         res4f = x
-        x = self.layer4(x)
+        #res3d = x
+        x = self.layer3(x)
         res5c = x
+        #res4f = x
+        #x = self.layer4(x)
+        #res5c = x
+
+        #print('Initially', res3d.shape, res4f.shape, res5c.shape)
 
         # generate multi-scale features with the same dimension,
         res4f_1 = self.res4f_dec_1(res4f)  # 1024 --> 512
         res4f_1 = self.res4f_dec_1_relu(res4f_1)
-
+        #print('res4f_1', res4f_1.shape)
         res5c_1 = self.res5c_dec_1(res5c)  # 1024 --> 512
-        res4f_1 = self.res5c_dec_1_relu(res5c_1)
-
+        res5c_1 = self.res5c_dec_1_relu(res5c_1)
+        #print('res5c_1', res5c_1.shape)
         res4f = self.res4f_dec(res4f_1)
         res3d = self.res3d_dec(res3d)
         res5c = self.res5c_dec(res5c_1)
 
+        #print('After upsampling', res3d.shape, res4f.shape, res5c.shape)
+
         pred_3d = self.prediction_3d(res3d)
         pred_4f = self.prediction_4f(res4f)
         pred_5c = self.prediction_5c(res5c)
+        #print('intermediate pred', pred_3d.shape, pred_4f.shape, pred_5c.shape)
 
         # five meanfield updating
         y_S = self.meanFieldUpdate1_1(res3d, res5c)
@@ -227,18 +235,22 @@ class SAN(nn.Module):
         y_S = self.meanFieldUpdate5_2(res4f, y_S)
         y_S = self.meanFieldUpdate5_3(res5c, y_S)
 
+        #print('Y_S', y_S.shape)
+
         pred = self.pred_1(y_S)
         pred = self.pred_1_relu(pred)
         pred = self.pred_2(pred)
         pred = self.pred_2_relu(pred)
         pred = self.pred_3(pred)
+        #print('Pred', pred.shape)
 
         # UpSample to output size
-        pred_3d = nn.functional.interpolate(pred_3d, size=(self.output_height, self.output_width), mode='bilinear', align_corners=True)
-        pred_4f = nn.functional.interpolate(pred_4f, size=(self.output_height, self.output_width), mode='bilinear', align_corners=True)
-        pred_5c = nn.functional.interpolate(pred_5c, size=(self.output_height, self.output_width), mode='bilinear', align_corners=True)
-        pred = nn.functional.interpolate(pred, size=(self.output_height, self.output_width), mode='bilinear', align_corners=True)
-        avg = torch.mean(pred)
+        pred_3d = nn.functional.interpolate(pred_3d, size=(self.output_height, self.output_width), mode='area') #, align_corners=True)
+        pred_4f = nn.functional.interpolate(pred_4f, size=(self.output_height, self.output_width), mode='area') #, align_corners=True)
+        pred_5c = nn.functional.interpolate(pred_5c, size=(self.output_height, self.output_width), mode='area') #, align_corners=True)
+        pred = nn.functional.interpolate(pred, size=(self.output_height, self.output_width), mode='area') #, align_corners=True)
+        assert(pred.shape[2] == 37 and pred.shape[3] == 37)
+        avg = torch.mean(pred, dim=(2, 3))
         return avg, pred_3d, pred_4f, pred_5c, pred
 
 # TODO
@@ -265,7 +277,7 @@ if __name__ == "__main__":
     #tile2vec_model = make_tilenet(in_channels=in_channels, z_dim=z_dim).to(device)
     #tile2vec_model.load_state_dict(torch.load(tile2vec_model_file, map_location=device))
 
-    resnet_model = resnet.resnet50(input_channels=in_channels)
+    resnet_model = resnet.resnet18(input_channels=in_channels)
 
     model = SAN(resnet_model, input_height=input_size, input_width=input_size, output_height=output_size, output_width=output_size,
                 feat_width=output_size, feat_height=output_size, in_channels=in_channels)

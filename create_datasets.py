@@ -22,17 +22,17 @@ import xarray as xr
 from rasterio.plot import show
 from sif_utils import lat_long_to_index, plot_histogram
 
-DATE_RANGE = pd.date_range(start="2018-07-16", end="2018-07-31")
+DATE_RANGE = pd.date_range(start="2019-07-16", end="2019-07-31")
 START_DATE = str(DATE_RANGE.date[0])
+YEAR = "2019"
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
 REFLECTANCE_DIR = os.path.join(DATA_DIR, "LandsatReflectance", START_DATE)
-COVER_FILE = os.path.join(DATA_DIR, "CDL_2018/corn_belt_cdl_2018-08-01_epsg.tif")  # "CDL_2016_big.tif"
+COVER_FILE = os.path.join(DATA_DIR, "CDL_" + YEAR + "/CDL_2019_1.tif") #corn_belt_cdl_2018-08-01_epsg.tif")  # "CDL_2016_big.tif"
 OUTPUT_DATASET_DIR = os.path.join(DATA_DIR, "dataset_" + START_DATE)  # Directory containing list of tiles
 OUTPUT_IMAGES_DIR = os.path.join(DATA_DIR, "images_" + START_DATE)  # Directory containing large images
 OUTPUT_TILES_DIR = os.path.join(DATA_DIR, "tiles_" + START_DATE)  # Directory containing 0.1x0.1 degree tiles
-OUTPUT_CSV_FILE = os.path.join(OUTPUT_DATASET_DIR, "reflectance_cover_to_sif.csv")
 SIF_FILE = os.path.join(DATA_DIR, "TROPOMI_SIF/TROPO-SIF_01deg_biweekly_Apr18-Jan20.nc")
-FLDAS_FILE = os.path.join(DATA_DIR, "FLDAS/FLDAS_NOAH01_C_GL_M.A201808.001.nc.SUB.nc4")
+FLDAS_FILE = os.path.join(DATA_DIR, "FLDAS/FLDAS_NOAH01_C_GL_M.A" + YEAR + "08.001.nc.SUB.nc4")
 
 # List of cover types to include (see https://developers.google.com/earth-engine/datasets/catalog/USDA_NASS_CDL
 # for what these numbers correspond to). I included all cover types that are >1% of the region.
@@ -40,6 +40,10 @@ COVERS_TO_MASK = [176, 1, 5, 152, 141, 142, 23, 121, 37, 24, 195, 190, 111, 36, 
 # MAX_MISSING_FRACTION = 0.5  # If more than 50% of pixels in the tile are missing, throw the tile out
 SIF_TILE_DEGREE_SIZE = 0.1
 FLOAT_EQUALITY_TOLERANCE = 1e-10
+
+# True if you want to append to the output csv file, False to overwrite
+APPEND = True
+OUTPUT_CSV_FILE = os.path.join(OUTPUT_DATASET_DIR, "reflectance_cover_to_sif.csv")
 
 if not os.path.exists(OUTPUT_DATASET_DIR):
     os.makedirs(OUTPUT_DATASET_DIR)
@@ -76,8 +80,12 @@ def plot_and_print_covers(covers, filename):
         print(str(crop) + ': ' + str(round((count / total_pixels) * 100, 2)) + '%')
 
 
+
+
 # Dataset format: lon/lat, date, image file name, SIF
-dataset_rows = [["lon", "lat", "date", "missing_reflectance", "tile_file", "SIF"]]
+dataset_rows = []
+if not APPEND:
+    dataset_rows.append(["lon", "lat", "date", "missing_reflectance", "tile_file", "SIF"])
 
 # For each tile, keep track of how much reflectance and cover data is present
 reflectance_coverage = []
@@ -376,7 +384,11 @@ with rio.open(COVER_FILE) as cover_dataset:
             print("Reading reflectance file", reflectance_file, "failed")
             print(traceback.format_exc())
 
-with open(OUTPUT_CSV_FILE, "w") as output_csv_file:
+if APPEND:
+    mode = "a+"
+else:
+    mode = "w"
+with open(OUTPUT_CSV_FILE, mode) as output_csv_file:
     csv_writer = csv.writer(output_csv_file, delimiter=",", quoting=csv.QUOTE_MINIMAL)
     for row in dataset_rows:
         csv_writer.writerow(row)
