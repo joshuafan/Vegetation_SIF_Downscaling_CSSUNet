@@ -103,9 +103,17 @@ print(METHOD + ": eval subtile NRMSE", round(linear_nrmse_eval_subtile, 3))
 linear_corr_train, _ = pearsonr(Y_train, linear_predictions_train)
 linear_corr_val, _ = pearsonr(Y_val, linear_predictions_val)
 linear_corr_eval_subtile, _ = pearsonr(Y_eval_subtile, linear_predictions_eval_subtile)
-print("Train R2:", round(linear_corr_train, 3))
-print("Val R2:", round(linear_corr_val, 3))
-print("Eval_subtile R2", round(linear_corr_eval_subtile, 3))
+print("Train corr:", round(linear_corr_train, 3))
+print("Val corr:", round(linear_corr_val, 3))
+print("Eval_subtile corr:", round(linear_corr_eval_subtile, 3))
+
+linear_r2_train = r2_score(Y_train, linear_predictions_train)
+linear_r2_val = r2_score(Y_val, linear_predictions_val)
+linear_r2_eval_subtile = r2_score(Y_eval_subtile, linear_predictions_eval_subtile)
+print("Train R2:", round(linear_r2_train, 3))
+print("Val R2:", round(linear_r2_val, 3))
+print("Eval_subtile R2:", round(linear_r2_eval_subtile, 3))
+
 
 # Scatter plot of true vs predicted
 plt.scatter(Y_val, linear_predictions_val)

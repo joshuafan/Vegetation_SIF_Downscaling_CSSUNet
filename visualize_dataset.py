@@ -69,8 +69,10 @@ ALL_TILE_DATASET = os.path.join(TRAIN_DATASET_DIR, "reflectance_cover_to_sif.csv
 
 #TILES_DIR = os.path.join(DATA_DIR, "tiles_2016-07-16")
 TILES_DIR = os.path.join(DATA_DIR, "tiles_2018-07-16")
-LAT = 48.65
-LON = -84.45
+LAT = 41.15
+LON = -89.45
+#LAT = 48.65
+#LON = -84.45
 #LAT = 42.55
 #LON = -93.45 #-101.35  #-93.35
 #LAT = 42.65

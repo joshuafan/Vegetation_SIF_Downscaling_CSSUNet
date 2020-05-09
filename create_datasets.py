@@ -42,7 +42,7 @@ SIF_TILE_DEGREE_SIZE = 0.1
 FLOAT_EQUALITY_TOLERANCE = 1e-10
 
 # True if you want to append to the output csv file, False to overwrite
-APPEND = True
+APPEND = False #True
 OUTPUT_CSV_FILE = os.path.join(OUTPUT_DATASET_DIR, "reflectance_cover_to_sif.csv")
 
 if not os.path.exists(OUTPUT_DATASET_DIR):
@@ -305,7 +305,7 @@ with rio.open(COVER_FILE) as cover_dataset:
                         new_lon = np.linspace(left_degrees, right_degrees, TARGET_TILE_SIZE)  # combined_left_bound, combined_right_bound, width_pixels)
                         reprojected_fldas_dataset = fldas_dataset.interp(X=new_lon, Y=new_lat)
                         fldas_layers = []
-                        #print('FLDAS data vars', reprojected_fldas_dataset.data_vars)
+                        print('FLDAS data vars', reprojected_fldas_dataset.data_vars)
                         for data_var in reprojected_fldas_dataset.data_vars:
                             #print('var', data_var)
                             fldas_layers.append(reprojected_fldas_dataset[data_var].data)

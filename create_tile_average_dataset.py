@@ -14,7 +14,9 @@ from sif_utils import plot_histogram
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
 DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-07-16")
-INFO_CSV_FILE = os.path.join(DATASET_DIR, "reflectance_cover_to_sif.csv")
+INFO_CSV_FILES = [os.path.join(DATASET_DIR, "reflectance_cover_to_sif.csv"),
+                  os.path.join(DATASET_DIR, "reflectance_cover_to_sif_r2.csv"),
+                  os.path.join(DATA_DIR, "dataset_2019-07-16/reflectance_cover_to_sif.csv")]
 SPLIT_INFO_CSV_FILES = {"train": os.path.join(DATASET_DIR, "tile_info_train.csv"),
                         "val": os.path.join(DATASET_DIR, "tile_info_val.csv")}
 TILE_AVERAGE_CSV_FILES = {"train": os.path.join(DATASET_DIR, "tile_averages_train.csv"),
@@ -22,9 +24,15 @@ TILE_AVERAGE_CSV_FILES = {"train": os.path.join(DATASET_DIR, "tile_averages_trai
 BAND_STATISTICS_CSV_FILES = {"train": os.path.join(DATASET_DIR, "band_statistics_train.csv"),
                              "val": os.path.join(DATASET_DIR, "band_statistics_val.csv")}
 MAX_CLOUD_COVER = 0.1
+CDL_BANDS = list(range(12, 42))
 MIN_SIF = 0.2
+MIN_CDL_COVERAGE = 0.5  # Throw out tiles if less than this raction of land cover is unknown
 
-tile_metadata = pd.read_csv(INFO_CSV_FILE)
+frames = []
+for info_file in INFO_CSV_FILES:
+    frames.append(pd.read_csv(info_file))
+tile_metadata = pd.concat(frames)
+print('(Unfiltered) number of large tiles:', len(tile_metadata))
 
 # Split into train/val, and write the split to a file (to ensure that all methods use the same
 # train/val split)
@@ -48,33 +56,49 @@ for split in ["train", "val"]:
 
     band_averages_all_tiles = []
     dataset = datasets[split]
-    valid_indices = []  # Indices of tiles which have low cloud cover
+    valid_indices = []  # Indices of tiles to include
     sifs = []
 
-    i = 0
+    i = -1
     for index, row in dataset.iterrows():
+        i += 1
+        if i % 100 == 0:
+            print('Processing tile', i)
         # Tile assumed to be (band x lat x long)
         tile = np.load(row.loc['tile_file'])
         # print('Tile', tile.shape, 'dtype', tile.dtype)
         tile_averages = np.mean(tile, axis=(1,2))
-        
+
+        # Remove tiles with any NaNs
+        if np.isnan(tile_averages).any():
+            print('tile contained nan:', row.loc['tile_file'])
+            continue
+
+        # Remove tiles with little CDL coverage (for the crops we're interested in)
+        cdl_coverage = np.sum(tile_averages[CDL_BANDS])
+        if cdl_coverage < MIN_CDL_COVERAGE:
+            #print('CDL coverage too low:', cdl_coverage)
+            #print(row.loc['tile_file'])
+            continue
+        #print('FLDAS average', tile_averages[10])
+ 
         # If too much of this pixel is covered by clouds (reflectance
         # data is missing), throw this tile out
         if tile_averages[-1] > MAX_CLOUD_COVER:
             continue
+
+        # Remove tiles with low SIF (those observations may be unreliable)
         if float(row.loc['SIF']) < MIN_SIF:
             continue
 
         csv_row = [row.loc['lat'], row.loc['lon']] + tile_averages.tolist() + [row.loc['SIF']]
         csv_rows.append(csv_row)
         band_averages_all_tiles.append(tile_averages)
-        valid_indices.append(index)
+        valid_indices.append(i)
         sifs.append(row.loc['SIF'])
-        i += 1
-        print('Processing tile', i)
 
     # Select the rows that are mentioned in "valid indices" (low cloud cover)
-    filtered_dataset = dataset.iloc[dataset.index.isin(valid_indices)]
+    filtered_dataset = dataset.iloc[valid_indices, :]
     print('Filtered tiles', len(filtered_dataset))
     band_averages_array = np.stack(band_averages_all_tiles)
     print("Band values ARRAY shape", band_averages_array.shape)
