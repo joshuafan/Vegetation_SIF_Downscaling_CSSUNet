@@ -41,20 +41,20 @@ def plot_histogram(column, plot_filename):
 
 
 # For each tile in the batch, returns a list of subtiles.
-# Given a Tensor of tiles, with shape (batch x C x W x H), returns a Tensor of
+# Given a Tensor of tiles, with shape (batch x C x H x W), returns a Tensor of
 # shape (batch x SUBTILE x C x subtile_dim x subtile_dim)
 def get_subtiles_list(tile, subtile_dim, device):
-    batch_size, bands, width, height = tile.shape
-    num_subtiles_along_width = int(width / subtile_dim)
+    batch_size, bands, height, width = tile.shape
     num_subtiles_along_height = int(height / subtile_dim)
-    num_subtiles = num_subtiles_along_width * num_subtiles_along_height
-    assert(num_subtiles_along_width == 37)
+    num_subtiles_along_width = int(width / subtile_dim)
+    num_subtiles = num_subtiles_along_height * num_subtiles_along_width
     assert(num_subtiles_along_height == 37)
+    assert(num_subtiles_along_width == 37)
     subtiles = torch.empty((batch_size, num_subtiles, bands, subtile_dim, subtile_dim), device=device)
     for b in range(batch_size):
         subtile_idx = 0
-        for i in range(num_subtiles_along_width):
-            for j in range(num_subtiles_along_height):
+        for i in range(num_subtiles_along_height):
+            for j in range(num_subtiles_along_width):
                 subtile = tile[b, :, subtile_dim*i:subtile_dim*(i+1), subtile_dim*j:subtile_dim*(j+1)].to(device)
                 subtiles[b, subtile_idx, :, :, :] = subtile
                 subtile_idx += 1
