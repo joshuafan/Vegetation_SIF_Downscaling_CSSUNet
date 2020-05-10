@@ -8,6 +8,10 @@ import torch.nn as nn
 import matplotlib.pyplot as plt
 from datetime import datetime
 
+from scipy.stats import pearsonr, spearmanr
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_squared_error, r2_score
+
 
 # Given a date string (e.g. "20150608"), returns the year, month, and day-of-year (e.g. June 8 is day #159 of the year)
 def parse_date_string(date_string):
@@ -38,6 +42,28 @@ def plot_histogram(column, plot_filename):
     n, bins, patches = plt.hist(column, 20, facecolor='blue', alpha=0.5)
     plt.savefig('exploratory_plots/' + plot_filename)
     plt.close()
+
+
+def print_stats(true, predicted, average_sif):
+    if isinstance(true, list): 
+        true = np.array(true)
+    if isinstance(predicted, list):
+        predicted = np.array(predicted)
+    print('True', true[:50])
+    print('Predicted', predicted[:50])
+    print('Sif mean:', average_sif)
+    predicted_to_true = LinearRegression().fit(predicted.reshape(-1, 1), true)
+    print('True vs predicted regression', predicted_to_true.coef_, 'intercept', predicted_to_true.intercept_)
+    predicted_rescaled = predicted_to_true.predict(predicted.reshape(-1, 1))
+    r2 = r2_score(true, predicted_rescaled)
+    corr, _ = pearsonr(true, predicted_rescaled)
+    nrmse = math.sqrt(mean_squared_error(true, predicted_rescaled)) / average_sif
+    nrmse_unstd = math.sqrt(mean_squared_error(true, predicted)) / average_sif
+    print('R2:', round(r2, 3))
+    print('Pearson correlation:', round(corr, 3))
+    print('Pearson (unstandardized):', round(pearsonr(true, predicted)[0], 3))
+    print('NRMSE:', round(nrmse, 3))
+    print('NRMSE (unstandardized):', round(nrmse_unstd, 3))
 
 
 # For each tile in the batch, returns a list of subtiles.
@@ -133,7 +159,7 @@ def train_single_model(model, dataloaders, dataset_sizes, criterion, optimizer, 
                     predicted_sif_non_standardized = torch.tensor(predicted_sif_standardized * sif_std + sif_mean, dtype=torch.float).to(device)
                     non_standardized_loss = criterion(predicted_sif_non_standardized, true_sif_non_standardized)
                     j += 1
-                    if j % 20 == 1:
+                    if j % 100 == 1:
                         print('========================')
                         print('> Predicted', predicted_sif_non_standardized)
                         print('> True', true_sif_non_standardized)

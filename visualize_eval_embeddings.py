@@ -13,7 +13,7 @@ from eval_subtile_dataset import EvalSubtileDataset
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
 EVAL_SUBTILE_DATASET_FILE = os.path.join(DATA_DIR, "dataset_2016-07-16/eval_subtiles.csv")
-TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_recon/TileNet.ckpt")  #"models/tile2vec_dim512_neighborhood100/TileNet.ckpt")
+TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_hard_2/TileNet.ckpt")  #"models/tile2vec_dim512_neighborhood100/TileNet.ckpt")
 TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-07-16")
 BAND_STATISTICS_FILE = os.path.join(TRAIN_DATASET_DIR, "band_statistics_train.csv")
 

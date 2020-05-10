@@ -1,33 +1,3 @@
-# Aug 16 2018
-#DOCUMENT_IDS=("1V68AUKVQXGS2ahNb1VEYkcUdF28KnLxc" "1ITiRX8-Xr754rvSrURgJcHD-kgJQB6w8" "1OjT77lk9Y1BMMd6BBMDnllgnOFSYg86J" "1bd51LkhnYMjMgxMfAtsbjy9jjDaVOmlG" "1jvJ-vQlI0sEdUw1mooOieU8SoIE3b4c4" "1BLHoeArhxRg047Vo_brB734NXIOVY60J" "1mlD1mz7E3QYPMRMmYAReHetRV3gkv7w1" "16chY8muaqfNBpMGnJoeFPdOZTdwjIYeN" "1XGCEzUf6RrHBSIHcrAeKpE8O8_hrUypJ" "1KP_7ob3DYN9hBW8wLudY6ReIxUB-CJsE" "1hqu2B0aYabcO3tSctci4uPkSvi_yug-Q" "1df1jHxen1daqtOZT6qzaDCZvrlEf-6-t" "1zZ_v9HzrVlRgsu8Ze4gXgx3cujMtKIWl" "11aDQgbav1JXkN8TuDjBmpQZRwzJoGORK" "13tZPfHAvykBZH4fs2tHNjRuOdU6vv2qD")
-
-# Jul 1 2019
-#DOCUMENT_IDS=("1DpjsKeGj4bd03WXh7cK1xAlf_OSksTQc" "1sLHRam094qycsPc7_sL9wtogiVnLjFAR" "1bjYtLzTwHqWyds446RvGi0Y_3uRXyZyC" "1zVs-cdlt49kU7vdF5VW8Hkyp7-1UpLb8" "1dL2hCznLVfGYxrilBvJaGwF9PbA1DvuI" "1FPPv-F7pk4ySEQfw8lKlv31pz40gjz3H" "1ILo_PxxWhPXVJ_EOn_POKCqWqNnqDK83" "1Om7hEQwxOMkIStSi7l7D3vN5ekL2iCz9" "11cB3p8rIyNakAoxXJaV_CKVJdNcU40gW" "1QeGQGjGL6HMjWPkjDCeyvbADudN0fu8T" "15MOI_QDiCNn84-x4vAcT5-6cruJy798z" "1lAL3_b10kwvIngeSQ4wIUkihBt-cCBnB" "1gC69DSJ-phbpM0SgXWQfa7svPUVzx3DE" "1j8xlbxOzBGSp6WgAWag2KXXrkylVpEXc" "1ZdBOgWy_IlaAhz4oQFK_LVlne5ELblbG")
-
-# Jul 16 2017
-#DOCUMENT_IDS=("1Df7CbHWpr6BYRi_LIlpxYUkNgFeca025" "1FZ7lBvDSZfkssW1oNgGmK_IzYniYVUs3" "1KRkjM1w7tkVulx-XSgHjiSdIXQARcM8z" "1eZLd6totxjuEi-7-qI545qEIlPIr7NLW" "1OgJDdqweMAPgyBkpL8igTfS3r3daNqUy" "12MHWx3OzB3PcgvBHtTYBSIWqLOwsD3bm" "1AgRtev4z7RW85N83irhMZzqslRx5eMbW" "1AU4MaYdt1bp306ru-Bat6KILAW6n1gs1" "1miFovlPaGF1MKj-_xtv3478vIiJNqItH" "1H19SIYso31bfYa1ud2qosZIOly0UaB2E" "1SJPgcNOLH-tul-XIkh5liHlguU5BTotC" "1UVp-5zAjShMeqMEoK0qt0M89tgPpU1ga" "1c0q9GVQV9yWJnutf22lXIlHd0fXLXJ18" "11mwog5gAepHItXfTaKll-4tk2JGAGoAe" "1VV2Kz-FmflvHUiiKIKzKVg5r0xJGuRSx")
-
-
-# Aug 1-16, 2018
-# DOCUMENT_IDS=("1xXArBQWuX7x-CpidVEKH9kp6W29k94Yf" "1Qg0lHOqiwDAGADgsHuSCNJy_woUp6LSB" "1aReE95lnCopm2PrwYC5ywr1j2WmBQLMm" "1yWZo4jA9hfxdFfpWwB_1Xm5em0JOZWpw" "1zUhUcY-JgmSN4NUhoGfvh4dkfbiOKJpQ" "1weIUAzGftgmAjwISx1MdHIg9mnYK3sgC" "1YDtjSydp7wpR5nqCq5dKOK2_BanGQGwX" "1vOEMznVxyyGf-AyPO3tVSNbTWu-aIm5x" "15xdIBzh50evr9k2efbrc8O745NG4slxL" "13MdQz0qeYYG5LKkmlcnlYLZQpQabXbaW" "1scX3nxJcwOWpdnk7jk33I79IH0n7e2AH" "1K6HoRfbRHKaHv5Xj6jpwOAUIJnaJ7pry" "1DW3XwwFaV-jjxPRRkABekTfsEZ5lkdAv" "1y6kHu4xlVlrzkOImXAFh0B5ZZ4WneehG" "1D01Mk9yCXMEScsuJfrFF8waQcmdNMOiS")
-
-# Aug 1-16, 2016
-# DOCUMENT_IDS=("1zvOj_0q8jsaGPflIV6xjIibCgTnSW9mb" "13Gw9pitOK7tQTsFSNy5Q6mOyMWNp24nl" "19P-vLZM26yKvXxwpD7WnSBqRtae-BDDz" "1xTyjeVmYPwGmXtXEkKTPr5i79dnY14re" "17jX1rO7Qz9TU0ORbgtf-BRffNh3G61Pz" "1fOdTHLtL1Zzf2Hh3_T3woS5OjDNiaxJs" "1p2raQRgpfAq4RmfGXxn4v-Xb2rM2C3so" "1vS32cVFIRY8WP7R6XcoSGtQ95VRBG9o9" "1RbiK5Oa7SpM0D3MWyUf5XZIBl6zIn-eH" "1i8FT_aDZ5oL0D9euKivoDJxgWtbpNH4y" "14VVK_d7q6BQ5ONpe_cLux0CSysPB6-6s" "1KZ32R4iOOew9QEVzoN4TT6U3c8kZ3WZe" "1h5bSSdugByW9uOGZlzBK65y7iC2dM6fD" "1D7DtOWtj0Z8Dd7uWkkg6WHp7dheMThq9" "1bZ2KGMAh25wsd4qHNArtxcymw-DBVt91")
-
-# 2018-08-01, r2
-#DOCUMENT_IDS=("1b566Fs4b4HycLTIm2eEfTrpmk8j7fsnu" "1R-8ADvC3WLGllZMMzedN6weOyWV_CFHI" "1RN8QmW5Iju-c5jQ76t4IfjjDVhSEyhjZ" "1G3rggh3_ggHo4kRtLpJXtDcWCCMg8mHS" "1F77ugWvyFRJbceOgkR11G-DH9TVqpKG3" "1euf-1O0g7yXcG6K9goUTUfGOlLaWjfRs" "14G9YRBeqmd18LJSVcu0TFBlBT-vUP7Zu" "1WHw0y9syUxEE2bDaBFl9ureZIIP4X73A" "1FIhuV5bx6yUYpktJBajc6C72BTi9Ny90" "1bfLt2VAVwFj2PcZGzhgf6p85y9dhAuw9" "1aFGqXm_O1LJ2iyTfKtFPaAd95FYmI3rG" "1-_VbFCapvHez5qagkcbtIgJ06kv50_44")
-
-# 2016-08-01, r2
-# DOCUMENT_IDS=("1XCaN8ai9No_4wmbZCKLPOc_8UVQQDVnA" "15cMs1JuBvIeKH5blnPTFb2Bifmf9Tdsm" "1EtvhnsbXUaGmUlVxtCoioCXWVPQHaUEn" "15Gmg3JxyWsTO06x-qGJye1TPkZyhK85r" "1zkZlyMejJJP4w9-aQ_SIAbw0nIw4xvWy" "1MnvD7qGYpZ7GZ7BlCKHfGPbj3CQR3-XX" "1x69y-M7KzInzaifkWcsBMS-E-YDBgQ4x" "1j6JBUXNwqjnQ2DHtNM0j14F5mAwhFiqd" "1_SAvLkqT5kId7jN_8iOaglqA2pvl0xZp" "1aOs_Y1MgoDR2CZTyJKEqsgJxDexrBYk-" "1ZYF2lsEj4OtTCNaiC67Zj_sVgl0M3WlX" "1Vdy_DiC0_HZsZN7zDzPQ7ayh5iW1feG4")
-
-# DOCUMENT_IDS=("1Mqqka_Od8DT0RYG9x7CfU8l2gypkbxEJ")
-#DOCUMENT_IDS=("1xgaEwFaUe_mQAbq_NXua0_RjoNo0-qpj" "1mE7JggzWMZSqSIr5v0r3xucKZn2OwAf8" "196d_4jnvht8Kqy0CG7z8nkrry1OM2XOV" "1KyNf9bQa3WpSZtgM41en82nYPfmAhouN" "1Xncl3uy92r5qgurgJWxmFbHXzxyV3jm2" "1XhWsgYiAxkpnuiwnNrn0cH4ndpMlmEVr" "1I0Hq5iFlGST596ofiWIeFw5askW_m7Sa" "1RzXKVokf9xaQTByiOUd4S5iEbhUKiYAr" "1W1B_MbbRE1uCqBaPDXmLX8YoQevZEnw-" "1fTQ0NxfSDonfxqkk6dPf2DrVZ7suqFVN" "10Ve8DO9WxCBDgQJXV0HBhQIbyzsK67Q5" "1Ybc_cY2BxvG-zMrdAYtvC6z4qgVvJ-pT")
-
-# 2016-07-17
-#DOCUMENT_IDS=("1D8giJEBymHHpjKotc_tqaL08eMaUD_eB" "1e4k80762WlCXnEUXyUiDdX76sj7LN7Qk" "1WObDxI_pJRCPapUB1wApvYgdtB5qyLhX" "1aQ95Xnz0KAIrebXM4AHCs7Xy1vhN_wUC" "1qlyHlisc0zvS-6zRnOA_fSqPxbwq6Xwy" "1IJHa-CPO3Jt7munxtm4YPpkhoa3ubbpC" "1fAD_z8bLeXlIk2RXcDM_lpBRyDYgFmEe" "1ruVnOmKFd6PpV1mA5u7DN_aTPvi-h_op" "1uVhcUEQeQzVIC16IaYzXLjXUKmLhwcuV" "1Y0cjQYAFdpIXVArOUtKeXiZEk6AHWAM_" "1q-a_GHQY3tr_BHZbIRQ9asJUKcIUmxg6" "1jKiRqU0x0Kvs5T3yh-PT7cNXbsjomGmP")
-
-# 2018-07-17
-#DOCUMENT_IDS=("13C-SmkZrH8qnizsqi0tXXBHhQtQJlkyF" "1W7riQ7jIerB4wp4fEWoUnWQuoS8XXoQD" "1qDjWWvEzV6x4tH-pDkykAv54Sa7QFeO9" "1jPNEVGQLK1gjDU5Uzl_dnAAvFOzApypa" "1TyxJqcxo22H_Fv_OmQZ1Go_AWXUK4B_h" "18PIhxxHUUDKXs84kQshodGdwx53B5_5S" "1M4Hp1gOJhYG_Yzza8z1-Efu0fZkMsnEX" "1hXq3G6DNDcHtts6TLjiLHXJPhcQ1eSXi" "1EGxLc56PyDu5Hpp6MqiwXDeSfF_gRNU0" "1EVFwDYq9YFHFrSpf2tPjE7A-Fs75o-Q_" "1mgf0iCmVDcBw1CM2TxzhGR1kzyaAag3o" "1eRd8KWUndXSnIal3aJmYKQrfFOpJ6U4b")
 
 # 2016-07-16
 #DOCUMENT_IDS=("1YHGlcqnyXpwxLVwhftl0sVbEO0QP-_xF" "18fPUfmPSL3M5lbA76QhiNGIzdAHm5yjS" "1gMGpdD95JSzBHIza_lj3f4EvoMDKZ2zZ" "1u4dp_TGxxcjvIRZ2KlJJIAN6hsftFvHT" "1mJL9xFhN6Qcl6V3kOkLQZioiYvo-hLPH" "15dorDHIU1deOsvz7_Gftp9lCeOhTv4lO" "1PLihGzpgCWv7niAWteBQdVW3o5zrVlzn" "1KlSJL8x4y0tvS0UpimgTkiQ2xp6gtP8I" "1ABALsgTLCrxtB9ENNmTErpyZb9tbi3AF" "1zAgmXYgzIAnXVXVJt2Zl9hUBr_MWC4Cd" "1EAu6uPl2EBYHx65BGFdOuU2fFhZw-3mC" "19b-0MOu95eimE3shZPlKPeDcwYgkamH4")
@@ -36,21 +6,20 @@
 #DOCUMENT_IDS=("1kXGHW6CM2P6dKKYO44Sq26LhtVnrosbr" "1wzUzSmMV_SVGs9tfrxYAm9wEef8OmNDh" "1o2eAqpSs_6Sa4ItY-a1wp_5lVwtIC9K_" "1L-4UsCrPjqZ1CQfNfhOnGAJh8uMBdLhj" "1TPamt9cB0b6to0COIADDpzooME90Krns" "1djuMEJ5N7qNt52pIGX_rzU4gHzuh3da1" "14Zdlsg3c61Gjg4YbwB27lJiP8USmJhXz" "19oMpn_4zbAD-b1kfcfU2EqDlOSmehOwG" "12CP5HFb6aTf5makt_nAylGIuTyvn8Cr0" "1fjojFowriteUSuRjl7jDHCZoJvhTd_gF" "15YlzncAruTd2xudjpU6nEAYUaVjvKZrk" "1ofXMjlclJCTulFM7IDL0MWUhVBC7EAjP")
 
 #2018-07-16 r2 (eastern region)
-#DOCUMENT_IDS=("1rLx_ZI7hNUaDcE6pLYBxrcAWlz3upddo" "16NRNY8L0N9m7MWlWG20xT5OZfxzaz4oo" "1TchOLzks_qG2hwYyb542Z1su-kBpFAEi" "1PaZscaO2Nj-zSN1JDCzm-joCqe8-7dBb" "1nV3UbB09JcpWpRZuIqH57DuBQwQ3M5eE" "1svfwJKAiwkh4uzt6TtV60TF1VpbS9wLp" "18H_4mHXJvx9Rq04E1pjBQYSN2BBqPmiK" "1ZGogxAMjOZgV1ut4A9P0TCICnUz5kkPm" "1dsEuE398ljd1tV94ze4whGMpCsWfxK4g")
+DOCUMENT_IDS=("1rLx_ZI7hNUaDcE6pLYBxrcAWlz3upddo" "16NRNY8L0N9m7MWlWG20xT5OZfxzaz4oo" "1TchOLzks_qG2hwYyb542Z1su-kBpFAEi" "1PaZscaO2Nj-zSN1JDCzm-joCqe8-7dBb" "1nV3UbB09JcpWpRZuIqH57DuBQwQ3M5eE" "1svfwJKAiwkh4uzt6TtV60TF1VpbS9wLp" "18H_4mHXJvx9Rq04E1pjBQYSN2BBqPmiK" "1ZGogxAMjOZgV1ut4A9P0TCICnUz5kkPm" "1dsEuE398ljd1tV94ze4whGMpCsWfxK4g")
 
 # 2019-07-16
 # DOCUMENT_IDS=("1nqtuK0hHDERfiH0L1GOXe7BhAotfJ-cc" "1_7jBnT8vri6rHx91R1b6oNYnq5fYVHAV" "1vfsZSHfX_EpBM55UMp-hN7s6HkRdXw4P" "1t4Lq8Fuq964hdhVDGVH5-_MPa3OgjdBT" "1VB9RUh6DYvOvjtsVEHJ-UO5CpeNM8s4o" "1yMoInjSNDmD66iRSm419h00qz9RWyvIS" "1jJHLD7rtevn3EmliahGLxQWSi0N3wl9d" "1G6oNl_APfedATQMT1x0eS4q4oxmT-U03" "1XSZ-xgb5sKd9xMkvOlanygevdXzjpP6g" "1k_ddPUusw71RZWd22umSEDsxF7YzTDEo" "14_0WeIiVTEtapBxAjLfoSdleyHSVe4Wo" "1qDFwxgh6M6BVAyPoll_QgxTOA7-GSihq" "1geHz1-7rlMVq3Is4VY6mmu6PoCRLmqGz" "1_s3AgBeatJkmH5GyvwAvwxt63Y6xwxJf" "1yKap_GrBArTmtQ3By458GdZxxcK-pibP")
 
 #DOCUMENT_IDS=("1aQL4cv020wkchzS7WlHb4XfI4c9j9Do3" "1fO6F4fdCxtAYDnnqV0kQll3eofGNDcaz")
-DOCUMENT_IDS=("18H_4mHXJvx9Rq04E1pjBQYSN2BBqPmiK")
-DOWNLOAD_FOLDER="/mnt/beegfs/bulk/mirror/jyf6/datasets/LandsatReflectance/test_2018-07-16"
+DOWNLOAD_FOLDER="/mnt/beegfs/bulk/mirror/jyf6/datasets/LandsatReflectance/2018-07-16_r2"
 
 mkdir ./tmp
 mkdir ${DOWNLOAD_FOLDER}
 
 for i in ${!DOCUMENT_IDS[@]}; do
-  x=5 #$((${i} / 5))
-  y=2 #$((${i} % 5))
+  x=$((${i} / 3))
+  y=$((4 + (${i} % 3)))
   FINAL_DOWNLOADED_FILENAME="${DOWNLOAD_FOLDER}/corn_belt_reflectance_2018-07-16_box_${x}_${y}.tif"
   curl -sc ./tmp/cookie "https://drive.google.com/uc?export=download&id=${DOCUMENT_IDS[${i}]}" > /dev/null
   code="$(awk '/_warning_/ {print $NF}' ./tmp/cookie)"  

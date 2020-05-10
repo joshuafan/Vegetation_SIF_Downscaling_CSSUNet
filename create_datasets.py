@@ -22,12 +22,13 @@ import xarray as xr
 from rasterio.plot import show
 from sif_utils import lat_long_to_index, plot_histogram
 
-DATE_RANGE = pd.date_range(start="2019-07-16", end="2019-07-31")
+DATE_RANGE = pd.date_range(start="2018-07-16", end="2018-07-31")
+SIF_DATE_RANGE = pd.date_range(start="2018-08-01", end="2018-08-16")
 START_DATE = str(DATE_RANGE.date[0])
-YEAR = "2019"
+YEAR = "2018"
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-REFLECTANCE_DIR = os.path.join(DATA_DIR, "LandsatReflectance", START_DATE)
-COVER_FILE = os.path.join(DATA_DIR, "CDL_" + YEAR + "/CDL_2019_1.tif") #corn_belt_cdl_2018-08-01_epsg.tif")  # "CDL_2016_big.tif"
+REFLECTANCE_DIR = os.path.join(DATA_DIR, "LandsatReflectance", START_DATE + "_r2")
+COVER_FILE = os.path.join(DATA_DIR, "CDL_" + YEAR + "/CDL_2018_r2.tif") #corn_belt_cdl_2018-08-01_epsg.tif")  # "CDL_2016_big.tif"
 OUTPUT_DATASET_DIR = os.path.join(DATA_DIR, "dataset_" + START_DATE)  # Directory containing list of tiles
 OUTPUT_IMAGES_DIR = os.path.join(DATA_DIR, "images_" + START_DATE)  # Directory containing large images
 OUTPUT_TILES_DIR = os.path.join(DATA_DIR, "tiles_" + START_DATE)  # Directory containing 0.1x0.1 degree tiles
@@ -43,7 +44,7 @@ FLOAT_EQUALITY_TOLERANCE = 1e-10
 
 # True if you want to append to the output csv file, False to overwrite
 APPEND = False #True
-OUTPUT_CSV_FILE = os.path.join(OUTPUT_DATASET_DIR, "reflectance_cover_to_sif.csv")
+OUTPUT_CSV_FILE = os.path.join(OUTPUT_DATASET_DIR, "reflectance_cover_to_sif_r2.csv")
 
 if not os.path.exists(OUTPUT_DATASET_DIR):
     os.makedirs(OUTPUT_DATASET_DIR)
@@ -117,7 +118,7 @@ with rio.open(COVER_FILE) as cover_dataset:
     sif_dataset = xr.open_dataset(SIF_FILE)
 
     # Read SIF values that fall in the appropriate date range
-    sif_array = sif_dataset.sif_dc.sel(time=slice(DATE_RANGE.date[0], DATE_RANGE.date[-1]))
+    sif_array = sif_dataset.sif_dc.sel(time=slice(SIF_DATE_RANGE.date[0], SIF_DATE_RANGE.date[-1]))
     print("SIF array shape", sif_array.shape)
     print("SIF array:", sif_array)
 
@@ -127,8 +128,8 @@ with rio.open(COVER_FILE) as cover_dataset:
     if len(sif_array['time'].values) >= 1:
         sif_array = sif_array.mean(dim='time')
     else:
-        response = input("No SIF data available for any date between " + str(DATE_RANGE.date[0]) +
-                         " and " + str(DATE_RANGE.date[-1]) +
+        response = input("No SIF data available for any date between " + str(SIF_DATE_RANGE.date[0]) +
+                         " and " + str(SIF_DATE_RANGE.date[-1]) +
                          ". Create dataset anyways without total SIF label? (y/n) ")
         if response != 'y' and response != 'Y':
             exit(1)
@@ -310,6 +311,9 @@ with rio.open(COVER_FILE) as cover_dataset:
                             #print('var', data_var)
                             fldas_layers.append(reprojected_fldas_dataset[data_var].data)
                         fldas_tile = np.stack(fldas_layers)
+                        if np.isnan(fldas_tile).any():
+                            print('ATTENTION: FLDAS tile had NaNs!!!')
+                            continue
 
                         # Extract relevant areas from cover and reflectance datasets
                         cover_tile = reprojected_covers[cover_top_idx:cover_bottom_idx,

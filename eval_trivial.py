@@ -10,6 +10,7 @@ from scipy.stats import pearsonr, spearmanr
 from torch.optim import lr_scheduler
 from reflectance_cover_sif_dataset import ReflectanceCoverSIFDataset
 from eval_subtile_dataset import EvalSubtileDataset
+from sif_utils import print_stats
 import tile_transforms
 import time
 import torch
@@ -47,8 +48,8 @@ def eval_model(model, dataloader, dataset_size, criterion, device, sif_mean, sif
     print('SIF std', sif_std)
     sif_mean = torch.tensor(sif_mean).to(device)
     sif_std = torch.tensor(sif_std).to(device)
-    predicted = []
     true = []
+    predicted = []
     running_loss = 0.0
 
     # Iterate over data.
@@ -69,10 +70,10 @@ def eval_model(model, dataloader, dataset_size, criterion, device, sif_mean, sif
 
         # statistics
         running_loss += loss.item() * len(sample['SIF'])
-        predicted += predicted_sif_non_standardized.tolist()
         true += true_sif_non_standardized.tolist()
+        predicted += predicted_sif_non_standardized.tolist()
     loss = math.sqrt(running_loss / dataset_size) / sif_mean
-    return loss, predicted, true
+    return true, predicted, loss
 
 
 # Check if any CUDA devices are visible. If so, pick a default visible device.
@@ -123,18 +124,10 @@ resnet_model = resnet_model.to(device)
 criterion = nn.MSELoss(reduction='mean')
 
 # Evaluate the model
-loss, predicted, true = eval_model(resnet_model, dataloader, dataset_size, criterion, device, sif_mean, sif_std)
-print('Predicted', predicted[0:50])
-print('True', true[0:50])
+true, predicted, loss = eval_model(resnet_model, dataloader, dataset_size, criterion, device, sif_mean, sif_std)
 print("Eval Loss", loss)
 
-# Compare predicted vs true: calculate NRMSE, R2, scatter plot
-nrmse = math.sqrt(mean_squared_error(predicted, true)) / sif_mean
-corr, _ = pearsonr(predicted, true)
-print('NRMSE:', round(nrmse, 3))
-print("Pearson's correlation:", round(corr, 3))
-rank_corr, _ = spearmanr(predicted, true)
-print('Rank correlation', round(rank_corr, 3))
+print_stats(true, predicted, sif_mean)
 
 # Scatter plot of true vs predicted
 plt.scatter(true, predicted)

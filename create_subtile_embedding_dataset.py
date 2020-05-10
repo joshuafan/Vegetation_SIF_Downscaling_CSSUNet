@@ -44,14 +44,14 @@ DATASET_DIR = os.path.join(DATA_DIR, "dataset_" + START_DATE)
 INFO_FILE_TRAIN = os.path.join(DATASET_DIR, "tile_info_train.csv")
 INFO_FILE_VAL = os.path.join(DATASET_DIR, "tile_info_val.csv")
 BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
-SUBTILE_EMBEDDING_FILE_TRAIN = os.path.join(DATASET_DIR, "tile2vec2_embeddings_train.csv")
-SUBTILE_EMBEDDING_FILE_VAL = os.path.join(DATASET_DIR, "tile2vec2_embeddings_val.csv")
-EMBEDDING_FILE_SUFFIX = '_tile2vec2_embeddings.npy'
+SUBTILE_EMBEDDING_FILE_TRAIN = os.path.join(DATASET_DIR, "avg_embeddings_train.csv")
+SUBTILE_EMBEDDING_FILE_VAL = os.path.join(DATASET_DIR, "avg_embeddings_val.csv")
+EMBEDDING_FILE_SUFFIX = '_avg_embeddings.npy'
 TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_hard/TileNet.ckpt")
 
 # If EMBEDDING_TYPE is 'average', the embedding is just the average of each band.
 # If it is 'tile2vec', we use the Tile2Vec model 
-EMBEDDING_TYPE ='tile2vec'  #average' # 'tile2vec'
+EMBEDDING_TYPE ='average'  #average' # 'tile2vec'
 # TRAINING_PLOT_FILE = 'exploratory_plots/tile2vec_subtile_sif_prediction.png'
 SUBTILE_DIM = 10
 Z_DIM = 256

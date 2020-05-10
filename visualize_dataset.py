@@ -68,9 +68,9 @@ ALL_TILE_DATASET = os.path.join(TRAIN_DATASET_DIR, "reflectance_cover_to_sif.csv
 
 
 #TILES_DIR = os.path.join(DATA_DIR, "tiles_2016-07-16")
-TILES_DIR = os.path.join(DATA_DIR, "tiles_2018-07-16")
+TILES_DIR = os.path.join(DATA_DIR, "tiles_2019-07-16")
 LAT = 41.15
-LON = -89.45
+LON = -89.35
 #LAT = 48.65
 #LON = -84.45
 #LAT = 42.55
@@ -101,6 +101,10 @@ TILE_SIZE_DEGREES = 0.1
 INPUT_SIZE = 371
 OUTPUT_SIZE = int(INPUT_SIZE / SUBTILE_DIM)
 
+# Plot histogram of each band
+train_averages = pd.read_csv(TILE_AVERAGE_TRAIN_FILE).dropna()
+for column in train_averages.columns:
+    plot_histogram(np.array(train_averages[column]), "train_" + column + ".png")
 
 # Check if any CUDA devices are visible. If so, pick a default visible device.
 # If not, use CPU.
@@ -159,8 +163,9 @@ subtile_averages = torch.mean(subtiles_non_standardized, dim=(2,3))
 
 # Visualize the input tile
 array = tile.transpose((1, 2, 0))
+rgb_tile = array[:, :, RGB_BANDS] / 1000
 print('Array shape', array.shape)
-plt.imshow(array[:, :, RGB_BANDS] / 1000)
+plt.imshow(rgb_tile)
 plt.savefig("exploratory_plots/" + LAT_LON + "_rgb.png")
 plt.close()
 
@@ -355,6 +360,25 @@ for index, row in cfis_area.iterrows():
 plt.imshow(cfis_tile, cmap='Greens', vmin=0, vmax=1.5)
 plt.savefig("exploratory_plots/" + LAT_LON + "_cfis_sifs.png")
 plt.close()
+
+fig, axeslist = plt.subplots(ncols=3, nrows=2, figsize=(24, 24))
+axeslist[0 ,0].imshow(rgb_tile)
+axeslist[0, 0].set_title('RGB Bands')
+axeslist[0, 1].imshow(cfis_tile, cmap='YlGn', vmin=0.2, vmax=1.5)
+axeslist[0, 1].set_title('Linear Regression: predicted SIF')
+axeslist[0, 2].imshow(cfis_tile, cmap='YlGn', vmin=0.2, vmax=1.5)
+axeslist[0, 2].set_title('Subtile CNN: predicted SIF')
+axeslist[1, 0].imshow(cfis_tile, cmap='YlGn', vmin=0.2, vmax=1.5)
+axeslist[1, 0].set_title('Ground-truth CFIS SIF')
+axeslist[1, 1].imshow(cfis_tile, cmap='YlGn', vmin=0.2, vmax=1.5)
+axeslist[1, 1].set_title('Tile2Vec Fixed: predicted SIF')
+axeslist[1, 2].imshow(cfis_tile, cmap='YlGn', vmin=0.2, vmax=1.5)
+axeslist[1, 2].set_title('Structured Attention Network: predicted SIF')
+plt.colorbar()
+plt.tight_layout() # optional
+plt.savefig('exploratory_plots/' + LAT_LON +'.png')
+plt.close()
+
 
 # Compare stats
 predicted_sifs_simple_cnn_non_standardized = np.clip(predicted_sifs_simple_cnn_non_standardized, a_min=0.2, a_max=1.7)

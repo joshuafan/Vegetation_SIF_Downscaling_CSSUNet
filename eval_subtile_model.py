@@ -25,7 +25,7 @@ from tile2vec.src.tilenet import make_tilenet
 from embedding_to_sif_model import EmbeddingToSIFModel
 from embedding_to_sif_nonlinear_model import EmbeddingToSIFNonlinearModel
 import tile_transforms
-
+from sif_utils import print_stats
 
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
@@ -43,7 +43,7 @@ METHOD = "tile2vec_finetuned"
 TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_eval_subtile_' + METHOD
 # TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_eval_subtile_finetuned_tile2vec.ping'
 
-COLUMN_NAMES = ['predicted','true',
+COLUMN_NAMES = ['true', 'predicted',
                     'grassland_pasture', 'corn', 'soybean', 'shrubland',
                     'deciduous_forest', 'evergreen_forest', 'spring_wheat', 'developed_open_space',
                     'other_hay_non_alfalfa', 'winter_wheat', 'herbaceous_wetlands',
@@ -100,12 +100,12 @@ def eval_model(tile2vec_model, embedding_to_sif_model, dataloader, dataset_size,
         batch_size = len(sample['SIF'])
         running_loss += loss.item() * batch_size
         band_means = torch.mean(input_tile_standardized[:, COVER_INDICES, :, :], dim=(2,3))
-        results[j:j+batch_size, 0] = predicted_sif_non_standardized.cpu().numpy()
-        results[j:j+batch_size, 1] = true_sif_non_standardized.cpu().numpy()
+        results[j:j+batch_size, 0] = true_sif_non_standardized.cpu().numpy()
+        results[j:j+batch_size, 1] = predicted_sif_non_standardized.cpu().numpy()
         results[j:j+batch_size, 2:] = band_means.cpu().numpy()
         j += batch_size
-        #if j > 50:
-        #    break
+        if j > 50:
+            break
     return results
 
 
@@ -161,20 +161,13 @@ criterion = nn.MSELoss(reduction='mean')
 # Evaluate the model
 results_numpy = eval_model(tile2vec_model, embedding_to_sif_model, dataloader, dataset_size, criterion, device, sif_mean, sif_std)
 results_df = pd.DataFrame(results_numpy, columns=COLUMN_NAMES)
-
 results_df.to_csv(RESULTS_CSV_FILE)
 
-predicted = results_df['predicted'].tolist()
-results_df['true'] *= 1.52
 true = results_df['true'].tolist()
-print('Predicted', predicted[0:50])
-print('True', true[0:50])
+predicted = results_df['predicted'].tolist()
 
-# Compare predicted vs true: calculate NRMSE, R2, scatter plot
-nrmse = math.sqrt(mean_squared_error(predicted, true)) / sif_mean
-corr, _ = pearsonr(predicted, true)
-print('NRMSE:', round(nrmse, 3))
-print("Pearson's correlation coefficient:", round(corr, 3))
+# Print statistics
+print_stats(true, predicted, sif_mean)
 
 # Scatter plot of true vs predicted
 plt.scatter(true, predicted)

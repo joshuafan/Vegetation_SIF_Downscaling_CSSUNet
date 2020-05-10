@@ -16,6 +16,7 @@ import torchvision.transforms as transforms
 import resnet
 import torch.nn as nn
 import torch.optim as optim
+from sif_utils import print_stats
 
 # Don't know how to properly import from Tile2Vec
 # TODO this is a hack
@@ -42,8 +43,8 @@ def eval_model(subtile_sif_model, dataloader, dataset_size, criterion, device, s
     subtile_sif_model.eval()
     sif_mean = torch.tensor(sif_mean).to(device)
     sif_std = torch.tensor(sif_std).to(device)
-    predicted = []
     true = []
+    predicted = []
     running_loss = 0.0
 
     # Iterate over data.
@@ -61,9 +62,9 @@ def eval_model(subtile_sif_model, dataloader, dataset_size, criterion, device, s
 
         # statistics
         running_loss += loss.item() * len(sample['SIF'])
-        predicted += predicted_sif_non_standardized.tolist()
         true += true_sif_non_standardized.tolist()
-    return predicted, true
+        predicted += predicted_sif_non_standardized.tolist()
+    return true, predicted
 
 
 # Check if any CUDA devices are visible. If so, pick a default visible device.
@@ -108,15 +109,9 @@ subtile_sif_model.load_state_dict(torch.load(SUBTILE_SIF_MODEL_FILE, map_locatio
 criterion = nn.MSELoss(reduction='mean')
 
 # Evaluate the model
-predicted, true = eval_model(subtile_sif_model, dataloader, dataset_size, criterion, device, sif_mean, sif_std)
-print('Predicted', predicted[0:50])
-print('True', true[0:50])
+true, predicted = eval_model(subtile_sif_model, dataloader, dataset_size, criterion, device, sif_mean, sif_std)
 
-# Compare predicted vs true: calculate NRMSE, R2, scatter plot
-nrmse = math.sqrt(mean_squared_error(predicted, true)) / sif_mean
-corr, _ = pearsonr(predicted, true)
-print('NRMSE:', round(nrmse, 3))
-print("Pearson correlation coefficient:", round(corr, 3))
+print_stats(true, predicted, sif_mean)
 
 # Scatter plot of true vs predicted
 plt.scatter(true, predicted)

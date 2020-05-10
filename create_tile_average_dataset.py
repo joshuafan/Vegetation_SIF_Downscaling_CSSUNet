@@ -11,12 +11,13 @@ import os
 import pandas as pd
 import sklearn.model_selection
 from sif_utils import plot_histogram
+import torch
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
 DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-07-16")
 INFO_CSV_FILES = [os.path.join(DATASET_DIR, "reflectance_cover_to_sif.csv"),
-                  os.path.join(DATASET_DIR, "reflectance_cover_to_sif_r2.csv"),
-                  os.path.join(DATA_DIR, "dataset_2019-07-16/reflectance_cover_to_sif.csv")]
+                  os.path.join(DATASET_DIR, "reflectance_cover_to_sif_r2.csv")]
+#                  os.path.join(DATA_DIR, "dataset_2019-07-16/reflectance_cover_to_sif.csv")]
 SPLIT_INFO_CSV_FILES = {"train": os.path.join(DATASET_DIR, "tile_info_train.csv"),
                         "val": os.path.join(DATASET_DIR, "tile_info_val.csv")}
 TILE_AVERAGE_CSV_FILES = {"train": os.path.join(DATASET_DIR, "tile_averages_train.csv"),
@@ -32,7 +33,18 @@ frames = []
 for info_file in INFO_CSV_FILES:
     frames.append(pd.read_csv(info_file))
 tile_metadata = pd.concat(frames)
+tile_metadata.reset_index(drop=True, inplace=True)
 print('(Unfiltered) number of large tiles:', len(tile_metadata))
+
+# Check if any CUDA devices are visible. If so, pick a default visible device.
+# If not, use CPU.
+if 'CUDA_VISIBLE_DEVICES' in os.environ:
+    print('CUDA_VISIBLE_DEVICES:', os.environ['CUDA_VISIBLE_DEVICES'])
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+else:
+    device = "cpu"
+print("Device", device)
+
 
 # Split into train/val, and write the split to a file (to ensure that all methods use the same
 # train/val split)
@@ -42,7 +54,7 @@ datasets = {"train": train_set, "val": val_set}
 for split in ["train", "val"]:
     # Create a dataset of tile-average values. Also, compute mean/std of each band
     csv_rows = []
-    column_names = ['lat', 'lon', 'ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
+    column_names = ['date', 'tile_file', 'lat', 'lon', 'ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
                     'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg', 
                     'grassland_pasture', 'corn', 'soybean', 'shrubland',
                     'deciduous_forest', 'evergreen_forest', 'spring_wheat', 'developed_open_space',
@@ -58,7 +70,8 @@ for split in ["train", "val"]:
     dataset = datasets[split]
     valid_indices = []  # Indices of tiles to include
     sifs = []
-
+    dataset.reset_index(drop=True, inplace=True)
+    print(dataset.head(5))
     i = -1
     for index, row in dataset.iterrows():
         i += 1
@@ -67,7 +80,7 @@ for split in ["train", "val"]:
         # Tile assumed to be (band x lat x long)
         tile = np.load(row.loc['tile_file'])
         # print('Tile', tile.shape, 'dtype', tile.dtype)
-        tile_averages = np.mean(tile, axis=(1,2))
+        tile_averages = torch.mean(torch.tensor(tile).to(device), dim=(1,2)).cpu().numpy()
 
         # Remove tiles with any NaNs
         if np.isnan(tile_averages).any():
@@ -91,7 +104,7 @@ for split in ["train", "val"]:
         if float(row.loc['SIF']) < MIN_SIF:
             continue
 
-        csv_row = [row.loc['lat'], row.loc['lon']] + tile_averages.tolist() + [row.loc['SIF']]
+        csv_row = [row.loc['date'], row.loc['tile_file'], row.loc['lat'], row.loc['lon']] + tile_averages.tolist() + [row.loc['SIF']]
         csv_rows.append(csv_row)
         band_averages_all_tiles.append(tile_averages)
         valid_indices.append(i)
@@ -108,20 +121,13 @@ for split in ["train", "val"]:
     print("Band stds", band_stds)
 
     # Write filtered tile-info dataset to file, to record split
-    filtered_dataset.to_csv(SPLIT_INFO_CSV_FILES[split])
-
+    filtered_dataset.to_csv(SPLIT_INFO_CSV_FILES[split], index=False)
 
     # Write rows to .csv file
     with open(TILE_AVERAGE_CSV_FILES[split], "w") as output_csv_file:
         csv_writer = csv.writer(output_csv_file, delimiter=",", quoting=csv.QUOTE_MINIMAL)
         for row in csv_rows:
             csv_writer.writerow(row)
-
-    # Plot histogram of each column
-    #data_array = np.array(csv_rows[1:])  # Ignore header row
-    #for i in range(len(column_names)):
-    #    print("Column:", column_names[i])
-    #    plot_histogram(data_array[:, i], column_names[i] + "_" + split + ".png")
 
     # Write band averages to file
     statistics_rows = [['mean', 'std']]
