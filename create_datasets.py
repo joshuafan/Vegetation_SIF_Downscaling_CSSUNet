@@ -1,58 +1,70 @@
 """
-Outputs a dataset mapping reflectance/cover tiles to SIF.
+Outputs a dataset mapping large tiles to TROPOMI SIF.
 Each row in the dataset contains a filename of an .npy file. The ``tile_file'' field contains the
 name of a file, which stores a tensor of shape (band x lat x long); each band is either a 
-reflectance band or a mask of a specific crop cover type.
+reflectance band, a FLDAS band, a mask of a specific crop cover type.
 Each row also contains the latitude and longitude of that tile, as well as the total SIF of the tile.
-
 """
 import csv
 import math
-
-import numpy as np
 import os
+import traceback
+
+import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import rasterio as rio
 import rasterio.crs
-from rasterio.warp import calculate_default_transform, reproject, Resampling
-import traceback
-import matplotlib.pyplot as plt
 import xarray as xr
-
 from rasterio.plot import show
+from rasterio.warp import Resampling, calculate_default_transform, reproject
+
 from sif_utils import lat_long_to_index, plot_histogram
 
+
+# Date range of Landsat data
 DATE_RANGE = pd.date_range(start="2018-07-16", end="2018-07-31")
-SIF_DATE_RANGE = pd.date_range(start="2018-08-01", end="2018-08-16")
 START_DATE = str(DATE_RANGE.date[0])
+
+# Date range of SIF data
+SIF_DATE_RANGE = pd.date_range(start="2018-08-01", end="2018-08-16")
 YEAR = "2018"
+
+# Root directory of datasets
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
+
+# Directory containing Landsat data (may contain multiple .tif files)
 REFLECTANCE_DIR = os.path.join(DATA_DIR, "LandsatReflectance", START_DATE + "_r2")
-COVER_FILE = os.path.join(DATA_DIR, "CDL_" + YEAR + "/CDL_2018_r2.tif") #corn_belt_cdl_2018-08-01_epsg.tif")  # "CDL_2016_big.tif"
-OUTPUT_DATASET_DIR = os.path.join(DATA_DIR, "dataset_" + START_DATE)  # Directory containing list of tiles
-OUTPUT_IMAGES_DIR = os.path.join(DATA_DIR, "images_" + START_DATE)  # Directory containing large images
-OUTPUT_TILES_DIR = os.path.join(DATA_DIR, "tiles_" + START_DATE)  # Directory containing 0.1x0.1 degree tiles
-SIF_FILE = os.path.join(DATA_DIR, "TROPOMI_SIF/TROPO-SIF_01deg_biweekly_Apr18-Jan20.nc")
+
+# File containing FLDAS data
 FLDAS_FILE = os.path.join(DATA_DIR, "FLDAS/FLDAS_NOAH01_C_GL_M.A" + YEAR + "08.001.nc.SUB.nc4")
+FLDAS_VARS = ["Rainf_f_tavg", "SWdown_f_tavg", "Tair_f_tavg"]
+
+# File containing CDL (crop type) data
+COVER_FILE = os.path.join(DATA_DIR, "CDL_" + YEAR + "/CDL_2018_r2.tif") #corn_belt_cdl_2018-08-01_epsg.tif")  # "CDL_2016_big.tif"
+
+# File containing SIF data
+SIF_FILE = os.path.join(DATA_DIR, "TROPOMI_SIF/TROPO-SIF_01deg_biweekly_Apr18-Jan20.nc")
+
+# Output directories
+OUTPUT_DATASET_DIR = os.path.join(DATA_DIR, "dataset_" + START_DATE)  # Directory containing list of tiles
+OUTPUT_TILES_DIR = os.path.join(DATA_DIR, "tiles_" + START_DATE)  # Directory containing 0.1x0.1 degree tiles
+OUTPUT_CSV_FILE = os.path.join(OUTPUT_DATASET_DIR, "reflectance_cover_to_sif_r2.csv")  # Output csv file referencing all tiles
 
 # List of cover types to include (see https://developers.google.com/earth-engine/datasets/catalog/USDA_NASS_CDL
 # for what these numbers correspond to). I included all cover types that are >1% of the region.
 COVERS_TO_MASK = [176, 1, 5, 152, 141, 142, 23, 121, 37, 24, 195, 190, 111, 36, 61, 4, 122, 131, 22, 31, 6, 42, 123, 29, 41, 28, 143, 53, 21, 52]  # [176, 152, 1, 5, 141, 142, 23, 121, 37, 190, 195, 111, 36, 24, 61, 0]
-# MAX_MISSING_FRACTION = 0.5  # If more than 50% of pixels in the tile are missing, throw the tile out
-SIF_TILE_DEGREE_SIZE = 0.1
+
+SIF_TILE_DEGREE_SIZE = 0.1  # Size of output tiles, in degrees
 FLOAT_EQUALITY_TOLERANCE = 1e-10
 
 # True if you want to append to the output csv file, False to overwrite
-APPEND = False #True
-OUTPUT_CSV_FILE = os.path.join(OUTPUT_DATASET_DIR, "reflectance_cover_to_sif_r2.csv")
+APPEND = False
 
 if not os.path.exists(OUTPUT_DATASET_DIR):
     os.makedirs(OUTPUT_DATASET_DIR)
-if not os.path.exists(OUTPUT_IMAGES_DIR):
-    os.makedirs(OUTPUT_IMAGES_DIR)
 if not os.path.exists(OUTPUT_TILES_DIR):
     os.makedirs(OUTPUT_TILES_DIR)
-
 
 
 # Plot corn pixels and print the most frequent crop types (sorted by percentage)
@@ -62,9 +74,9 @@ def plot_and_print_covers(covers, filename):
     print('Covers!', covers)
     mask = np.zeros_like(covers)
     mask[covers == 1] = 1.
-    #plt.imshow(mask, cmap='Greens', vmin=0, vmax=1)
-    #plt.savefig('datasets/CDL_2019/visualizations/' + filename)
-    #plt.close()
+    plt.imshow(mask, cmap='Greens', vmin=0, vmax=1)
+    plt.savefig('datasets/CDL_2019/visualizations/' + filename)
+    plt.close()
 
     # Count how many pixels contain each crop
     total_pixels = covers.shape[0] * covers.shape[1]
@@ -198,6 +210,7 @@ with rio.open(COVER_FILE) as cover_dataset:
                 # Read reflectance dataset into numpy array: CxHxW
                 reprojected_reflectances = reflectance_dataset.read()
                 print('REPROJECTED REFLECTANCE DATASET: shape', reprojected_reflectances.shape, 'Dtype:', reprojected_reflectances.dtype)
+
                 #plot_histogram(reprojected_reflectances[1].flatten(), 'blue_reflectance_values.png')
                 #plot_histogram(reprojected_reflectances[2].flatten(), 'green_reflectance_values.png')
                 #plot_histogram(reprojected_reflectances[3].flatten(), 'red_reflectance_values.png')
@@ -266,6 +279,7 @@ with rio.open(COVER_FILE) as cover_dataset:
                 TOP_BOUND = math.floor(combined_top_bound * 10) / 10  # 46.6
 
                 # For each "SIF tile", extract the tile of the reflectance data that maps to it
+                # TODO Change to using np.linspace (need to calculate number of tiles)
                 for left_degrees in np.arange(LEFT_BOUND, RIGHT_BOUND, SIF_TILE_DEGREE_SIZE):
                     for top_degrees in np.arange(TOP_BOUND, BOTTOM_BOUND, -1*SIF_TILE_DEGREE_SIZE):
                         
@@ -302,13 +316,13 @@ with rio.open(COVER_FILE) as cover_dataset:
                             continue
 
                         # Resample FLDAS data for this tile into target resolution (if we haven't already)
-                        new_lat = np.linspace(top_degrees, bottom_degrees, TARGET_TILE_SIZE)  # bottom_bound, combined_top_bound, height_pixels)
-                        new_lon = np.linspace(left_degrees, right_degrees, TARGET_TILE_SIZE)  # combined_left_bound, combined_right_bound, width_pixels)
+                        new_lat = np.linspace(top_degrees, bottom_degrees, TARGET_TILE_SIZE, endpoint=False)  # bottom_bound, combined_top_bound, height_pixels)
+                        new_lon = np.linspace(left_degrees, right_degrees, TARGET_TILE_SIZE, endpoint=False)  # combined_left_bound, combined_right_bound, width_pixels)
                         reprojected_fldas_dataset = fldas_dataset.interp(X=new_lon, Y=new_lat)
                         fldas_layers = []
                         print('FLDAS data vars', reprojected_fldas_dataset.data_vars)
                         for data_var in reprojected_fldas_dataset.data_vars:
-                            #print('var', data_var)
+                            assert(data_var in FLDAS_VARS)
                             fldas_layers.append(reprojected_fldas_dataset[data_var].data)
                         fldas_tile = np.stack(fldas_layers)
                         if np.isnan(fldas_tile).any():
@@ -334,10 +348,8 @@ with rio.open(COVER_FILE) as cover_dataset:
                         # Also create a binary mask, which is 1 for pixels where reflectance
                         # data (for all bands) is missing (due to cloud cover)
                         reflectance_sum_bands = reflectance_tile.sum(axis=0)
-                        #print("Reflectance sum bands dtype", reflectance_sum_bands.dtype)
                         missing_reflectance_mask = np.zeros_like(reflectance_sum_bands, dtype=bool)
                         missing_reflectance_mask[reflectance_sum_bands == 0] = 1.
-                        #print("Missing reflectance mask dtype", missing_reflectance_mask.dtype)
                         masks.append(missing_reflectance_mask)
 
                         # Stack masks on top of each other
@@ -346,7 +358,6 @@ with rio.open(COVER_FILE) as cover_dataset:
                         # Stack reflectance bands and masks on top of each other
                         combined_tile = np.concatenate((reflectance_tile, fldas_tile, masks), axis=0)
                         print("Combined tile shape", combined_tile.shape, 'dtype', combined_tile.dtype)
-
 
                         # Extract the cover and reflectance tiles (covering the same region as the SIF tile)
                         # reflectance_and_cover_tile = combined_area[:, top_idx:bottom_idx, left_idx:right_idx]

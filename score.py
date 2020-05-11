@@ -3,11 +3,11 @@ import pickle
 import json
 import numpy as np
 import pandas as pd
-import tile_transforms
 import time
 import torch
 import torchvision.transforms as transforms
 
+import tile_transforms
 from sif_utils import get_subtiles_list
 import simple_cnn
 

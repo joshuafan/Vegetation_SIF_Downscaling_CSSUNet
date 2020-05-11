@@ -14,6 +14,7 @@ from azureml.core.webservice import LocalWebservice
 # Create workspace
 ws = Workspace.from_config(path="./datasets/config.json")
 
+# %%
 # Register the model with Azure's machine learning workspace
 model = Model.register(model_path = "./models",
                        model_name = "subtile_sif",
@@ -40,17 +41,18 @@ conda_dep.add_pip_package("gensim")
 myenv.python.conda_dependencies=conda_dep
 
 inference_config = InferenceConfig(entry_script="score.py",
+                                   source_directory=".",
                                    environment=myenv)
 
 
 # %%
 # Deployment config
-deployment_config = LocalWebservice.deploy_configuration()
+deployment_config = LocalWebservice.deploy_configuration(port=8890)
 
 # Deploy model
-#model = Model(ws, name='subtile_sif')
+model = Model(ws, name='subtile_sif')
 service = Model.deploy(ws, 'myservice', [model], inference_config, deployment_config)
-service.wait_for_deployment(True)
+service.wait_for_deployment(show_output=True)
 print(service.state)
 print("scoring URI: " + service.scoring_uri)
 print('Local service port: {}'.format(service.port))
@@ -64,3 +66,5 @@ sample_input = json.dumps({
 
 sample_input = bytes(sample_input, encoding='utf-8')
 service.run(input_data=sample_input)
+
+# %%
