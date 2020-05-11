@@ -33,16 +33,16 @@ DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
 DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-07-16")
 INFO_FILE_TRAIN = os.path.join(DATASET_DIR, "tile_info_train.csv")
 INFO_FILE_VAL = os.path.join(DATASET_DIR, "tile_info_val.csv")
-TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/large_tile_resnet18_sgd") #small_tile_simple")  # "models/large_tile_resnet50")
-LOSS_PLOT_FILE = "exploratory_plots/losses_large_tile_resnet18" # small_tile_simple.png"  #losses_large_tile_resnet50.png"
+TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/small_tile_simple") #small_tile_simple")  # "models/large_tile_resnet50")
+LOSS_PLOT_FILE = "exploratory_plots/losses_small_tile_simple.png" # small_tile_simple.png"  #losses_large_tile_resnet50.png"
 BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
 FROM_PRETRAINED = False  #True # False  # Truei
-SHRINK = False #True # True
+SHRINK = True # True
 AUGMENT = True
 NUM_EPOCHS = 50
 INPUT_CHANNELS = 43
 LEARNING_RATE = 1e-3 # 0.01 # 1e-5 # 0.00001  # 1e-3
-WEIGHT_DECAY = 1e-4
+WEIGHT_DECAY = 0 #1e-4
 BATCH_SIZE = 32
 NUM_WORKERS = 4
 RGB_BANDS = [1, 2, 3]
@@ -94,9 +94,9 @@ sif_std = train_stds[-1]
 
 # Set up image transforms
 transform_list = []
+transform_list.append(tile_transforms.StandardizeTile(band_means, band_stds))
 if SHRINK:
     transform_list.append(tile_transforms.ShrinkTile())
-transform_list.append(tile_transforms.StandardizeTile(band_means, band_stds))
 if AUGMENT:
     transform_list.append(tile_transforms.RandomFlipAndRotate())
 transform = transforms.Compose(transform_list)
@@ -111,8 +111,8 @@ dataloaders = {x: torch.utils.data.DataLoader(datasets[x], batch_size=BATCH_SIZE
               for x in ['train', 'val']}
 
 print("Dataloaders")
-#resnet_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, output_dim=1).to(device)
-resnet_model = resnet.resnet18(input_channels=INPUT_CHANNELS).to(device)
+resnet_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, output_dim=1).to(device)
+#resnet_model = resnet.resnet18(input_channels=INPUT_CHANNELS).to(device)
 # resnet_model = make_tilenet(in_channels=INPUT_CHANNELS, z_dim=1)  #.to(device)
 if FROM_PRETRAINED:
     resnet_model.load_state_dict(torch.load(TRAINED_MODEL_FILE, map_location=device))
@@ -120,8 +120,8 @@ print("Loaded model")
 
 
 criterion = nn.MSELoss(reduction='mean')
-optimizer = optim.SGD(resnet_model.parameters(), lr=LEARNING_RATE, momentum=0.9)
-#optimizer = optim.Adam(resnet_model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
+#optimizer = optim.SGD(resnet_model.parameters(), lr=LEARNING_RATE, momentum=0.9)
+optimizer = optim.Adam(resnet_model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
 dataset_sizes = {'train': len(train_metadata),
                  'val': len(val_metadata)}
 

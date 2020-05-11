@@ -23,7 +23,8 @@ BAND_STATISTICS_FILE = os.path.join(TRAIN_DATASET_DIR, "band_statistics_train.cs
 EVAL_DATE = "2016-07-16"
 EVAL_DATASET_DIR = os.path.join(DATA_DIR, "dataset_" + EVAL_DATE)
 EVAL_SUBTILE_AVERAGE_FILE = os.path.join(EVAL_DATASET_DIR, "eval_subtile_averages.csv")
-METHOD = "Gradient_Boosting_Regressor"
+METHOD = "1a_Linear_regression" #"Gradient_Boosting_Regressor"
+TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_eval_subtile_' + METHOD
 
 # Read datasets
 train_set = pd.read_csv(TILE_AVERAGE_TRAIN_FILE).dropna()
@@ -53,7 +54,7 @@ Y_eval_subtile = eval_subtile_set[OUTPUT_COLUMN].values.ravel() #1.52
 
 # Plot histogram of each band
 print('In train set, average crop cover')
-column_names = ['grassland_pasture', 'corn', 'soybean', 'shrubland',
+COVER_COLUMN_NAMES = ['grassland_pasture', 'corn', 'soybean', 'shrubland',
                     'deciduous_forest', 'evergreen_forest', 'spring_wheat', 'developed_open_space',
                     'other_hay_non_alfalfa', 'winter_wheat', 'herbaceous_wetlands',
                     'woody_wetlands', 'open_water', 'alfalfa', 'fallow_idle_cropland',
@@ -61,8 +62,8 @@ column_names = ['grassland_pasture', 'corn', 'soybean', 'shrubland',
                     'canola', 'sunflower', 'dry_beans', 'developed_med_intensity',
                     'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
                     'lentils']
-for column_name in column_names:
-    print(column_name, round(np.mean(X_eval_subtile[column_name]), 3))
+for column_name in COVER_COLUMN_NAMES:
+    print(column_name, round(np.mean(X_train[column_name]), 3))
 
 
 #plot_histogram(Y_train, "train_large_tile_sif.png")
@@ -71,7 +72,7 @@ for column_name in column_names:
 
 
 
-linear_regression = GradientBoostingRegressor().fit(X_train, Y_train)  #X_train, Y_train)
+linear_regression = LinearRegression().fit(X_train, Y_train)  #X_train, Y_train)
 linear_predictions_train = linear_regression.predict(X_train)
 linear_predictions_val = linear_regression.predict(X_val)
 linear_predictions_eval_subtile = linear_regression.predict(X_eval_subtile)
@@ -124,6 +125,8 @@ print_stats(Y_eval_subtile, linear_predictions_eval_subtile, average_sif)  #eval
 plt.scatter(Y_val, linear_predictions_val)
 plt.xlabel('True')
 plt.ylabel('Predicted')
+plt.xlim(left=0, right=2)
+plt.ylim(bottom=0, top=2)
 plt.title('Large tile val set: predicted vs true SIF (' + METHOD + ')')
 plt.savefig('exploratory_plots/true_vs_predicted_sif_large_tile_' + METHOD + '.png')
 plt.close()
@@ -132,6 +135,28 @@ plt.close()
 plt.scatter(Y_eval_subtile, linear_predictions_eval_subtile)
 plt.xlabel('True')
 plt.ylabel('Predicted')
+plt.xlim(left=0, right=2)
+plt.ylim(bottom=0, top=2)
 plt.title('Eval subtile set: predicted vs true SIF (' + METHOD + ')')
 plt.savefig('exploratory_plots/true_vs_predicted_sif_eval_subtile_' + METHOD + '.png')
 plt.close()
+
+# Plot true vs predicted for each crop
+fig, axeslist = plt.subplots(ncols=3, nrows=10, figsize=(15, 50))
+fig.suptitle('True vs predicted SIF (CFIS): ' + METHOD)
+for idx, crop_type in enumerate(COVER_COLUMN_NAMES):
+    predicted = linear_predictions_eval_subtile[eval_subtile_set[crop_type] > 0.5]
+    true = Y_eval_subtile[eval_subtile_set[crop_type] > 0.5]
+    print(len(predicted), len(true), 'subtiles that are majority', crop_type)
+    axeslist.ravel()[idx].scatter(true, predicted) #crop_rows['true'], crop_rows['predicted'])
+    axeslist.ravel()[idx].set(xlabel='True', ylabel='Predicted')
+    axeslist.ravel()[idx].set_xlim(left=0, right=2)
+    axeslist.ravel()[idx].set_ylim(bottom=0, top=2)
+    axeslist.ravel()[idx].set_title(crop_type)
+
+plt.tight_layout()
+fig.subplots_adjust(top=0.96)
+plt.savefig(TRUE_VS_PREDICTED_PLOT + '_crop_types.png')
+plt.close()
+
+

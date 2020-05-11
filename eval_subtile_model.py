@@ -1,3 +1,7 @@
+"""
+Evaluates models that first compute an embedding from each subtile, then predict SIF.
+"""
+
 import copy
 import math
 import matplotlib.pyplot as plt
@@ -36,12 +40,14 @@ BAND_STATISTICS_FILE = os.path.join(TRAIN_DATASET_DIR, "band_statistics_train.cs
 TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_recon/finetuned_tile2vec.ckpt")
 # TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_dim512_neighborhood100/finetuned_tile2vec.ckpt"
 
-EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/finetuned_tile2vec_embedding_to_sif.ckpt")
+EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/avg_embedding_to_sif")
+#EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/finetuned_tile2vec_embedding_to_sif.ckpt")
 # EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/finetuned_embedding_to_sif.ckpt")
 
-METHOD = "tile2vec_finetuned"
+METHOD = "4b_subtile_avg" #"tile2vec_finetuned"
 TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_eval_subtile_' + METHOD
-# TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_eval_subtile_finetuned_tile2vec.ping'
+EMBEDDING_TYPE = 'average'  # average'  # 'tile2vec'  # average'  # 'tile2vec'
+
 
 COLUMN_NAMES = ['true', 'predicted',
                     'grassland_pasture', 'corn', 'soybean', 'shrubland',
@@ -53,13 +59,10 @@ COLUMN_NAMES = ['true', 'predicted',
                     'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
                     'lentils']
 RESULTS_CSV_FILE = os.path.join(EVAL_DATASET_DIR, 'results_' + METHOD + '.csv')
-Z_DIM = 256 # 43
+Z_DIM = 43 #256 # 43
 HIDDEN_DIM = 1024
 INPUT_CHANNELS = 43
 COVER_INDICES = list(range(12, 42))
-EMBEDDING_TYPE = 'tile2vec'  #'tile2vec' # 'average'  # average'  # 'tile2vec'  # average'  # 'tile2vec'
-
-eval_points = pd.read_csv(EVAL_FILE)
 
 
 def eval_model(tile2vec_model, embedding_to_sif_model, dataloader, dataset_size, criterion, device, sif_mean, sif_std):
@@ -69,14 +72,13 @@ def eval_model(tile2vec_model, embedding_to_sif_model, dataloader, dataset_size,
     sif_mean = torch.tensor(sif_mean).to(device)
     sif_std = torch.tensor(sif_std).to(device)
     results = np.zeros((dataset_size, 2+len(COVER_INDICES)))
-    running_loss = 0.0
     j = 0
 
     # Iterate over data.
     for sample in dataloader:
         input_tile_standardized = sample['subtile'].to(device)
         true_sif_non_standardized = sample['SIF'].to(device)
-        # print('Input tile shape', input_tile_standardized.shape)
+        #print('Band means', torch.mean(input_tile_standardized, dim=(2,3)))# print('Input tile shape', input_tile_standardized.shape)
 
         # forward
         # track history if only in train
@@ -94,18 +96,19 @@ def eval_model(tile2vec_model, embedding_to_sif_model, dataloader, dataset_size,
             # print('Embedding shape', embedding.shape)
             predicted_sif_standardized = embedding_to_sif_model(embedding).flatten()
         predicted_sif_non_standardized = predicted_sif_standardized * sif_std + sif_mean
+        print('PRedicted', predicted_sif_non_standardized)
+        print('True', true_sif_non_standardized)
         loss = criterion(predicted_sif_non_standardized, true_sif_non_standardized)
 
         # statistics
         batch_size = len(sample['SIF'])
-        running_loss += loss.item() * batch_size
         band_means = torch.mean(input_tile_standardized[:, COVER_INDICES, :, :], dim=(2,3))
         results[j:j+batch_size, 0] = true_sif_non_standardized.cpu().numpy()
         results[j:j+batch_size, 1] = predicted_sif_non_standardized.cpu().numpy()
         results[j:j+batch_size, 2:] = band_means.cpu().numpy()
         j += batch_size
-        if j > 50:
-            break
+        #if j > 50:
+        #    break
     return results
 
 
@@ -121,7 +124,7 @@ print("Device", device)
 # Read train/val tile metadata
 eval_metadata = pd.read_csv(EVAL_FILE)
 average_sif = eval_metadata['SIF'].mean()
-print("Average sif", average_sif)
+print("(Eval subtile) Average sif", average_sif)
 print("Eval samples", len(eval_metadata))
 
 # Read mean/standard deviation for each band, for standardization purposes
@@ -177,16 +180,21 @@ plt.title('True vs predicted SIF (CFIS):' + METHOD)
 plt.savefig(TRUE_VS_PREDICTED_PLOT + '.png')
 plt.close()
 
-for crop_type in COLUMN_NAMES[2:]:
+# Plot true vs predicted for each crop
+fig, axeslist = plt.subplots(ncols=3, nrows=10, figsize=(15, 50))
+fig.suptitle('True vs predicted SIF (CFIS): ' + METHOD)
+for idx, crop_type in enumerate(COLUMN_NAMES[2:]):
     crop_rows = results_df.loc[results_df[crop_type] > 0.5]
     print(len(crop_rows), 'subtiles that are majority', crop_type)
+    axeslist.ravel()[idx].scatter(crop_rows['true'], crop_rows['predicted'])
+    axeslist.ravel()[idx].set(xlabel='True', ylabel='Predicted')
+    axeslist.ravel()[idx].set_xlim(left=0, right=2)
+    axeslist.ravel()[idx].set_ylim(bottom=0, top=2)
+    axeslist.ravel()[idx].set_title(crop_type)
 
-    # Scatter plot of true vs predicted
-    plt.scatter(crop_rows['true'], crop_rows['predicted'])
-    plt.xlabel('True')
-    plt.ylabel('Predicted')
-    plt.title('True vs predicted SIF (CFIS, pure ' + crop_type + '): ' + METHOD)
-    plt.savefig(TRUE_VS_PREDICTED_PLOT + '_' + crop_type + '.png')
-    plt.close()
+plt.tight_layout()
+fig.subplots_adjust(top=0.96)
+plt.savefig(TRUE_VS_PREDICTED_PLOT + '_crop_types.png')
+plt.close()
 
 

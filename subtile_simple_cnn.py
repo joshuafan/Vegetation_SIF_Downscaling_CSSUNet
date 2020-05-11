@@ -38,11 +38,12 @@ TRAINING_PLOT_FILE = 'exploratory_plots/losses_subtile_simple_cnn_9.png'
 SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_9")
 INPUT_CHANNELS = 43
 LEARNING_RATE = 1e-3  # 0.001  #1e-4i
-WEIGHT_DECAY = 1e-6
+WEIGHT_DECAY = 0 #1e-6
 NUM_EPOCHS = 50
 SUBTILE_DIM = 10
 BATCH_SIZE = 32 
 NUM_WORKERS = 4
+AUGMENT = True
 FROM_PRETRAINED = False # True  #False  # True
 
 # TODO should there be 2 separate models?
@@ -184,6 +185,8 @@ sif_std = train_stds[-1]
 # Set up image transforms
 transform_list = []
 transform_list.append(tile_transforms.StandardizeTile(band_means, band_stds))
+if AUGMENT:
+    transform_list.append(tile_transforms.RandomFlipAndRotate())
 transform = transforms.Compose(transform_list)
 
 # Set up Datasets and Dataloaders

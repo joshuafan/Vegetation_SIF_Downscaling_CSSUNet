@@ -26,6 +26,7 @@ class EvalSubtileDataset(Dataset):
         sample = {'lon': current_tile_info.loc['lon'],
                   'lat': current_tile_info.loc['lat'],
                   'subtile': subtile,
+                  'subtile_file': current_tile_info.loc['subtile_file'],
                   'SIF': current_tile_info.loc['SIF']}
  
         if self.load_large_tile:

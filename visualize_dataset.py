@@ -69,12 +69,12 @@ ALL_TILE_DATASET = os.path.join(TRAIN_DATASET_DIR, "reflectance_cover_to_sif.csv
 
 #TILES_DIR = os.path.join(DATA_DIR, "tiles_2016-07-16")
 TILES_DIR = os.path.join(DATA_DIR, "tiles_2019-07-16")
-LAT = 41.15
-LON = -89.35
+#LAT = 41.15
+#LON = -89.35
 #LAT = 48.65
 #LON = -84.45
-#LAT = 42.55
-#LON = -93.45 #-101.35  #-93.35
+LAT = 42.55
+LON = -93.55 #-101.35  #-93.35
 #LAT = 42.65
 #LON = -93.35
 #LAT = 47.55
@@ -101,10 +101,6 @@ TILE_SIZE_DEGREES = 0.1
 INPUT_SIZE = 371
 OUTPUT_SIZE = int(INPUT_SIZE / SUBTILE_DIM)
 
-# Plot histogram of each band
-train_averages = pd.read_csv(TILE_AVERAGE_TRAIN_FILE).dropna()
-for column in train_averages.columns:
-    plot_histogram(np.array(train_averages[column]), "train_" + column + ".png")
 
 # Check if any CUDA devices are visible. If so, pick a default visible device.
 # If not, use CPU.
@@ -165,9 +161,9 @@ subtile_averages = torch.mean(subtiles_non_standardized, dim=(2,3))
 array = tile.transpose((1, 2, 0))
 rgb_tile = array[:, :, RGB_BANDS] / 1000
 print('Array shape', array.shape)
-plt.imshow(rgb_tile)
-plt.savefig("exploratory_plots/" + LAT_LON + "_rgb.png")
-plt.close()
+#plt.imshow(rgb_tile)
+#plt.savefig("exploratory_plots/" + LAT_LON + "_rgb.png")
+#plt.close()
 
 fig, axeslist = plt.subplots(ncols=6, nrows=8, figsize=(24, 24))
 for band in range(0, 43):
@@ -182,9 +178,9 @@ plt.close()
 
 
 
-# Train linear regression model
+# Load "band average" dataset
 train_set = pd.read_csv(TILE_AVERAGE_TRAIN_FILE).dropna()
-EXCLUDE_FROM_INPUT = ['lat', 'lon', 'SIF']
+EXCLUDE_FROM_INPUT = ['date', 'tile_file', 'lat', 'lon', 'SIF']
 INPUT_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
                     'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg', 
                     'grassland_pasture', 'corn', 'soybean', 'shrubland',
@@ -199,8 +195,16 @@ INPUT_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
 print('input columns', INPUT_COLUMNS)
 OUTPUT_COLUMN = ['SIF']
 
+# Plot histogram of each band
+for column in INPUT_COLUMNS + OUTPUT_COLUMN:
+    plot_histogram(np.array(train_set[column]), "train_" + column + ".png")
 
-# Obtain linear regression SIF predictions
+
+
+sif_cmap = plt.get_cmap('YlGn')
+sif_cmap.set_bad(color='red')
+
+# Train linear regression to predict SIF given band averages
 X_train = train_set[INPUT_COLUMNS]
 Y_train = train_set[OUTPUT_COLUMN].values.ravel()
 linear_regression = LinearRegression().fit(X_train, Y_train)
@@ -211,9 +215,9 @@ predicted_sifs_linear = linear_regression.predict(subtile_averages).reshape((37,
 print('Predicted sifs linear', predicted_sifs_linear)
 
 # Plot map of linear_regression's subtile SIF predictions
-plt.imshow(predicted_sifs_linear, cmap='Greens', vmin=0, vmax=1.5)
-plt.savefig("exploratory_plots/" + LAT_LON + "_subtile_sif_map_linear.png")
-plt.close()
+#plt.imshow(predicted_sifs_linear, cmap=sif_cmap, vmin=0.2, vmax=1.5)
+#plt.savefig("exploratory_plots/" + LAT_LON + "_subtile_sif_map_linear.png")
+#plt.close()
 
 # Standardize input tile
 input_tile_standardized = torch.tensor(transform(tile), dtype=torch.float).unsqueeze(0).to(device)
@@ -229,9 +233,9 @@ print('Predicted SIFs standardized', predicted_sifs_simple_cnn_standardized.shap
 predicted_sifs_simple_cnn_non_standardized = (predicted_sifs_simple_cnn_standardized * sif_std + sif_mean).reshape((37, 37))
 
 # Plot map of CNN's subtile SIF predictions
-plt.imshow(predicted_sifs_simple_cnn_non_standardized, cmap='Greens', vmin=0, vmax=1.5)
-plt.savefig("exploratory_plots/" + LAT_LON + "_subtile_sif_map_9.png")
-plt.close()
+#plt.imshow(predicted_sifs_simple_cnn_non_standardized, cmap=sif_cmap, vmin=0.2, vmax=1.5)
+#plt.savefig("exploratory_plots/" + LAT_LON + "_subtile_sif_map_9.png")
+#plt.close()
 
 # Obtain tile2vec model's subtile SIF predictions
 with torch.set_grad_enabled(False):
@@ -241,9 +245,9 @@ print('Predicted SIFs standardized', predicted_sifs_tile2vec_fixed_standardized.
 predicted_sifs_tile2vec_fixed_non_standardized = (predicted_sifs_tile2vec_fixed_standardized * sif_std + sif_mean).reshape((37, 37))
 
 # Plot map of CNN's subtile SIF predictions
-plt.imshow(predicted_sifs_tile2vec_fixed_non_standardized, cmap='Greens', vmin=0, vmax=1.5)
-plt.savefig("exploratory_plots/" + LAT_LON + "_subtile_sif_tile2vec_fixed.png")
-plt.close()
+#plt.imshow(predicted_sifs_tile2vec_fixed_non_standardized, cmap=sif_cmap, vmin=0.2, vmax=1.5)
+#plt.savefig("exploratory_plots/" + LAT_LON + "_subtile_sif_tile2vec_fixed.png")
+#plt.close()
 
 
 # Obtain SAN model predictions
@@ -252,9 +256,9 @@ predicted_sifs_san_standardized = predicted_sifs_san_standardized.detach().numpy
 predicted_sifs_san = (predicted_sifs_san_standardized * sif_std + sif_mean).reshape((37, 37))
 
 # Plot map of SAN's subtile SIF predictions
-plt.imshow(predicted_sifs_san, cmap='Greens', vmin=0, vmax=1.5)
-plt.savefig("exploratory_plots/" + LAT_LON + "_subtile_sif_SAN.png")
-plt.close()
+#plt.imshow(predicted_sifs_san, cmap=sif_cmap, vmin=0.2, vmax=1.5)
+#plt.savefig("exploratory_plots/" + LAT_LON + "_subtile_sif_SAN.png")
+#plt.close()
 
 
 
@@ -305,9 +309,8 @@ sif_mean = train_statistics['mean'].values[-1]
 print('SIF mean (TROPOMI, train set)', sif_mean)
 
 # Scatterplot of CFIS points (all)
-green_cmap = plt.get_cmap('Greens')
-plt.figure(figsize=(10, 10))
-plt.scatter(all_cfis_points[:, 1], all_cfis_points[:, 2], c=all_cfis_points[:, 0], cmap=green_cmap, vmin=0, vmax=1.5)
+plt.figure(figsize=(24, 24))
+plt.scatter(all_cfis_points[:, 1], all_cfis_points[:, 2], c=all_cfis_points[:, 0], cmap=sif_cmap, vmin=0.2, vmax=1.5)
 plt.xlabel('Longitude')
 plt.ylabel('Latitude')
 plt.title('CFIS points (all)')
@@ -315,8 +318,8 @@ plt.savefig('exploratory_plots/cfis_points_all.png')
 plt.close()
 
 # Scatterplot of CFIS points (eval)
-plt.figure(figsize=(10, 10))
-plt.scatter(eval_metadata['lon'], eval_metadata['lat'], c=eval_metadata['SIF'], cmap=green_cmap, vmin=0, vmax=1.5)
+plt.figure(figsize=(24, 24))
+plt.scatter(eval_metadata['lon'], eval_metadata['lat'], c=eval_metadata['SIF'], cmap=sif_cmap, vmin=0.2, vmax=1.5)
 plt.xlabel('Longitude')
 plt.ylabel('Latitude')
 plt.title('CFIS points (reflectance data available, eval set)')
@@ -324,9 +327,9 @@ plt.savefig('exploratory_plots/cfis_points_filtered.png')
 plt.close()
 
 # Scatterplot of CFIS points in the dense area
-plt.figure(figsize=(10, 10))
+plt.figure(figsize=(24, 24))
 cfis_dense_area = all_cfis_points[all_cfis_points[:, 1] > -94]
-plt.scatter(cfis_dense_area[:, 1], cfis_dense_area[:, 2], c=cfis_dense_area[:, 0], cmap=green_cmap, vmin=0, vmax=1.5)
+plt.scatter(cfis_dense_area[:, 1], cfis_dense_area[:, 2], c=cfis_dense_area[:, 0], cmap=sif_cmap, vmin=0.2, vmax=1.5)
 plt.xlabel('Longitude')
 plt.ylabel('Latitude')
 plt.title('CFIS points (area)')
@@ -334,20 +337,20 @@ plt.savefig('exploratory_plots/cfis_points_dense.png')
 plt.close()
 
 # Scatterplot of CFIS points in the particular area
-plt.figure(figsize=(10, 10))
+plt.figure(figsize=(24, 24))
 #cfis_area = all_cfis_points[(all_cfis_points[:, 1] > LON-eps) & (all_cfis_points[:, 1] < LON+eps) & (all_cfis_points[:, 2] > LAT-eps) & (all_cfis_points[:, 2] < LAT+eps)]
-cfis_area = eval_metadata.loc[(eval_metadata['lon'] > LON-eps) & (eval_metadata['lon'] < LON+eps) & (eval_metadata['lat'] > LAT-eps) & (eval_metadata['lat'] < LAT+eps)]
-cfis_area['SIF'] = cfis_area['SIF']
-plt.scatter(cfis_area['lon'], cfis_area['lat'], c=cfis_area['SIF'], cmap=green_cmap, vmin=0, vmax=1.5)
+cfis_area = eval_metadata.loc[(eval_metadata['lon'] >= LON-eps) & (eval_metadata['lon'] <= LON+eps) & (eval_metadata['lat'] >= LAT-eps) & (eval_metadata['lat'] <= LAT+eps)]
+#plt.scatter(cfis_area['lon'], cfis_area['lat'], c=cfis_area['SIF'], cmap=sif_cmap, vmin=0.2, vmax=1.5)
 # plt.scatter(cfis_area[:, 1], cfis_area[:, 2], c=cfis_area[:, 0], cmap=green_cmap, vmin=0, vmax=1.5)
-plt.xlabel('Longitude')
-plt.ylabel('Latitude')
-plt.title('CFIS points (area)')
-plt.savefig('exploratory_plots/' + LAT_LON + '_cfis_points.png')
-plt.close()
+#plt.xlabel('Longitude')
+#plt.ylabel('Latitude')
+#plt.title('CFIS points (area)')
+#plt.savefig('exploratory_plots/' + LAT_LON + '_cfis_points.png')
+#plt.close()
 
 # Convert CFIS into matrix
-cfis_tile = np.zeros_like(predicted_sifs_simple_cnn_non_standardized)
+cfis_tile = np.empty(predicted_sifs_simple_cnn_non_standardized.shape)
+cfis_tile[:] = np.NaN
 print('CFIS tile shape', cfis_tile.shape)
 top_bound = LAT + eps
 left_bound = LON - eps
@@ -355,31 +358,45 @@ for index, row in cfis_area.iterrows():
     res = (TILE_DEGREES / cfis_tile.shape[0], TILE_DEGREES / cfis_tile.shape[1])
     height_idx, width_idx = lat_long_to_index(row['lat'], row['lon'], top_bound, left_bound, res)
     # height_idx, width_idx = lat_long_to_index(cfis_area[p, 2], cfis_area[p, 1], top_bound, left_bound, res)
-    cfis_tile[height_idx, width_idx] = row['SIF'] * 1.3  #p, 0] # * 1.52
+    cfis_tile[height_idx, width_idx] = row['SIF'] * 1.1  #p, 0] # * 1.52
 
-plt.imshow(cfis_tile, cmap='Greens', vmin=0, vmax=1.5)
-plt.savefig("exploratory_plots/" + LAT_LON + "_cfis_sifs.png")
+#plt.imshow(cfis_tile, cmap=sif_cmap, vmin=0.2, vmax=1.5)
+#plt.savefig("exploratory_plots/" + LAT_LON + "_cfis_sifs.png")
+#plt.close()
+
+# Scatterplot of TROPOMI points
+plt.figure(figsize=(24, 24))
+plt.scatter(all_metadata['lon'], all_metadata['lat'], c=all_metadata['SIF'], cmap=sif_cmap, vmin=0.2, vmax=1.5)
+plt.xlabel('Longitude')
+plt.ylabel('Latitude')
+plt.title('TROPOMI points (area)')
+plt.savefig('exploratory_plots/tropomi_points.png')
 plt.close()
 
-fig, axeslist = plt.subplots(ncols=3, nrows=2, figsize=(24, 24))
+
+
+# Plot different method's predictions
+fig, axeslist = plt.subplots(ncols=3, nrows=2, figsize=(24, 16))
 axeslist[0 ,0].imshow(rgb_tile)
 axeslist[0, 0].set_title('RGB Bands')
-axeslist[0, 1].imshow(cfis_tile, cmap='YlGn', vmin=0.2, vmax=1.5)
+axeslist[0, 1].imshow(predicted_sifs_linear, cmap=sif_cmap, vmin=0.2, vmax=1.5)
 axeslist[0, 1].set_title('Linear Regression: predicted SIF')
-axeslist[0, 2].imshow(cfis_tile, cmap='YlGn', vmin=0.2, vmax=1.5)
+axeslist[0, 2].imshow(predicted_sifs_simple_cnn_non_standardized, cmap=sif_cmap, vmin=0.2, vmax=1.5)
 axeslist[0, 2].set_title('Subtile CNN: predicted SIF')
-axeslist[1, 0].imshow(cfis_tile, cmap='YlGn', vmin=0.2, vmax=1.5)
+axeslist[1, 0].imshow(cfis_tile, cmap=sif_cmap, vmin=0.2, vmax=1.5)
 axeslist[1, 0].set_title('Ground-truth CFIS SIF')
-axeslist[1, 1].imshow(cfis_tile, cmap='YlGn', vmin=0.2, vmax=1.5)
+axeslist[1, 1].imshow(predicted_sifs_tile2vec_fixed_non_standardized, cmap=sif_cmap, vmin=0.2, vmax=1.5)
 axeslist[1, 1].set_title('Tile2Vec Fixed: predicted SIF')
-axeslist[1, 2].imshow(cfis_tile, cmap='YlGn', vmin=0.2, vmax=1.5)
+pcm = axeslist[1, 2].imshow(predicted_sifs_san, cmap=sif_cmap, vmin=0.2, vmax=1.5)
 axeslist[1, 2].set_title('Structured Attention Network: predicted SIF')
-plt.colorbar()
-plt.tight_layout() # optional
-plt.savefig('exploratory_plots/' + LAT_LON +'.png')
+fig.colorbar(pcm, ax=axeslist.ravel().tolist()) #[:, 2]) #, shrink=0.6)
+#fig.subplots_adjust(right=0.8)
+#cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
+#fig.colorbar(pcm, cax=cbar_ax)
+
+#plt.tight_layout() # optional
+plt.savefig('exploratory_plots/' + LAT_LON +'_compare_predictions.png')
 plt.close()
-
-
 # Compare stats
 predicted_sifs_simple_cnn_non_standardized = np.clip(predicted_sifs_simple_cnn_non_standardized, a_min=0.2, a_max=1.7)
 print('===================== Comparing stats ======================')
