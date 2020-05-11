@@ -62,6 +62,10 @@ tile2vec_model.eval()
 
 # Calculate all subtile embeddings
 subtile_embeddings = np.zeros((len(eval_metadata), Z_DIM)) # INPUT_CHANNELS))
+subtile_files = []
+lats = []
+lons = []
+sifs = []
 i = 0
 for sample in dataloader:
     input_tile_standardized = sample['subtile'].to(device)
@@ -69,9 +73,13 @@ for sample in dataloader:
 
     batch = input_tile_standardized.shape[0]
     with torch.set_grad_enabled(False):
-        subtile_embeddings[i:i+batch] = tile2vec_model(input_tile_standardized).cpu().numpy() # torch.mean(input_tile_standardized[:, :10], dim=(2, 3))  # tile2vec_model(input_tile_standardized)
+        subtile_embeddings[i:i+batch] = tile2vec_model(input_tile_standardized).cpu().numpy() # torch.mean(input_tile_standardized, dim=(2, 3)).cpu().numpy() #  # tile2vec_model(input_tile_standardized)
+    subtile_files.extend(sample['subtile_file'])
+    lats.extend(sample['lat'].tolist())
+    lons.extend(sample['lon'].tolist())
+    sifs.extend(sample['SIF'].tolist())
     i += batch
-    if i >= 1000:
+    if i >= 5000:
         break
 
 # Loads tile from file and transforms it into the format that imshow wants
@@ -79,13 +87,13 @@ def tile_to_image(tile):
     tile = tile.transpose((1, 2, 0))
     return tile[:, :, RGB_BANDS] / 2000
 
-def get_title_string(image_row):
-    return 'Lat' + str(round(image_row['lat'], 6)) + ', Lon' + str(round(image_row['lon'], 6)) + ' (SIF = ' + str(round(image_row['SIF'], 3)) + ')'
+def get_title_string(lat, lon, sif):
+    return 'Lat' + str(round(lat, 5)) + ', Lon' + str(round(lon, 5)) + ' (SIF = ' + str(round(sif, 3)) + ')'
 
 
 NUM_NEIGHBORS = 5
 
-for anchor_idx in range(5):
+for anchor_idx in range(10):
     distances_to_anchor = np.zeros((subtile_embeddings.shape[0]))
     for i in range(subtile_embeddings.shape[0]):
         distances_to_anchor[i] = np.linalg.norm(subtile_embeddings[anchor_idx] - subtile_embeddings[i])
@@ -93,40 +101,37 @@ for anchor_idx in range(5):
     closest_indices = sorted_indices[:NUM_NEIGHBORS]
     furthest_indices = sorted_indices[-NUM_NEIGHBORS:][::-1]
     print('Closest indices', closest_indices)
-    closest_subtile_rows = eval_metadata.iloc[closest_indices]
-    furthest_subtile_rows = eval_metadata.iloc[furthest_indices]
-    anchor_subtile_row = eval_metadata.iloc[anchor_idx]
-
+    print('Furthest indices', furthest_indices)
     fig, axeslist = plt.subplots(ncols=NUM_NEIGHBORS, nrows=3, figsize=(30, 30))
 
     # Display anchor subtile
-    anchor_tile = np.load(anchor_subtile_row['subtile_file'])
+    anchor_tile = np.load(subtile_files[anchor_idx])
     axeslist[0][0].imshow(tile_to_image(anchor_tile))
-    axeslist[0][0].set_title('Anchor tile: ' + get_title_string(anchor_subtile_row))
+    axeslist[0][0].set_title('Anchor tile: ' + get_title_string(lats[anchor_idx], lons[anchor_idx], sifs[anchor_idx]))
     axeslist[0][0].set_axis_off()
     print('Anchor tile crops', anchor_tile[COVER_BANDS, :, :].mean(axis=(1,2)))
 
     # display closest subtiles
     i = 0
-    for idx, close_subtile_row in closest_subtile_rows.iterrows():
-        close_tile = np.load(close_subtile_row['subtile_file'])
+    for close_idx in closest_indices:
+        close_tile = np.load(subtile_files[close_idx])
         axeslist[1][i].imshow(tile_to_image(close_tile))
-        axeslist[1][i].set_title('close: ' + get_title_string(close_subtile_row))
+        axeslist[1][i].set_title('Close: ' + get_title_string(lats[close_idx], lons[close_idx], sifs[close_idx]))
         axeslist[1][i].set_axis_off()
         print('close tile crops', close_tile[COVER_BANDS, :, :].mean(axis=(1,2)))
         i += 1
 
     # display closest subtiles
     i = 0
-    for idx, far_subtile_row in furthest_subtile_rows.iterrows():
-        far_tile = np.load(far_subtile_row['subtile_file'])
+    for far_idx in furthest_indices:
+        far_tile = np.load(subtile_files[far_idx])
         axeslist[2][i].imshow(tile_to_image(far_tile))
-        axeslist[2][i].set_title('far: ' + get_title_string(far_subtile_row))
+        axeslist[2][i].set_title('Far: ' + get_title_string(lats[far_idx], lons[far_idx], sifs[far_idx]))
         axeslist[2][i].set_axis_off()
         print('far tile crops', far_tile[COVER_BANDS, :, :].mean(axis=(1,2)))
         i += 1
 
-    plt.savefig('exploratory_plots/embedding_neighbors_' + os.path.basename(anchor_subtile_row['subtile_file']) + '.png')
+    plt.savefig('exploratory_plots/embedding_neighbors_' + os.path.basename(subtile_files[anchor_idx]) + '.png')
     plt.close()
    
 

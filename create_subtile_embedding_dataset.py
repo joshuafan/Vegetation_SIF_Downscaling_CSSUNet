@@ -44,14 +44,14 @@ DATASET_DIR = os.path.join(DATA_DIR, "dataset_" + START_DATE)
 INFO_FILE_TRAIN = os.path.join(DATASET_DIR, "tile_info_train.csv")
 INFO_FILE_VAL = os.path.join(DATASET_DIR, "tile_info_val.csv")
 BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
-SUBTILE_EMBEDDING_FILE_TRAIN = os.path.join(DATASET_DIR, "avg_embeddings_train.csv")
-SUBTILE_EMBEDDING_FILE_VAL = os.path.join(DATASET_DIR, "avg_embeddings_val.csv")
-EMBEDDING_FILE_SUFFIX = '_avg_embeddings.npy'
-TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_hard/TileNet.ckpt")
+SUBTILE_EMBEDDING_FILE_TRAIN = os.path.join(DATASET_DIR, "tile2vec_embeddings_train.csv")
+SUBTILE_EMBEDDING_FILE_VAL = os.path.join(DATASET_DIR, "tile2vec_embeddings_val.csv")
+EMBEDDING_FILE_SUFFIX = '_tile2vec_embeddings.npy'
+TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_hard_2/TileNet.ckpt")
 
 # If EMBEDDING_TYPE is 'average', the embedding is just the average of each band.
 # If it is 'tile2vec', we use the Tile2Vec model 
-EMBEDDING_TYPE ='average'  #average' # 'tile2vec'
+EMBEDDING_TYPE ='tile2vec'  #average' # 'tile2vec'
 # TRAINING_PLOT_FILE = 'exploratory_plots/tile2vec_subtile_sif_prediction.png'
 SUBTILE_DIM = 10
 Z_DIM = 256
@@ -71,6 +71,7 @@ def compute_subtile_embeddings_to_sif_dataset(tile2vec_model, dataloader, subtil
         filenames = sample['tile_file']
         subtiles = get_subtiles_list(input_tile_standardized, subtile_dim, device)
         for i in range(batch_size):
+            #print('Random pixel', subtiles[i, 0, :, 5, 5])
             if EMBEDDING_TYPE == 'tile2vec':
                 with torch.set_grad_enabled(False):
                     embeddings = tile2vec_model(subtiles[i])
