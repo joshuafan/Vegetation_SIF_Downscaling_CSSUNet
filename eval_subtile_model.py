@@ -37,16 +37,16 @@ EVAL_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2016-07-16")
 TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-07-16")
 EVAL_FILE = os.path.join(EVAL_DATASET_DIR, "eval_subtiles.csv") 
 BAND_STATISTICS_FILE = os.path.join(TRAIN_DATASET_DIR, "band_statistics_train.csv")
-TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_recon/finetuned_tile2vec.ckpt")
+TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_recon/TileNet.ckpt") #finetuned_tile2vec.ckpt")
 # TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_dim512_neighborhood100/finetuned_tile2vec.ckpt"
 
-EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/avg_embedding_to_sif")
+EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_embedding_to_sif")
 #EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/finetuned_tile2vec_embedding_to_sif.ckpt")
 # EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/finetuned_embedding_to_sif.ckpt")
 
-METHOD = "4b_subtile_avg" #"tile2vec_finetuned"
+METHOD = "4c_tile2vec_fixed" #4b_subtile_avg" #"tile2vec_finetuned"
 TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_eval_subtile_' + METHOD
-EMBEDDING_TYPE = 'average'  # average'  # 'tile2vec'  # average'  # 'tile2vec'
+EMBEDDING_TYPE = 'tile2vec'  # average'  # 'tile2vec'  # average'  # 'tile2vec'
 
 
 COLUMN_NAMES = ['true', 'predicted',
@@ -59,11 +59,12 @@ COLUMN_NAMES = ['true', 'predicted',
                     'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
                     'lentils']
 RESULTS_CSV_FILE = os.path.join(EVAL_DATASET_DIR, 'results_' + METHOD + '.csv')
-Z_DIM = 43 #256 # 43
+Z_DIM = 256 # 43
 HIDDEN_DIM = 1024
 INPUT_CHANNELS = 43
 COVER_INDICES = list(range(12, 42))
-
+MIN_SIF = 0.2
+MAX_SIF = 1.7
 
 def eval_model(tile2vec_model, embedding_to_sif_model, dataloader, dataset_size, criterion, device, sif_mean, sif_std):
     if EMBEDDING_TYPE == 'tile2vec':
@@ -144,6 +145,12 @@ transform_list = []
 transform_list.append(tile_transforms.StandardizeTile(band_means, band_stds))
 transform = transforms.Compose(transform_list)
 
+# Constrain predicted SIF to be between 0.2 and 1.7 (unstandardized)
+# Don't forget to standardize
+min_output = (MIN_SIF - sif_mean) / sif_std
+max_output = (MAX_SIF - sif_mean) / sif_std
+
+
 # Set up Dataset and Dataloader
 dataset_size = len(eval_metadata)
 dataset = EvalSubtileDataset(eval_metadata, transform=transform)
@@ -156,7 +163,7 @@ if EMBEDDING_TYPE == 'tile2vec':
     tile2vec_model.load_state_dict(torch.load(TILE2VEC_MODEL_FILE, map_location=device))
 else:
     tile2vec_model = None
-embedding_to_sif_model = EmbeddingToSIFNonlinearModel(embedding_size=Z_DIM, hidden_size=HIDDEN_DIM).to(device)
+embedding_to_sif_model = EmbeddingToSIFNonlinearModel(embedding_size=Z_DIM, hidden_size=HIDDEN_DIM, min_output=min_output, max_output=max_output).to(device)
 embedding_to_sif_model.load_state_dict(torch.load(EMBEDDING_TO_SIF_MODEL_FILE, map_location=device))
 
 criterion = nn.MSELoss(reduction='mean')

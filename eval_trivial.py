@@ -34,7 +34,7 @@ TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-07-16")
 EVAL_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2016-07-16")
 EVAL_FILE = os.path.join(EVAL_DATASET_DIR, "eval_subtiles.csv")
 # EVAL_FILE = os.path.join(TRAIN_DATASET_DIR, "tile_info_val.csv")
-TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_9")
+TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_10")
 #TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/small_tile_simple") #large_tile_resnet18")  #test_large_tile_simple")  # small_tile_sif_prediction")
 BAND_STATISTICS_FILE = os.path.join(TRAIN_DATASET_DIR, "band_statistics_train.csv")
 METHOD = '4a_subtile_simple_cnn'  #'3_small_tile_simple' # '2_large_tile_resnet18'
@@ -58,6 +58,9 @@ RESIZE = False # False #True
 RESIZED_DIM = [10, 10] #[371, 371]
 DISCRETE_BANDS = list(range(12, 43))
 COVER_INDICES = list(range(12, 42))
+MIN_SIF = 0.2
+MAX_SIF = 1.7
+
 
 def eval_model(model, dataloader, dataset_size, criterion, device, sif_mean, sif_std):
     model.eval()   # Set model to evaluate mode
@@ -121,6 +124,12 @@ sif_mean = train_means[-1]
 band_stds = train_stds[:-1]
 sif_std = train_stds[-1]
 
+# Constrain predicted SIF to be between 0.2 and 1.7 (unstandardized)
+# Don't forget to standardize
+min_output = (MIN_SIF - sif_mean) / sif_std
+max_output = (MAX_SIF - sif_mean) / sif_std
+
+
 # Set up image transforms
 transform_list = []
 # transform_list.append(tile_transforms.ShrinkTile())
@@ -137,7 +146,7 @@ dataloader = torch.utils.data.DataLoader(dataset, batch_size=4,
                                          shuffle=True, num_workers=4)
 
 # Load trained model from file
-resnet_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, reduced_channels=REDUCED_CHANNELS, output_dim=1).to(device)  
+resnet_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, reduced_channels=REDUCED_CHANNELS, output_dim=1, min_output=min_output, max_output=max_output).to(device)  
 #resnet_model = resnet.resnet18(input_channels=INPUT_CHANNELS).to(device)
 # resnet_model = make_tilenet(in_channels=INPUT_CHANNELS, z_dim=1).to(device)
 resnet_model.load_state_dict(torch.load(TRAINED_MODEL_FILE, map_location=device))

@@ -18,7 +18,7 @@ import os
 import pandas as pd
 import xarray as xr
 import matplotlib.pyplot as plt
-from sif_utils import lat_long_to_index, plot_histogram, top_bound, left_bound
+from sif_utils import lat_long_to_index, plot_histogram, get_top_bound, get_left_bound
 DATE = "2016-07-16"
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
 TILES_DIR = os.path.join(DATA_DIR, "tiles_" + DATE)
@@ -31,9 +31,9 @@ if not os.path.exists(SUBTILES_DIR):
 if not os.path.exists(DATASET_DIR):
     os.makedirs(DATASET_DIR)
 
-OUTPUT_CSV_FILE = os.path.join(DATASET_DIR, "eval_subtiles.csv")
-TILE_AVERAGE_CSV_FILE = os.path.join(DATASET_DIR, "eval_large_tile_averages.csv")
-SUBTILE_AVERAGE_CSV_FILE = os.path.join(DATASET_DIR, "eval_subtile_averages.csv")
+OUTPUT_CSV_FILE = os.path.join(DATASET_DIR, "eval_subtiles_500.csv")
+TILE_AVERAGE_CSV_FILE = os.path.join(DATASET_DIR, "eval_large_tile_averages_500.csv")
+SUBTILE_AVERAGE_CSV_FILE = os.path.join(DATASET_DIR, "eval_subtile_averages_500.csv")
 CFIS_FILE = os.path.join(DATA_DIR, "CFIS/CFIS_201608a_300m_soundings.npy")
 headers = ["lat", "lon", "SIF", "tile_file", "subtile_file", "num_soundings"]
 csv_rows = [headers]
@@ -41,7 +41,7 @@ TILE_SIZE_DEGREES = 0.1
 SUBTILE_SIZE_PIXELS = 10
 MAX_FRACTION_MISSING = 0.1  # If more than this fraction of reflectance pixels is missing, ignore the data point
 MIN_SIF = 0.2
-MIN_SOUNDINGS = 100
+MIN_SOUNDINGS = 500
 column_names = ['lat', 'lon', 'ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
                     'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg', 
                     'grassland_pasture', 'corn', 'soybean', 'shrubland',
@@ -104,12 +104,12 @@ for i in range(validation_points.shape[0]):
     point_lat = validation_points[i, 2]
 
     # Compute the box of 0.1 degrees surrounding this point
-    top_bound = math.ceil(point_lat * 10) / 10
-    left_bound = math.floor(point_lon * 10) / 10
-
+    top_bound = get_top_bound(point_lat)
+    left_bound = get_left_bound(point_lon)
     # Find the 0.1-degree large tile this point is in
     large_tile_center_lat = round(top_bound - (TILE_SIZE_DEGREES / 2), 2)
     large_tile_center_lon = round(left_bound + (TILE_SIZE_DEGREES / 2), 2)
+   
     large_tile_filename = TILES_DIR + "/reflectance_lat_" + str(large_tile_center_lat) + "_lon_" + str(large_tile_center_lon) + ".npy"
     if not os.path.exists(large_tile_filename):
         print('Needed data file', large_tile_filename, 'does not exist.')

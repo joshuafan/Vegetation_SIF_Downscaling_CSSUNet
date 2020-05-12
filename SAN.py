@@ -78,7 +78,7 @@ class SAN(nn.Module):
     Based on ResNet-50
     """
 
-    def __init__(self, pretrained_model, input_height, input_width, output_height, output_width, in_channels=3, feat_num=64, feat_width=128, feat_height=24, pretrained=True):
+    def __init__(self, pretrained_model, input_height, input_width, output_height, output_width, min_output=None, max_output=None, in_channels=3, feat_num=64, feat_width=128, feat_height=24, pretrained=True):
         super(SAN, self).__init__()
 
         # backbone Net: ResNet
@@ -88,6 +88,12 @@ class SAN(nn.Module):
         self.input_width = input_width
         self.output_height = output_height
         self.output_width = output_width
+        if min_output and max_output:
+            self.restrict_output = True
+            self.mean_output = (min_output + max_output) / 2
+            self.scale_factor = (max_output - min_output) / 2
+        else:
+            self.restrict_output = False
 
         #self.dim_red = pretrained_model._modules['dim_red']
         self.conv1 = pretrained_model._modules['conv1']
@@ -235,7 +241,7 @@ class SAN(nn.Module):
         y_S = self.meanFieldUpdate5_2(res4f, y_S)
         y_S = self.meanFieldUpdate5_3(res5c, y_S)
 
-        #print('Y_S', y_S.shape)
+        print('Y_S', y_S.shape)
 
         pred = self.pred_1(y_S)
         pred = self.pred_1_relu(pred)
@@ -250,6 +256,12 @@ class SAN(nn.Module):
         pred_5c = nn.functional.interpolate(pred_5c, size=(self.output_height, self.output_width), mode='area') #, align_corners=True)
         pred = nn.functional.interpolate(pred, size=(self.output_height, self.output_width), mode='area') #, align_corners=True)
         assert(pred.shape[2] == 37 and pred.shape[3] == 37)
+        
+        # Force all predictions to be within a particular range
+        if self.restrict_output:
+            pred = (F.tanh(pred) * self.scale_factor) + self.mean_output
+        #if self.min_output and self.max_output:
+        #    pred = torch.clamp(pred, min=self.min_output, max=self.max_output)
         avg = torch.mean(pred, dim=(2, 3))
         return avg, pred_3d, pred_4f, pred_5c, pred
 

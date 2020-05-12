@@ -24,7 +24,7 @@ EVAL_DATE = "2016-07-16"
 EVAL_DATASET_DIR = os.path.join(DATA_DIR, "dataset_" + EVAL_DATE)
 EVAL_SUBTILE_AVERAGE_FILE = os.path.join(EVAL_DATASET_DIR, "eval_subtile_averages.csv")
 METHOD = "1a_Linear_regression" #"Gradient_Boosting_Regressor"
-TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_eval_subtile_' + METHOD
+TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_cheating_' + METHOD
 
 # Read datasets
 train_set = pd.read_csv(TILE_AVERAGE_TRAIN_FILE).dropna()
@@ -72,7 +72,7 @@ for column_name in COVER_COLUMN_NAMES:
 
 
 
-linear_regression = LinearRegression().fit(X_train, Y_train)  #X_train, Y_train)
+linear_regression = LinearRegression().fit(X_eval_subtile, Y_eval_subtile) #X_train, Y_train)  #X_train, Y_train)
 linear_predictions_train = linear_regression.predict(X_train)
 linear_predictions_val = linear_regression.predict(X_val)
 linear_predictions_eval_subtile = linear_regression.predict(X_eval_subtile)

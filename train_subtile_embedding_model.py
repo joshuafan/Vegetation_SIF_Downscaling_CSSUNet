@@ -41,27 +41,29 @@ DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-07-16")
 # INFO_FILE_VAL = os.path.join(DATASET_DIR, "tile_info_val.csv")
 BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
 # TILE2VEC_MODEL_FILE = "models/tile2vec_dim10_v2/TileNet_epoch50.ckpti"
-EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/avg_embedding_to_sif")
+EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/avg_embedding_to_sif_2")
 
 # LOAD_EMBEDDINGS = False
 SUBTILE_EMBEDDING_DATASET_TRAIN = os.path.join(DATASET_DIR, "avg_embeddings_train.csv")
 SUBTILE_EMBEDDING_DATASET_VAL = os.path.join(DATASET_DIR, "avg_embeddings_val.csv")
-FROM_PRETRAINED = True  #True #False # True
+FROM_PRETRAINED = False #True #True  #True #False # True
 
 # Ignore this comment,.
 # If EMBEDDING_TYPE is 'average', the embedding is just the average of each band.
 # If it is 'tile2vec', we use the Tile2Vec model 
 # EMBEDDING_TYPE = 'average'
 TRAINING_PLOT_FILE = 'exploratory_plots/losses_avg_subtile_sif_prediction.png'
-PLOT_TITLE = 'Loss curves: Tile2Vec embedding to SIF'
+PLOT_TITLE = 'Loss curves: avg embedding to SIF'
 SUBTILE_DIM = 10
-Z_DIM = 43 #256
-HIDDEN_SIZE = 1024
+Z_DIM = 43 #64 #256
+HIDDEN_SIZE = 1024 #256
 INPUT_CHANNELS = 43
 NUM_EPOCHS = 50
-LEARNING_RATE = 1e-4 #1e-2 #1e-2
-WEIGHT_DECAY = 1e-4#  1e-6 #1e-6 # 1e-8 #0.01
+LEARNING_RATE = 1e-3 #1e-2 #1e-2
+WEIGHT_DECAY = 0 #  1e-6 #1e-6 # 1e-8 #0.01
 BATCH_SIZE = 8
+MIN_SIF = 0.2
+MAX_SIF = 1.7
 NUM_WORKERS = 4
 
 def train_embedding_to_sif_model(embedding_to_sif_model, dataloaders, dataset_sizes, criterion, optimizer, device, sif_mean, sif_std, num_epochs=25):
@@ -107,8 +109,9 @@ def train_embedding_to_sif_model(embedding_to_sif_model, dataloaders, dataset_si
                 # embedding -> SIF model
                 with torch.set_grad_enabled(phase == 'train'):
                     for i in range(batch_size):
+                        #print('Embedding', subtile_embeddings[i])
                         predicted_sifs = embedding_to_sif_model(subtile_embeddings[i])
-
+                        #print('Predicted', predicted_sifs[:10] * sif_std + sif_mean)
                         #print('predicted_sif shape', predicted_sifs.shape)
                         predicted_subtile_sifs[i] = predicted_sifs.flatten()
                     
@@ -183,6 +186,12 @@ sif_mean = train_means[-1]
 band_stds = train_stds[:-1]
 sif_std = train_stds[-1]
 
+# Constrain predicted SIF to be between 0.2 and 1.7 (unstandardized)
+# Don't forget to standardize
+min_output = (MIN_SIF - sif_mean) / sif_std
+max_output = (MAX_SIF - sif_mean) / sif_std
+
+
 # Load pre-computed subtile embeddings from file
 train_tile_rows = pd.read_csv(SUBTILE_EMBEDDING_DATASET_TRAIN) # [0:200]
 val_tile_rows = pd.read_csv(SUBTILE_EMBEDDING_DATASET_VAL) # [0:200]
@@ -195,7 +204,7 @@ embedding_dataloaders = {x: torch.utils.data.DataLoader(embedding_datasets[x], b
                   for x in ['train', 'val']}
 
 # Create embedding-to-SIF model
-embedding_to_sif_model = EmbeddingToSIFNonlinearModel(embedding_size=Z_DIM, hidden_size=HIDDEN_SIZE).to(device)
+embedding_to_sif_model = EmbeddingToSIFNonlinearModel(embedding_size=Z_DIM, hidden_size=HIDDEN_SIZE, min_output=min_output, max_output=max_output).to(device)
 if FROM_PRETRAINED:
     embedding_to_sif_model.load_state_dict(torch.load(EMBEDDING_TO_SIF_MODEL_FILE, map_location=device))
 criterion = nn.MSELoss(reduction='mean')

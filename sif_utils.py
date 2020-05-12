@@ -59,12 +59,13 @@ def print_stats(true, predicted, average_sif):
     corr, _ = pearsonr(true, predicted_rescaled)
     nrmse = math.sqrt(mean_squared_error(true, predicted_rescaled)) / average_sif
     nrmse_unstd = math.sqrt(mean_squared_error(true, predicted)) / average_sif
+    spearman_rank_corr, _ = spearmanr(true, predicted_rescaled)
     print('R2:', round(r2, 3))
     print('Pearson correlation:', round(corr, 3))
     print('Pearson (unstandardized):', round(pearsonr(true, predicted)[0], 3))
     print('NRMSE:', round(nrmse, 3))
     print('NRMSE (unstandardized):', round(nrmse_unstd, 3))
-
+    print('Spearman rank corr:', round(spearman_rank_corr, 3))
 
 # For each tile in the batch, returns a list of subtiles.
 # Given a Tensor of tiles, with shape (batch x C x H x W), returns a Tensor of

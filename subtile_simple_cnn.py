@@ -33,31 +33,35 @@ DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-07-16")
 INFO_FILE_TRAIN = os.path.join(DATASET_DIR, "tile_info_train.csv")
 INFO_FILE_VAL = os.path.join(DATASET_DIR, "tile_info_val.csv")
 BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
-TRAINING_PLOT_FILE = 'exploratory_plots/losses_subtile_simple_cnn_9.png'
+TRAINING_PLOT_FILE = 'exploratory_plots/losses_subtile_simple_cnn_11.png'
 
-SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_9")
+PRETRAINED_SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/small_tile_simple")
+SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_11")
 INPUT_CHANNELS = 43
-LEARNING_RATE = 1e-3  # 0.001  #1e-4i
-WEIGHT_DECAY = 0 #1e-6
+LEARNING_RATE = 1e-5  # 0.001  #1e-4i
+WEIGHT_DECAY = 1e-5 #0 #1e-6
 NUM_EPOCHS = 50
 SUBTILE_DIM = 10
 BATCH_SIZE = 32 
 NUM_WORKERS = 4
 AUGMENT = True
-FROM_PRETRAINED = False # True  #False  # True
+FROM_PRETRAINED = True  #False  # True
+MIN_SIF = 0.2
+MAX_SIF = 1.7
 
 # TODO should there be 2 separate models?
-def train_model(subtile_sif_model, dataloaders, dataset_sizes, criterion, optimizer, device, sif_mean, sif_std, subtile_dim, num_epochs=25):
+def train_model(subtile_sif_model, dataloaders, dataset_sizes, criterion, optimizer, device, sif_mean, sif_std, subtile_dim, sif_min=0.2, sif_max=1.7, num_epochs=25):
     since = time.time()
-
     best_model_wts = copy.deepcopy(subtile_sif_model.state_dict())
     best_loss = float('inf')
     train_losses = []
     val_losses = []
     print('SIF mean', sif_mean)
     print('SIF std', sif_std)
+
     sif_mean = torch.tensor(sif_mean).to(device)
     sif_std = torch.tensor(sif_std).to(device)
+
 
     for epoch in range(num_epochs):
         print('Epoch {}/{}'.format(epoch, num_epochs - 1))
@@ -77,10 +81,6 @@ def train_model(subtile_sif_model, dataloaders, dataset_sizes, criterion, optimi
             for sample in dataloaders[phase]:
                 batch_size = len(sample['SIF'])
                 input_tile_standardized = sample['tile'].to(device)
-                #print(' ====== Random pixels =======')
-                #print(input_tile_standardized[0, :, 8, 8])
-                #print(input_tile_standardized[0, :, 8, 9])
-                #print(input_tile_standardized[0, :, 9, 9])
                 true_sif_non_standardized = sample['SIF'].to(device)
                 true_sif_standardized = ((true_sif_non_standardized - sif_mean) / sif_std).to(device)
 
@@ -97,10 +97,14 @@ def train_model(subtile_sif_model, dataloaders, dataset_sizes, criterion, optimi
                 # Forward pass: feed subtiles through embedding model and then the
                 # embedding -> SIF model
                 with torch.set_grad_enabled(phase == 'train'):
+                    #print(' ====== Random pixels =======')
+                    #print(subtiles[0, 0, :, 8, 8])
+                    #print(subtiles[0, 0, :, 8, 9])
+                    #print(subtiles[0, 0, :, 9, 9])
+ 
                     for i in range(batch_size):
                         #print('Embedding shape', embeddings.shape)
                         predicted_sifs = subtile_sif_model(subtiles[i])
-                        #print('predicted_sif shape', predicted_sifs.shape)
                         predicted_subtile_sifs[i] = predicted_sifs.flatten()
                     
                     # Predicted SIF for full tile
@@ -120,6 +124,7 @@ def train_model(subtile_sif_model, dataloaders, dataset_sizes, criterion, optimi
                     j += 1
                     if j % 100 == 0:
                         print('========================')
+                        print('*** >>> predicted subtile sifs for 0th', predicted_subtile_sifs[0] * sif_std + sif_mean)
                         print('*** Predicted', predicted_sif_non_standardized)
                         print('*** True', true_sif_non_standardized)
                         print('*** batch loss', (math.sqrt(non_standardized_loss.item()) / sif_mean).item())
@@ -182,6 +187,12 @@ sif_mean = train_means[-1]
 band_stds = train_stds[:-1]
 sif_std = train_stds[-1]
 
+# Constrain predicted SIF to be between 0.2 and 1.7 (unstandardized)
+# Don't forget to standardize
+min_output = None #(MIN_SIF - sif_mean) / sif_std
+max_output = None #(MAX_SIF - sif_mean) / sif_std
+
+
 # Set up image transforms
 transform_list = []
 transform_list.append(tile_transforms.StandardizeTile(band_means, band_stds))
@@ -201,9 +212,9 @@ dataloaders = {x: torch.utils.data.DataLoader(datasets[x], batch_size=BATCH_SIZE
 print("Dataloaders")
 
 # subtile_sif_model = small_resnet.resnet18(input_channels=INPUT_CHANNELS)
-subtile_sif_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, reduced_channels=30, output_dim=1).to(device)
+subtile_sif_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, reduced_channels=43, output_dim=1, min_output=min_output, max_output=max_output).to(device)
 if FROM_PRETRAINED:
-    subtile_sif_model.load_state_dict(torch.load(SUBTILE_SIF_MODEL_FILE, map_location=device))
+    subtile_sif_model.load_state_dict(torch.load(PRETRAINED_SUBTILE_SIF_MODEL_FILE, map_location=device))
 
 criterion = nn.MSELoss(reduction='mean')
 optimizer = optim.Adam(subtile_sif_model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)

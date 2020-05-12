@@ -18,17 +18,18 @@ LOSS_PLOT_FILE = "exploratory_plots/losses_SAN.png"
 BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
 RESNET_FROM_PRETRAINED = True  #True
 RESNET_MODEL_FILE = os.path.join(DATA_DIR, "models/large_tile_resnet18")
-SAN_FROM_PRETRAINED = False #True #False #True  # Falsei
-SAN_MODEL_FILE = os.path.join(DATA_DIR, "models/SAN_2")
+SAN_FROM_PRETRAINED = False # False #True #False #True  # Falsei
+SAN_MODEL_FILE = os.path.join(DATA_DIR, "models/SAN_4")
 NUM_EPOCHS = 50
 INPUT_CHANNELS = 43
-LEARNING_RATE = 1e-3
-WEIGHT_DECAY = 0 #1e-6
+LEARNING_RATE = 1e-5 #5
+WEIGHT_DECAY = 1e-5
 BATCH_SIZE = 16
 NUM_WORKERS = 4
 INPUT_SIZE = 371
 OUTPUT_SIZE = 37
-
+MIN_SIF = 0.2
+MAX_SIF = 1.7
 
 
 if __name__ == "__main__":
@@ -58,6 +59,11 @@ if __name__ == "__main__":
     band_stds = train_stds[:-1]
     sif_std = train_stds[-1]
 
+    # Constrain predicted SIF to be between 0.2 and 1.7 (unstandardized)
+    # Don't forget to standardize
+    min_output = (MIN_SIF - sif_mean) / sif_std
+    max_output = (MAX_SIF - sif_mean) / sif_std
+
     # Set up image transforms
     transform_list = []
     transform_list.append(tile_transforms.StandardizeTile(band_means, band_stds))
@@ -81,7 +87,7 @@ if __name__ == "__main__":
     model = SAN(resnet_model, input_height=INPUT_SIZE, input_width=INPUT_SIZE,
                 output_height=OUTPUT_SIZE, output_width=OUTPUT_SIZE,
                 feat_width=3*OUTPUT_SIZE, feat_height=3*OUTPUT_SIZE,
-                in_channels=INPUT_CHANNELS).to(device)
+                in_channels=INPUT_CHANNELS, min_output=min_output, max_output=max_output).to(device)
     if SAN_FROM_PRETRAINED:
         model.load_state_dict(torch.load(SAN_MODEL_FILE, map_location=device))
 

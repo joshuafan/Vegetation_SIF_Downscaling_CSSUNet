@@ -30,7 +30,7 @@ class EvalSubtileDataset(Dataset):
                   'SIF': current_tile_info.loc['SIF']}
  
         if self.load_large_tile:
-            large_tile = np.load(current_tile_info.loc['large_tile_file'])
+            large_tile = np.load(current_tile_info.loc['tile_file'])
             if self.transform:
                 large_tile = self.transform(large_tile)
             sample['large_tile'] = torch.tensor(large_tile, dtype=torch.float)

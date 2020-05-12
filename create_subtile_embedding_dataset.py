@@ -47,7 +47,7 @@ BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
 SUBTILE_EMBEDDING_FILE_TRAIN = os.path.join(DATASET_DIR, "tile2vec_embeddings_train.csv")
 SUBTILE_EMBEDDING_FILE_VAL = os.path.join(DATASET_DIR, "tile2vec_embeddings_val.csv")
 EMBEDDING_FILE_SUFFIX = '_tile2vec_embeddings.npy'
-TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_hard_2/TileNet.ckpt")
+TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_recon_3/TileNet.ckpt")
 
 # If EMBEDDING_TYPE is 'average', the embedding is just the average of each band.
 # If it is 'tile2vec', we use the Tile2Vec model 

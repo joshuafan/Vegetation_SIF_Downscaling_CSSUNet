@@ -10,10 +10,11 @@ import tile_transforms
 import torchvision
 import torchvision.transforms as transforms
 from eval_subtile_dataset import EvalSubtileDataset
+from sif_utils import plot_histogram
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
 EVAL_SUBTILE_DATASET_FILE = os.path.join(DATA_DIR, "dataset_2016-07-16/eval_subtiles.csv")
-TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_hard_2/TileNet.ckpt")  #"models/tile2vec_dim512_neighborhood100/TileNet.ckpt")
+TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_recon_5/TileNet.ckpt")  #"models/tile2vec_dim512_neighborhood100/TileNet.ckpt")
 TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-07-16")
 BAND_STATISTICS_FILE = os.path.join(TRAIN_DATASET_DIR, "band_statistics_train.csv")
 
@@ -69,18 +70,21 @@ sifs = []
 i = 0
 for sample in dataloader:
     input_tile_standardized = sample['subtile'].to(device)
-    print('Input tile standardized dims', input_tile_standardized.shape)
+    #print('Input tile standardized dims', input_tile_standardized.shape)
 
     batch = input_tile_standardized.shape[0]
     with torch.set_grad_enabled(False):
-        subtile_embeddings[i:i+batch] = tile2vec_model(input_tile_standardized).cpu().numpy() # torch.mean(input_tile_standardized, dim=(2, 3)).cpu().numpy() #  # tile2vec_model(input_tile_standardized)
+        embeddings = tile2vec_model(input_tile_standardized).cpu().numpy()
+        #print('Embedding shape', embeddings.shape)
+        #print('Embedding', embeddings[0])
+        subtile_embeddings[i:i+batch] = embeddings #tile2vec_model(input_tile_standardized).cpu().numpy() # torch.mean(input_tile_standardized, dim=(2, 3)).cpu().numpy() #  # tile2vec_model(input_tile_standardized)
     subtile_files.extend(sample['subtile_file'])
     lats.extend(sample['lat'].tolist())
     lons.extend(sample['lon'].tolist())
     sifs.extend(sample['SIF'].tolist())
     i += batch
-    if i >= 5000:
-        break
+    #if i >= 5000:
+    #    break
 
 # Loads tile from file and transforms it into the format that imshow wants
 def tile_to_image(tile):
@@ -90,6 +94,9 @@ def tile_to_image(tile):
 def get_title_string(lat, lon, sif):
     return 'Lat' + str(round(lat, 5)) + ', Lon' + str(round(lon, 5)) + ' (SIF = ' + str(round(sif, 3)) + ')'
 
+indices = [3, 13, 23, 33, 43, 53, 63]
+for idx in indices:
+    plot_histogram(subtile_embeddings[:, idx], "tile2vec_embedding_idx_" + str(idx) + ".png")
 
 NUM_NEIGHBORS = 5
 
