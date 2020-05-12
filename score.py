@@ -1,14 +1,13 @@
 import os
-import pickle
+#import pickle
 import json
 import numpy as np
 import pandas as pd
-import tile_transforms
 import time
 import torch
 import torchvision.transforms as transforms
 
-from sif_utils import get_subtiles_list
+import tile_transforms
 import simple_cnn
 
 MODEL_FILENAME = "subtile_sif_simple_cnn_9"
@@ -16,6 +15,27 @@ BAND_STATISTICS_FILENAME = "band_statistics_train.csv"
 INPUT_CHANNELS = 43
 REDUCED_CHANNELS = 30
 SUBTILE_DIM = 10
+
+# For each tile in the batch, returns a list of subtiles.
+# Given a Tensor of tiles, with shape (batch x C x H x W), returns a Tensor of
+# shape (batch x SUBTILE x C x subtile_dim x subtile_dim)
+def get_subtiles_list(tile, subtile_dim, device):
+    batch_size, bands, height, width = tile.shape
+    num_subtiles_along_height = int(height / subtile_dim)
+    num_subtiles_along_width = int(width / subtile_dim)
+    num_subtiles = num_subtiles_along_height * num_subtiles_along_width
+    assert(num_subtiles_along_height == 37)
+    assert(num_subtiles_along_width == 37)
+    subtiles = torch.empty((batch_size, num_subtiles, bands, subtile_dim, subtile_dim), device=device)
+    for b in range(batch_size):
+        subtile_idx = 0
+        for i in range(num_subtiles_along_height):
+            for j in range(num_subtiles_along_width):
+                subtile = tile[b, :, subtile_dim*i:subtile_dim*(i+1), subtile_dim*j:subtile_dim*(j+1)].to(device)
+                subtiles[b, subtile_idx, :, :, :] = subtile
+                subtile_idx += 1
+    return subtiles
+
 
 # Called when the deployed service starts
 def init():
@@ -34,7 +54,7 @@ def init():
 
     # Load model
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model_path = torch.load(os.path.join(model_dir, MODEL_FILENAME))
+    model_path = os.path.join(model_dir, MODEL_FILENAME)
     subtile_sif_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, reduced_channels=REDUCED_CHANNELS, output_dim=1).to(device)
     subtile_sif_model.load_state_dict(torch.load(model_path, map_location=device))
     subtile_sif_model.eval()
@@ -53,6 +73,7 @@ def init():
     transform_list = []
     transform_list.append(tile_transforms.StandardizeTile(band_means, band_stds))
     transform = transforms.Compose(transform_list)
+    #transform = tile_transforms.StandardizeTile(band_means, band_stds) 
 
 
 # Handle requests to the service
@@ -64,8 +85,9 @@ def run(raw_data):
         prediction = predict(tile)
         return prediction
     except Exception as e:
-        error = str(e)
-        return error
+        result = str(e)
+        # return error message back to the client
+        return json.dumps({"error": result})
 
 # Predict SIF using the model
 def predict(tile):
@@ -79,8 +101,8 @@ def predict(tile):
 
     # Obttain predicted SIFs for each subtile
     with torch.set_grad_enabled(False):
-        predicted_sifs_simple_cnn_standardized = subtile_sif_model(subtiles_standardized).detach().numpy()
+        predicted_sifs_simple_cnn_standardized = subtile_sif_model(subtiles_standardized).cpu().numpy()
     predicted_sifs_simple_cnn_non_standardized = (predicted_sifs_simple_cnn_standardized * sif_std + sif_mean) \
             .reshape((num_subtiles_along_height, num_subtiles_along_width))
-    return {"sifs": predicted_sifs_simple_cnn_non_standardized,
+    return {"sifs": predicted_sifs_simple_cnn_non_standardized.tolist(),
             "elapsed_time": time.time()-start_at}  
