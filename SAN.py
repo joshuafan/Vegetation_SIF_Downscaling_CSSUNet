@@ -15,6 +15,8 @@ import sys
 sys.path.append('../')
 #from tile2vec.src.tilenet import make_tilenet
 import RemoteSensing.resnet as resnet
+import matplotlib.pyplot as plt
+
 
 def weights_init(m):
     # Initialize filters with Gaussian random weights
@@ -50,13 +52,15 @@ class MeanFieldUpdate(nn.Module):
 
     def __init__(self, bottom_send, bottom_receive, feat_num):
         super(MeanFieldUpdate, self).__init__()
-
+        #self.atten_f = nn.Conv2d(in_channels=bottom_send, out_channels=feat_num,
+        #                         kernel_size=3, stride=1, padding=1) 
         self.atten_f = nn.Conv2d(in_channels=bottom_send + bottom_receive, out_channels=feat_num,
                                  kernel_size=3, stride=1, padding=1)
         self.norm_atten_f = nn.Sigmoid()
         self.message_f = nn.Conv2d(in_channels=bottom_send, out_channels=feat_num, kernel_size=3,
                                    stride=1, padding=1)
         self.Scale = nn.Conv2d(in_channels=feat_num, out_channels=bottom_receive, kernel_size=1, bias=True)
+        self.a_s = None
 
     def forward(self, x_s, x_S):
         # update attention map
@@ -72,6 +76,37 @@ class MeanFieldUpdate(nn.Module):
         y_S = x_S + y_S  # eltwise sum
         return y_S
 
+
+#    def forward(self, x_s, x_S, visualize_attention=False):
+#        # update attention map
+#        if self.a_s is None:
+#            self.a_s = x_S
+#        hat_a_s = x_s.mul(self.message_f(x_S))
+#        tilde_a_s = self.atten_f(self.a_s)
+#        self.a_s = self.norm_atten_f(-1 * (hat_a_s + tilde_a_s))
+#
+#        #self.a_s = torch.cat((x_s, x_S), dim=1)
+#        #self.a_s = self.atten_f(self.a_s)
+#        #self.a_s = self.norm_atten_f(self.a_s)
+#        if visualize_attention:
+#            print('Attention dim', self.a_s.shape)
+#            features = [0, 1, 2, 3, 4, 5, 6, 7, 8, 16, 24, 32, 40, 48, 56, 63]
+#            fig, axeslist = plt.subplots(ncols=4, nrows=4, figsize=(20, 20))
+#            for i, feature_idx in enumerate(features):
+#                axeslist.ravel()[i].imshow(self.a_s.detach().numpy()[0, feature_idx, :, :], cmap='Reds', vmin=0.3, vmax=0.7)
+#                axeslist.ravel()[i].set_title('Feature' + str(feature_idx))
+#            plt.tight_layout()
+#            plt.savefig('exploratory_plots/attention.png')
+#            plt.close()
+#
+#        # update the last scale feature map y_S
+#        y_s = self.message_f(x_s)
+#        y_S = y_s.mul(self.a_s)  # production
+#        # scale
+#        y_S = self.Scale(y_S)
+#        y_S = x_S + y_S  # eltwise sum
+#        return y_S
+#
 
 class SAN(nn.Module):
     """
@@ -182,6 +217,7 @@ class SAN(nn.Module):
         self.meanFieldUpdate5_2.apply(weights_init)
         self.meanFieldUpdate5_3.apply(weights_init)
 
+
     def forward(self, x):
         #x = self.dim_red(x)
         x = self.conv1(x)
@@ -237,11 +273,11 @@ class SAN(nn.Module):
         y_S = self.meanFieldUpdate4_2(res4f, y_S)
         y_S = self.meanFieldUpdate4_3(res5c, y_S)
 
-        y_S = self.meanFieldUpdate5_1(res3d, y_S)
+        y_S = self.meanFieldUpdate5_1(res3d, y_S) #, visualize_attention=True) # True)
         y_S = self.meanFieldUpdate5_2(res4f, y_S)
         y_S = self.meanFieldUpdate5_3(res5c, y_S)
 
-        print('Y_S', y_S.shape)
+        #print('Y_S', y_S.shape)
 
         pred = self.pred_1(y_S)
         pred = self.pred_1_relu(pred)

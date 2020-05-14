@@ -36,16 +36,16 @@ BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
 TRAINING_PLOT_FILE = 'exploratory_plots/losses_subtile_simple_cnn_11.png'
 
 PRETRAINED_SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/small_tile_simple")
-SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_11")
+SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_12")
 INPUT_CHANNELS = 43
-LEARNING_RATE = 1e-5  # 0.001  #1e-4i
-WEIGHT_DECAY = 1e-5 #0 #1e-6
+LEARNING_RATE = 1e-3  # 0.001  #1e-4i
+WEIGHT_DECAY = 1e-3 #0 #1e-6
 NUM_EPOCHS = 50
 SUBTILE_DIM = 10
 BATCH_SIZE = 32 
 NUM_WORKERS = 4
 AUGMENT = True
-FROM_PRETRAINED = True  #False  # True
+FROM_PRETRAINED = False #True  #False  # True
 MIN_SIF = 0.2
 MAX_SIF = 1.7
 

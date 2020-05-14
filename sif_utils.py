@@ -49,11 +49,11 @@ def print_stats(true, predicted, average_sif):
         true = np.array(true)
     if isinstance(predicted, list):
         predicted = np.array(predicted)
-    print('True', true[:50])
-    print('Predicted', predicted[:50])
-    print('Sif mean:', average_sif)
+    #print('True', true[:50])
+    #print('Predicted', predicted[:50])
+    #print('Sif mean:', average_sif)
     predicted_to_true = LinearRegression().fit(predicted.reshape(-1, 1), true)
-    print('True vs predicted regression', predicted_to_true.coef_, 'intercept', predicted_to_true.intercept_)
+    #print('True vs predicted regression', predicted_to_true.coef_, 'intercept', predicted_to_true.intercept_)
     predicted_rescaled = predicted_to_true.predict(predicted.reshape(-1, 1))
     r2 = r2_score(true, predicted_rescaled)
     corr, _ = pearsonr(true, predicted_rescaled)
@@ -111,6 +111,8 @@ def train_single_model(model, dataloaders, dataset_sizes, criterion, optimizer, 
         print('Epoch {}/{}'.format(epoch, num_epochs - 1))
         print('-' * 10)
 
+        epoch_start = time.time()
+
         # Each epoch has a training and validation phase
         for phase in ['train', 'val']:
             if phase == 'train':
@@ -127,6 +129,7 @@ def train_single_model(model, dataloaders, dataset_sizes, criterion, optimizer, 
                 input_tile_standardized = sample['tile'].to(device)
                 #print(input_tile_standardized.shape)
                 #print('=========================')
+                #print('Input tile - random pixel', input_tile_standardized[0, :, 200, 370])
                 #print('Input band means')
                 #print(torch.mean(input_tile_standardized[0], dim=(1,2)))
 
@@ -146,13 +149,14 @@ def train_single_model(model, dataloaders, dataset_sizes, criterion, optimizer, 
                     #print('pred sif std', predicted_sif_standardized.shape)
                     #print('pred shape', pred.shape)
                     if type(output) is tuple:
+                        #subtile_pred = output[4] * sif_std + sif_mean
                         output = output[0]
                     predicted_sif_standardized = output.flatten()
                     loss = criterion(predicted_sif_standardized, true_sif_standardized)
 
                     # backward + optimize only if in training phase
                     if phase == 'train':
-                        loss.backward()
+                        loss.backward()  #retain_graph=True)
                         optimizer.step()
 
                 # statistics
@@ -162,6 +166,7 @@ def train_single_model(model, dataloaders, dataset_sizes, criterion, optimizer, 
                     j += 1
                     if j % 100 == 1:
                         print('========================')
+                        #print('Subtile SIF pred:', subtile_pred)
                         print('> Predicted', predicted_sif_non_standardized)
                         print('> True', true_sif_non_standardized)
                         print('> batch loss', (math.sqrt(non_standardized_loss.item()) / sif_mean).item())
@@ -185,7 +190,8 @@ def train_single_model(model, dataloaders, dataset_sizes, criterion, optimizer, 
                 train_losses.append(epoch_loss)
             else:
                 val_losses.append(epoch_loss)
-
+                epoch_time = time.time() - epoch_start
+                print('Epoch time:', epoch_time)
         print()
 
     time_elapsed = time.time() - since

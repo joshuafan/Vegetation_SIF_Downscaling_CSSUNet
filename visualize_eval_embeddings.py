@@ -54,7 +54,7 @@ transform = transforms.Compose(transform_list)
 dataset_size = len(eval_metadata)
 dataset = EvalSubtileDataset(eval_metadata, transform=transform)
 dataloader = torch.utils.data.DataLoader(dataset, batch_size=BATCH_SIZE,
-                                         shuffle=True, num_workers=4)
+                                         shuffle=False, num_workers=4)
 
 # Load Tile2Vec model
 tile2vec_model = make_tilenet(in_channels=INPUT_CHANNELS, z_dim=Z_DIM).to(device)
@@ -99,8 +99,9 @@ for idx in indices:
     plot_histogram(subtile_embeddings[:, idx], "tile2vec_embedding_idx_" + str(idx) + ".png")
 
 NUM_NEIGHBORS = 5
-
-for anchor_idx in range(10):
+anchor_indices = [16766, 19860, 14082, 10257, 15152]
+for anchor_idx in anchor_indices: #range(10):
+    print(subtile_embeddings[anchor_idx])
     distances_to_anchor = np.zeros((subtile_embeddings.shape[0]))
     for i in range(subtile_embeddings.shape[0]):
         distances_to_anchor[i] = np.linalg.norm(subtile_embeddings[anchor_idx] - subtile_embeddings[i])

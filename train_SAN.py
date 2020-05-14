@@ -19,11 +19,11 @@ BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
 RESNET_FROM_PRETRAINED = True  #True
 RESNET_MODEL_FILE = os.path.join(DATA_DIR, "models/large_tile_resnet18")
 SAN_FROM_PRETRAINED = False # False #True #False #True  # Falsei
-SAN_MODEL_FILE = os.path.join(DATA_DIR, "models/SAN_4")
+SAN_MODEL_FILE = os.path.join(DATA_DIR, "models/SAN_feat37")
 NUM_EPOCHS = 50
 INPUT_CHANNELS = 43
-LEARNING_RATE = 1e-5 #5
-WEIGHT_DECAY = 1e-5
+LEARNING_RATE = 1e-3 #5
+WEIGHT_DECAY = 1e-3
 BATCH_SIZE = 16
 NUM_WORKERS = 4
 INPUT_SIZE = 371
@@ -86,10 +86,13 @@ if __name__ == "__main__":
 
     model = SAN(resnet_model, input_height=INPUT_SIZE, input_width=INPUT_SIZE,
                 output_height=OUTPUT_SIZE, output_width=OUTPUT_SIZE,
-                feat_width=3*OUTPUT_SIZE, feat_height=3*OUTPUT_SIZE,
+                feat_width=OUTPUT_SIZE, feat_height=OUTPUT_SIZE,
                 in_channels=INPUT_CHANNELS, min_output=min_output, max_output=max_output).to(device)
     if SAN_FROM_PRETRAINED:
         model.load_state_dict(torch.load(SAN_MODEL_FILE, map_location=device))
+    #for name, param in model.named_parameters():
+    #    if param.requires_grad:
+    #        print(name, param.data)
 
     # Set up loss/optimizer
     criterion = nn.MSELoss(reduction='mean')

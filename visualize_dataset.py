@@ -77,8 +77,11 @@ TILES_DIR = os.path.join(DATA_DIR, "tiles_2016-07-16")
 #LON = -93.55 #-101.35  #-93.35
 #LAT = 42.65
 #LON = -93.35
-LAT = 42.55 #47.55
-LON = -93.35 #101.35
+#LAT = 42.55 #47.55
+#LON = -93.35 #101.35
+LAT = 47.55
+LON = -101.35
+
 LAT_LON = 'lat_' + str(LAT) + '_lon_' + str(LON)
 TILE_DEGREES = 0.1
 eps = TILE_DEGREES / 2
@@ -88,13 +91,13 @@ TROPOMI_SIF_FILE = os.path.join(DATA_DIR, "TROPOMI_SIF/TROPO-SIF_01deg_biweekly_
 TROPOMI_DATE_RANGE = slice("2018-08-01", "2018-08-16")
 EVAL_SUBTILE_DATASET = os.path.join(DATA_DIR, "dataset_2016-07-16/eval_subtiles.csv")
 RGB_BANDS = [3, 2, 1]
-SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_11")
-TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_recon_2/TileNet.ckpt")
-EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_embedding_to_sif")
+SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_12")
+TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_recon_5/TileNet.ckpt") #finetuned_tile2vec.ckpt") #TileNet.ckpt")
+EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_embedding_to_sif") #finetuned_tile2vec_embedding_to_sif.ckpt") #tile2vec_embedding_to_sif")
 EMBEDDING_TYPE = 'tile2vec'
-Z_DIM = 64 #256
+Z_DIM = 256
 HIDDEN_DIM = 1024
-SAN_MODEL_FILE = os.path.join(DATA_DIR, "models/SAN_4")
+SAN_MODEL_FILE = os.path.join(DATA_DIR, "models/SAN_feat37")
 INPUT_CHANNELS = 43
 SUBTILE_DIM = 10
 TILE_SIZE_DEGREES = 0.1
@@ -127,7 +130,7 @@ max_output = (MAX_SIF - sif_mean) / sif_std
 
 
 # Load subtile SIF model
-subtile_sif_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, reduced_channels=43, output_dim=1, min_output=None, max_output=None).to(device)
+subtile_sif_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, reduced_channels=43, output_dim=1, min_output=min_output, max_output=max_output).to(device)
 subtile_sif_model.load_state_dict(torch.load(SUBTILE_SIF_MODEL_FILE, map_location=device))
 subtile_sif_model.eval()
 
@@ -139,7 +142,7 @@ if EMBEDDING_TYPE == 'tile2vec':
 else:
     tile2vec_model = None
 embedding_to_sif_model = EmbeddingToSIFNonlinearModel(embedding_size=Z_DIM, hidden_size=HIDDEN_DIM, min_output=min_output, max_output=max_output).to(device)
-#embedding_to_sif_model.load_state_dict(torch.load(EMBEDDING_TO_SIF_MODEL_FILE, map_location=device))
+embedding_to_sif_model.load_state_dict(torch.load(EMBEDDING_TO_SIF_MODEL_FILE, map_location=device))
 embedding_to_sif_model.eval()
 
 # Load SAN model
@@ -147,7 +150,7 @@ resnet_model = resnet.resnet18(input_channels=INPUT_CHANNELS)
 san_model = SAN(resnet_model, min_output=min_output, max_output=max_output,
                 input_height=INPUT_SIZE, input_width=INPUT_SIZE,
                 output_height=OUTPUT_SIZE, output_width=OUTPUT_SIZE,
-                feat_width=4*OUTPUT_SIZE, feat_height=4*OUTPUT_SIZE,
+                feat_width=OUTPUT_SIZE, feat_height=OUTPUT_SIZE,
                 in_channels=INPUT_CHANNELS).to(device)
 san_model.load_state_dict(torch.load(SAN_MODEL_FILE, map_location=device))
 san_model.eval()
@@ -380,12 +383,17 @@ plt.title('TROPOMI points (area)')
 plt.savefig('exploratory_plots/tropomi_points.png')
 plt.close()
 
-
-linear_scale = np.mean(cfis_area['SIF']) / np.mean(predicted_sifs_linear)
-simple_cnn_scale = np.mean(cfis_area['SIF']) / np.mean(predicted_sifs_simple_cnn_non_standardized)
-tile2vec_fixed_scale = np.mean(cfis_area['SIF']) / np.mean(predicted_sifs_tile2vec_fixed_non_standardized)
-san_scale = np.mean(cfis_area['SIF']) / np.mean(predicted_sifs_san)
-
+print('CFIS SIF', cfis_area['SIF'])
+if len(cfis_area['SIF']) >= 1:
+    linear_scale = np.mean(cfis_area['SIF']) / np.mean(predicted_sifs_linear)
+    simple_cnn_scale = np.mean(cfis_area['SIF']) / np.mean(predicted_sifs_simple_cnn_non_standardized)
+    tile2vec_fixed_scale = np.mean(cfis_area['SIF']) / np.mean(predicted_sifs_tile2vec_fixed_non_standardized)
+    san_scale = np.mean(cfis_area['SIF']) / np.mean(predicted_sifs_san)
+else:
+    linear_scale = 1
+    simple_cnn_scale = 1
+    tile2vec_fixed_scale = 1
+    san_scale = 1
 
 # Plot different method's predictions
 fig, axeslist = plt.subplots(ncols=3, nrows=2, figsize=(24, 16))
