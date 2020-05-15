@@ -19,11 +19,11 @@ BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
 RESNET_FROM_PRETRAINED = True  #True
 RESNET_MODEL_FILE = os.path.join(DATA_DIR, "models/large_tile_resnet18")
 SAN_FROM_PRETRAINED = False # False #True #False #True  # Falsei
-SAN_MODEL_FILE = os.path.join(DATA_DIR, "models/SAN_feat37")
+SAN_MODEL_FILE = os.path.join(DATA_DIR, "models/SAN_feat111_unconstrained")
 NUM_EPOCHS = 50
 INPUT_CHANNELS = 43
-LEARNING_RATE = 1e-3 #5
-WEIGHT_DECAY = 1e-3
+LEARNING_RATE = 1e-4 #5
+WEIGHT_DECAY = 1e-5 
 BATCH_SIZE = 16
 NUM_WORKERS = 4
 INPUT_SIZE = 371
@@ -61,8 +61,8 @@ if __name__ == "__main__":
 
     # Constrain predicted SIF to be between 0.2 and 1.7 (unstandardized)
     # Don't forget to standardize
-    min_output = (MIN_SIF - sif_mean) / sif_std
-    max_output = (MAX_SIF - sif_mean) / sif_std
+    min_output = None# (MIN_SIF - sif_mean) / sif_std
+    max_output = None #(MAX_SIF - sif_mean) / sif_std
 
     # Set up image transforms
     transform_list = []
@@ -86,7 +86,7 @@ if __name__ == "__main__":
 
     model = SAN(resnet_model, input_height=INPUT_SIZE, input_width=INPUT_SIZE,
                 output_height=OUTPUT_SIZE, output_width=OUTPUT_SIZE,
-                feat_width=OUTPUT_SIZE, feat_height=OUTPUT_SIZE,
+                feat_width=3*OUTPUT_SIZE, feat_height=3*OUTPUT_SIZE,
                 in_channels=INPUT_CHANNELS, min_output=min_output, max_output=max_output).to(device)
     if SAN_FROM_PRETRAINED:
         model.load_state_dict(torch.load(SAN_MODEL_FILE, map_location=device))

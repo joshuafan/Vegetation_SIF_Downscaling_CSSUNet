@@ -77,10 +77,10 @@ TILES_DIR = os.path.join(DATA_DIR, "tiles_2016-07-16")
 #LON = -93.55 #-101.35  #-93.35
 #LAT = 42.65
 #LON = -93.35
-#LAT = 42.55 #47.55
-#LON = -93.35 #101.35
-LAT = 47.55
-LON = -101.35
+LAT = 42.55 #47.55
+LON = -93.35 #101.35
+#LAT = 47.55
+#LON = -101.35
 
 LAT_LON = 'lat_' + str(LAT) + '_lon_' + str(LON)
 TILE_DEGREES = 0.1
@@ -97,7 +97,10 @@ EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_embedding_
 EMBEDDING_TYPE = 'tile2vec'
 Z_DIM = 256
 HIDDEN_DIM = 1024
-SAN_MODEL_FILE = os.path.join(DATA_DIR, "models/SAN_feat37")
+SAN_MODEL_FILE_37 = os.path.join(DATA_DIR, "models/SAN_feat37")
+SAN_MODEL_FILE_74 = os.path.join(DATA_DIR, "models/SAN_feat74")
+SAN_MODEL_FILE_111 = os.path.join(DATA_DIR, "models/SAN_feat111_3")
+
 INPUT_CHANNELS = 43
 SUBTILE_DIM = 10
 TILE_SIZE_DEGREES = 0.1
@@ -147,13 +150,32 @@ embedding_to_sif_model.eval()
 
 # Load SAN model
 resnet_model = resnet.resnet18(input_channels=INPUT_CHANNELS) 
-san_model = SAN(resnet_model, min_output=min_output, max_output=max_output,
+san_model_37 = SAN(resnet_model, min_output=min_output, max_output=max_output,
                 input_height=INPUT_SIZE, input_width=INPUT_SIZE,
                 output_height=OUTPUT_SIZE, output_width=OUTPUT_SIZE,
                 feat_width=OUTPUT_SIZE, feat_height=OUTPUT_SIZE,
                 in_channels=INPUT_CHANNELS).to(device)
-san_model.load_state_dict(torch.load(SAN_MODEL_FILE, map_location=device))
-san_model.eval()
+san_model_37.load_state_dict(torch.load(SAN_MODEL_FILE_37, map_location=device))
+san_model_37.eval()
+resnet_model = resnet.resnet18(input_channels=INPUT_CHANNELS) 
+san_model_74 = SAN(resnet_model, min_output=min_output, max_output=max_output,
+                input_height=INPUT_SIZE, input_width=INPUT_SIZE,
+                output_height=OUTPUT_SIZE, output_width=OUTPUT_SIZE,
+                feat_width=2*OUTPUT_SIZE, feat_height=2*OUTPUT_SIZE,
+                in_channels=INPUT_CHANNELS).to(device)
+san_model_74.load_state_dict(torch.load(SAN_MODEL_FILE_74, map_location=device))
+san_model_74.eval()
+resnet_model = resnet.resnet18(input_channels=INPUT_CHANNELS) 
+san_model_111 = SAN(resnet_model, min_output=min_output, max_output=max_output,
+                input_height=INPUT_SIZE, input_width=INPUT_SIZE,
+                output_height=OUTPUT_SIZE, output_width=OUTPUT_SIZE,
+                feat_width=3*OUTPUT_SIZE, feat_height=3*OUTPUT_SIZE,
+                in_channels=INPUT_CHANNELS).to(device)
+san_model_111.load_state_dict(torch.load(SAN_MODEL_FILE_111, map_location=device))
+san_model_111.eval()
+
+
+
 
 
 # Set up image transforms
@@ -261,9 +283,19 @@ predicted_sifs_tile2vec_fixed_non_standardized = (predicted_sifs_tile2vec_fixed_
 
 
 # Obtain SAN model predictions
-_, _, _, _, predicted_sifs_san_standardized = san_model(input_tile_standardized)
-predicted_sifs_san_standardized = predicted_sifs_san_standardized.detach().numpy()
-predicted_sifs_san = (predicted_sifs_san_standardized * sif_std + sif_mean).reshape((37, 37))
+_, _, _, _, predicted_sifs_san_37_standardized = san_model_37(input_tile_standardized)
+predicted_sifs_san_37_standardized = predicted_sifs_san_37_standardized.detach().numpy()
+predicted_sifs_san_37 = (predicted_sifs_san_37_standardized * sif_std + sif_mean).reshape((37, 37))
+_, _, _, _, predicted_sifs_san_111_standardized = san_model_111(input_tile_standardized)
+predicted_sifs_san_111_standardized = predicted_sifs_san_111_standardized.detach().numpy()
+predicted_sifs_san_111 = (predicted_sifs_san_37_standardized * sif_std + sif_mean).reshape((37, 37))
+
+
+
+_, _, _, _, predicted_sifs_san_74_standardized = san_model_74(input_tile_standardized)
+predicted_sifs_san_74_standardized = predicted_sifs_san_74_standardized.detach().numpy()
+predicted_sifs_san_74 = (predicted_sifs_san_74_standardized * sif_std + sif_mean).reshape((37, 37))
+
 
 # Plot map of SAN's subtile SIF predictions
 #plt.imshow(predicted_sifs_san, cmap=sif_cmap, vmin=0.2, vmax=1.5)
@@ -388,27 +420,42 @@ if len(cfis_area['SIF']) >= 1:
     linear_scale = np.mean(cfis_area['SIF']) / np.mean(predicted_sifs_linear)
     simple_cnn_scale = np.mean(cfis_area['SIF']) / np.mean(predicted_sifs_simple_cnn_non_standardized)
     tile2vec_fixed_scale = np.mean(cfis_area['SIF']) / np.mean(predicted_sifs_tile2vec_fixed_non_standardized)
-    san_scale = np.mean(cfis_area['SIF']) / np.mean(predicted_sifs_san)
+    san_scale = np.mean(cfis_area['SIF']) / np.mean(predicted_sifs_san_74)
 else:
     linear_scale = 1
     simple_cnn_scale = 1
     tile2vec_fixed_scale = 1
     san_scale = 1
 
-# Plot different method's predictions
-fig, axeslist = plt.subplots(ncols=3, nrows=2, figsize=(24, 16))
+# Plot different versions of SAN
+fig, axeslist = plt.subplots(ncols=2, nrows=2, figsize=(16, 16))
 axeslist[0 ,0].imshow(rgb_tile)
 axeslist[0, 0].set_title('RGB Bands')
-axeslist[0, 1].imshow(predicted_sifs_linear * linear_scale, cmap=sif_cmap, vmin=0.2, vmax=1.5)
+axeslist[0, 1].imshow(predicted_sifs_san_37, cmap=sif_cmap, vmin=0.2, vmax=1.7)
+axeslist[0, 1].set_title('SAN (37 x 37)')
+axeslist[1, 0].imshow(predicted_sifs_san_74, cmap=sif_cmap, vmin=0.2, vmax=1.7)
+axeslist[1, 0].set_title('SAN (74 x 74)')
+pcm = axeslist[1, 1].imshow(predicted_sifs_san_111, cmap=sif_cmap, vmin=0.2, vmax=1.7)
+axeslist[1, 1].set_title('SAN (111 x 111)')
+fig.colorbar(pcm, ax=axeslist.ravel().tolist()) #[:, 2]) #, shrink=0.6)
+plt.savefig('exploratory_plots/SAN_versions.png')
+plt.close()
+
+
+# Plot different method's predictions
+fig, axeslist = plt.subplots(ncols=2, nrows=2, figsize=(12, 12))
+axeslist[0 ,0].imshow(rgb_tile)
+axeslist[0, 0].set_title('RGB Bands')
+axeslist[0, 1].imshow(predicted_sifs_linear * linear_scale, cmap=sif_cmap, vmin=0.2, vmax=1.7)
 axeslist[0, 1].set_title('Linear Regression: predicted SIF')
-axeslist[0, 2].imshow(predicted_sifs_simple_cnn_non_standardized * simple_cnn_scale, cmap=sif_cmap, vmin=0.2, vmax=1.5)
-axeslist[0, 2].set_title('Subtile CNN: predicted SIF')
-axeslist[1, 0].imshow(cfis_tile, cmap=sif_cmap, vmin=0.2, vmax=1.5)
+#axeslist[0, 2].imshow(predicted_sifs_simple_cnn_non_standardized * simple_cnn_scale, cmap=sif_cmap, vmin=0.2, vmax=1.7)
+#axeslist[0, 2].set_title('Subtile CNN: predicted SIF')
+axeslist[1, 0].imshow(cfis_tile, cmap=sif_cmap, vmin=0.2, vmax=1.7)
 axeslist[1, 0].set_title('Ground-truth CFIS SIF')
-axeslist[1, 1].imshow(predicted_sifs_tile2vec_fixed_non_standardized * tile2vec_fixed_scale, cmap=sif_cmap, vmin=0.2, vmax=1.5)
-axeslist[1, 1].set_title('Tile2Vec Fixed: predicted SIF')
-pcm = axeslist[1, 2].imshow(predicted_sifs_san * san_scale, cmap=sif_cmap, vmin=0.2, vmax=1.5)
-axeslist[1, 2].set_title('Structured Attention Network: predicted SIF')
+pcm = axeslist[1, 1].imshow(predicted_sifs_san_74 * san_scale, cmap=sif_cmap, vmin=0.2, vmax=1.7)
+axeslist[1, 1].set_title('Structured Attention Network: predicted SIF')
+#axeslist[1, 2].imshow(predicted_sifs_tile2vec_fixed_non_standardized * tile2vec_fixed_scale, cmap=sif_cmap, vmin=0.2, vmax=1.7)
+#axeslist[1, 2].set_title('Tile2Vec Fixed: predicted SIF')
 fig.colorbar(pcm, ax=axeslist.ravel().tolist()) #[:, 2]) #, shrink=0.6)
 #fig.subplots_adjust(right=0.8)
 #cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
@@ -423,7 +470,7 @@ print('===================== Comparing stats ======================')
 print('Linear predictions for this tile: mean', round(np.mean(predicted_sifs_linear), 3), 'std', round(np.std(predicted_sifs_linear), 3)) #, 'min', np.min(predicted_sifs_linear), 'max', np.max(predicted_sifs_linear))
 print('CNN predictions for this tile: mean', round(np.mean(predicted_sifs_simple_cnn_non_standardized), 3), 'std', round(np.std(predicted_sifs_simple_cnn_non_standardized), 3)) #'min', np.min(predicted_sifs_simple_cnn_non_standardized), 'max', np.max(predicted_sifs_simple_cnn_non_standardized))
 print('Tile2Vec Fixed predictions for this tile: mean', round(np.mean(predicted_sifs_tile2vec_fixed_non_standardized), 3), 'std', round(np.std(predicted_sifs_tile2vec_fixed_non_standardized), 3)) # 'min', np.min(predicted_sifs_tile2vec_fixed_non_standardized), 'max', np.max(predicted_sifs_tile2vec_fixed_non_standardized))
-print('SAN predictions for this tile: mean', round(np.mean(predicted_sifs_san), 3), 'std', round(np.std(predicted_sifs_san), 3)) # 'min', np.min(predicted_sifs_san), 'max', np.max(predicted_sifs_san))
+print('SAN predictions for this tile: mean', round(np.mean(predicted_sifs_san_111), 3), 'std', round(np.std(predicted_sifs_san_111), 3)) # 'min', np.min(predicted_sifs_san), 'max', np.max(predicted_sifs_san))
 print('Ground-truth CFIS SIF for this tile: mean', round(np.mean(cfis_area['SIF']), 3), 'std', round(np.std(cfis_area['SIF']), 3)) # 'min', np.min(cfis_area['SIF']), 'max', np.max(cfis_area['SIF']))
 print('Linear / Ground-truth', round(np.mean(predicted_sifs_linear) / np.mean(cfis_area['SIF']), 3))
 print('TROPOMI SIF for this tile', tropomi_array.sel(lat=LAT, lon=LON, method='nearest'))

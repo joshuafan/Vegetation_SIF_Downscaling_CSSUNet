@@ -31,7 +31,7 @@ EVAL_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2016-07-16")
 EVAL_FILE = os.path.join(EVAL_DATASET_DIR, "eval_subtiles.csv")
 # EVAL_FILE = os.path.join(TRAIN_DATASET_DIR, "tile_info_val.csv")
 
-TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/SAN_feat111")  # small_tile_sif_prediction")
+TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/SAN_feat111_unconstrained")  # small_tile_sif_prediction")
 BAND_STATISTICS_FILE = os.path.join(TRAIN_DATASET_DIR, "band_statistics_train.csv")
 METHOD = "5_SAN" #"tile2vec_finetuned"
 TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_eval_subtile_' + METHOD

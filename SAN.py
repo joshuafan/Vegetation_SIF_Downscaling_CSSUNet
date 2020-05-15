@@ -60,13 +60,24 @@ class MeanFieldUpdate(nn.Module):
         self.message_f = nn.Conv2d(in_channels=bottom_send, out_channels=feat_num, kernel_size=3,
                                    stride=1, padding=1)
         self.Scale = nn.Conv2d(in_channels=feat_num, out_channels=bottom_receive, kernel_size=1, bias=True)
-        self.a_s = None
 
-    def forward(self, x_s, x_S):
+    def forward(self, x_s, x_S, visualize_attention=False):
         # update attention map
         a_s = torch.cat((x_s, x_S), dim=1)
         a_s = self.atten_f(a_s)
         a_s = self.norm_atten_f(a_s)
+        if visualize_attention:
+            print('Attention dim', a_s.shape)
+            features = list(range(64)) #[0, 1, 2, 3, 4, 5, 6, 7, 8, 16, 24, 32, 40, 48, 56, 63]
+            fig, axeslist = plt.subplots(ncols=8, nrows=8, figsize=(40, 40))
+            for i, feature_idx in enumerate(features):
+                axeslist.ravel()[i].imshow(a_s.detach().numpy()[0, feature_idx, :, :], cmap='Reds', vmin=0.0, vmax=1.0)
+                axeslist.ravel()[i].set_title('Feature' + str(feature_idx))
+            plt.tight_layout()
+            plt.savefig('exploratory_plots/SAN_attention.png')
+            plt.close()
+
+
 
         # update the last scale feature map y_S
         y_s = self.message_f(x_s)
@@ -115,6 +126,8 @@ class SAN(nn.Module):
 
     def __init__(self, pretrained_model, input_height, input_width, output_height, output_width, min_output=None, max_output=None, in_channels=3, feat_num=64, feat_width=128, feat_height=24, pretrained=True):
         super(SAN, self).__init__()
+
+        print('Feature dim', feat_height, feat_width)
 
         # backbone Net: ResNet
         #torchvision.models.__dict__['resnet{}'.format(50)](pretrained=pretrained)
@@ -273,8 +286,8 @@ class SAN(nn.Module):
         y_S = self.meanFieldUpdate4_2(res4f, y_S)
         y_S = self.meanFieldUpdate4_3(res5c, y_S)
 
-        y_S = self.meanFieldUpdate5_1(res3d, y_S) #, visualize_attention=True) # True)
-        y_S = self.meanFieldUpdate5_2(res4f, y_S)
+        #y_S = self.meanFieldUpdate5_1(res3d, y_S, visualize_attention=True) # True)
+        y_S = self.meanFieldUpdate5_2(res4f, y_S) #, visualize_attention=True)
         y_S = self.meanFieldUpdate5_3(res5c, y_S)
 
         #print('Y_S', y_S.shape)
@@ -292,7 +305,7 @@ class SAN(nn.Module):
         pred_5c = nn.functional.interpolate(pred_5c, size=(self.output_height, self.output_width), mode='area') #, align_corners=True)
         pred = nn.functional.interpolate(pred, size=(self.output_height, self.output_width), mode='area') #, align_corners=True)
         assert(pred.shape[2] == 37 and pred.shape[3] == 37)
-        
+ 
         # Force all predictions to be within a particular range
         if self.restrict_output:
             pred = (F.tanh(pred) * self.scale_factor) + self.mean_output
