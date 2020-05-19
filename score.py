@@ -24,8 +24,6 @@ def get_subtiles_list(tile, subtile_dim, device):
     num_subtiles_along_height = int(height / subtile_dim)
     num_subtiles_along_width = int(width / subtile_dim)
     num_subtiles = num_subtiles_along_height * num_subtiles_along_width
-    assert(num_subtiles_along_height == 37)
-    assert(num_subtiles_along_width == 37)
     subtiles = torch.empty((batch_size, num_subtiles, bands, subtile_dim, subtile_dim), device=device)
     for b in range(batch_size):
         subtile_idx = 0
@@ -56,6 +54,7 @@ def init():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model_path = os.path.join(model_dir, MODEL_FILENAME)
     subtile_sif_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, reduced_channels=REDUCED_CHANNELS, output_dim=1).to(device)
+    print('Model path', model_path)
     subtile_sif_model.load_state_dict(torch.load(model_path, map_location=device))
     subtile_sif_model.eval()
 

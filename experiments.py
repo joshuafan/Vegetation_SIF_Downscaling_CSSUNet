@@ -10,6 +10,7 @@ headers = {'Content-Type':'application/json'}
 headers['Authorization'] = f'Bearer {key}'
 
 sample_tile = np.load("./datasets/tiles_2016-07-16/reflectance_lat_47.55_lon_-101.35.npy")
+sample_tile = sample_tile[:, :100, :100]
 print('Tile shape', sample_tile.shape)
 sample_input = json.dumps({
     'data': sample_tile.tolist()
