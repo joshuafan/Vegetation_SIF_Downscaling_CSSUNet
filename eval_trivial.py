@@ -30,16 +30,16 @@ from tile2vec.src.tilenet import make_tilenet
 
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-07-16")
-EVAL_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2016-07-16")
+TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-08-01") #07-16")
+EVAL_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2016-08-01") #2016-07-16")
 #EVAL_FILE = os.path.join(EVAL_DATASET_DIR, "eval_subtiles.csv")
 # EVAL_FILE = os.path.join(TRAIN_DATASET_DIR, "tile_info_val.csv")
-EVAL_FILE = os.path.join(EVAL_DATASET_DIR, "eval_subtiles_val.csv")
+EVAL_FILE = os.path.join(EVAL_DATASET_DIR, "eval_subtiles.csv")
 #TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_11")
-TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/cfis_sif")
+TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_aug") #cfis_sif")
 #TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/small_tile_simple") #large_tile_resnet18")  #test_large_tile_simple")  # small_tile_sif_prediction")
 BAND_STATISTICS_FILE = os.path.join(TRAIN_DATASET_DIR, "band_statistics_train.csv")
-METHOD = 'directly_on_CFIS' # '4a_subtile_simple_cnn'  #'3_small_tile_simple' # '2_large_tile_resnet18'
+METHOD = 'AUG_4a_subtile_simple_cnn'  #'3_small_tile_simple' # '2_large_tile_resnet18'
 TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_eval_subtile_' + METHOD 
 
 

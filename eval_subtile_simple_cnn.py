@@ -27,14 +27,16 @@ import tile_transforms
 
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-EVAL_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2016-07-16")
-TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-07-16")
-EVAL_FILE = os.path.join(EVAL_DATASET_DIR, "eval_subtiles.csv") 
+EVAL_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2016-08-01") #07-16")
+TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-08-01") #07-16")
+EVAL_FILE = os.path.join(EVAL_DATASET_DIR, "eval_subtiles_val.csv") 
 BAND_STATISTICS_FILE = os.path.join(TRAIN_DATASET_DIR, "band_statistics_train.csv")
-SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_9")  # "models/subtile_sif_simple_cnn_4")
-TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_eval_subtile_simple_cnn.png'
+SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/cfis_sif") #subtile_sif_simple_cnn_9")  # "models/subtile_sif_simple_cnn_4")
+TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_eval_subtile_cheating_cfis' #simple_cnn.png'
 
 INPUT_CHANNELS = 43
+MIN_SIF = 0.2
+MAX_SIF = 1.7
 
 eval_points = pd.read_csv(EVAL_FILE)
 
@@ -91,6 +93,9 @@ band_means = train_means[:-1]
 sif_mean = train_means[-1]
 band_stds = train_stds[:-1]
 sif_std = train_stds[-1]
+min_output = (MIN_SIF - sif_mean) / sif_std
+max_output = (MAX_SIF - sif_mean) / sif_std
+
 
 # Set up image transforms
 transform_list = []
@@ -103,7 +108,7 @@ dataset = EvalSubtileDataset(eval_metadata, transform=transform)
 dataloader = torch.utils.data.DataLoader(dataset, batch_size=4,
                                          shuffle=True, num_workers=4)
 
-subtile_sif_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, reduced_channels=30, output_dim=1).to(device)
+subtile_sif_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, reduced_channels=43, output_dim=1, min_output=min_output, max_output=max_output).to(device)
 subtile_sif_model.load_state_dict(torch.load(SUBTILE_SIF_MODEL_FILE, map_location=device))
 
 criterion = nn.MSELoss(reduction='mean')

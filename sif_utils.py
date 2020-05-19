@@ -126,7 +126,7 @@ def train_single_model(model, dataloaders, dataset_sizes, criterion, optimizer, 
             j = 0
             for sample in dataloaders[phase]: 
                 # Standardized input tile, (batch x C x W x H)
-                input_tile_standardized = sample['tile'].to(device)
+                input_tile_standardized = sample['subtile'].to(device)
                 #print(input_tile_standardized.shape)
                 #print('=========================')
                 #print('Input tile - random pixel', input_tile_standardized[0, :, 200, 370])

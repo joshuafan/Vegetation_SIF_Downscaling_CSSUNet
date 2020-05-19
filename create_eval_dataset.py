@@ -19,7 +19,7 @@ import pandas as pd
 import xarray as xr
 import matplotlib.pyplot as plt
 from sif_utils import lat_long_to_index, plot_histogram, get_top_bound, get_left_bound
-DATE = "2016-07-16"
+DATE = "2016-08-01" #"2016-07-16"
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
 TILES_DIR = os.path.join(DATA_DIR, "tiles_" + DATE)
 SUBTILES_DIR = os.path.join(DATA_DIR, "subtiles_" + DATE)  # Directory to output subtiles to
@@ -31,9 +31,9 @@ if not os.path.exists(SUBTILES_DIR):
 if not os.path.exists(DATASET_DIR):
     os.makedirs(DATASET_DIR)
 
-OUTPUT_CSV_FILE = os.path.join(DATASET_DIR, "eval_subtiles_500.csv")
-TILE_AVERAGE_CSV_FILE = os.path.join(DATASET_DIR, "eval_large_tile_averages_500.csv")
-SUBTILE_AVERAGE_CSV_FILE = os.path.join(DATASET_DIR, "eval_subtile_averages_500.csv")
+OUTPUT_CSV_FILE = os.path.join(DATASET_DIR, "eval_subtiles.csv")
+TILE_AVERAGE_CSV_FILE = os.path.join(DATASET_DIR, "eval_large_tile_averages.csv")
+SUBTILE_AVERAGE_CSV_FILE = os.path.join(DATASET_DIR, "eval_subtile_averages.csv")
 CFIS_FILE = os.path.join(DATA_DIR, "CFIS/CFIS_201608a_300m_soundings.npy")
 headers = ["lat", "lon", "SIF", "tile_file", "subtile_file", "num_soundings"]
 csv_rows = [headers]
@@ -41,7 +41,7 @@ TILE_SIZE_DEGREES = 0.1
 SUBTILE_SIZE_PIXELS = 10
 MAX_FRACTION_MISSING = 0.1  # If more than this fraction of reflectance pixels is missing, ignore the data point
 MIN_SIF = 0.2
-MIN_SOUNDINGS = 500
+MIN_SOUNDINGS = 100
 column_names = ['lat', 'lon', 'ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
                     'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg', 
                     'grassland_pasture', 'corn', 'soybean', 'shrubland',
