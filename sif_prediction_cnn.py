@@ -30,22 +30,46 @@ from tile2vec.src.tilenet import make_tilenet
 
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-07-16")
+DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-08-01")
 INFO_FILE_TRAIN = os.path.join(DATASET_DIR, "tile_info_train.csv")
 INFO_FILE_VAL = os.path.join(DATASET_DIR, "tile_info_val.csv")
-TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/small_tile_simple") #small_tile_simple")  # "models/large_tile_resnet50")
-LOSS_PLOT_FILE = "exploratory_plots/losses_small_tile_simple.png" # small_tile_simple.png"  #losses_large_tile_resnet50.png"
+TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/AUG_large_tile_resnet") #small_tile_simple") #small_tile_simple")  # "models/large_tile_resnet50")
+METHOD = "2_large_tile_resnet" # "3_small_tile_simple"
+LOSS_PLOT_FILE = "exploratory_plots/losses_" + METHOD + ".png" # small_tile_simple.png"  #losses_large_tile_resnet50.png"
 BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
-FROM_PRETRAINED = False  #True # False  # Truei
-SHRINK = True # True
+OPTIMIZER_TYPE = "Adam"
+FROM_PRETRAINED = False
+SHRINK = False #True
 AUGMENT = True
 NUM_EPOCHS = 50
 INPUT_CHANNELS = 43
-LEARNING_RATE = 1e-3 # 0.01 # 1e-5 # 0.00001  # 1e-3
-WEIGHT_DECAY = 0 #1e-4
+LEARNING_RATE = 1e-3
+WEIGHT_DECAY = 0
 BATCH_SIZE = 32
 NUM_WORKERS = 4
 RGB_BANDS = [1, 2, 3]
+MIN_SIF = None # 0.2
+MAX_SIF = None # 1.7
+
+# Print params for reference
+print("=========================== PARAMS ===========================")
+print("Method:", METHOD)
+print("Dataset:", os.path.basename(DATASET_DIR))
+if FROM_PRETRAINED:
+    print("From pretrained model")
+else:
+    print("Training from scratch")
+print("Output model:", os.path.basename(TRAINED_MODEL_FILE))
+print("---------------------------------")
+print("Optimizer:", OPTIMIZER_TYPE)
+print("Learning rate:", LEARNING_RATE)
+print("Weight decay:", WEIGHT_DECAY)
+print("Batch size:", BATCH_SIZE)
+print("Num epochs:", NUM_EPOCHS)
+print("Augment:", AUGMENT)
+print("Shrink:", SHRINK)
+print("SIF range:", MIN_SIF, "to", MAX_SIF)
+print("==============================================================")
 
 # Visualize images (RGB bands only)
 # Image is assumed to be standardized. You need to pass in band_means and band_stds
@@ -91,6 +115,12 @@ band_means = train_means[:-1]
 sif_mean = train_means[-1]
 band_stds = train_stds[:-1]
 sif_std = train_stds[-1]
+if MIN_SIF is not None and MAX_SIF is not None:
+    min_output = (MIN_SIF - sif_mean) / sif_std
+    max_output = (MAX_SIF - sif_mean) / sif_std
+else:
+    min_output = None
+    max_output = None
 
 # Set up image transforms
 transform_list = []
@@ -111,8 +141,9 @@ dataloaders = {x: torch.utils.data.DataLoader(datasets[x], batch_size=BATCH_SIZE
               for x in ['train', 'val']}
 
 print("Dataloaders")
-resnet_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, output_dim=1).to(device)
-#resnet_model = resnet.resnet18(input_channels=INPUT_CHANNELS).to(device)
+#resnet_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, output_dim=1,
+#                                    min_output=min_output, max_output=max_output).to(device)
+resnet_model = resnet.resnet18(input_channels=INPUT_CHANNELS).to(device)
 # resnet_model = make_tilenet(in_channels=INPUT_CHANNELS, z_dim=1)  #.to(device)
 if FROM_PRETRAINED:
     resnet_model.load_state_dict(torch.load(TRAINED_MODEL_FILE, map_location=device))
@@ -121,7 +152,12 @@ print("Loaded model")
 
 criterion = nn.MSELoss(reduction='mean')
 #optimizer = optim.SGD(resnet_model.parameters(), lr=LEARNING_RATE, momentum=0.9)
-optimizer = optim.Adam(resnet_model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
+if OPTIMIZER_TYPE == "Adam":
+    optimizer = optim.Adam(resnet_model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
+else:
+    print("Optimizer not supported.")
+    exit(1)
+
 dataset_sizes = {'train': len(train_metadata),
                  'val': len(val_metadata)}
 

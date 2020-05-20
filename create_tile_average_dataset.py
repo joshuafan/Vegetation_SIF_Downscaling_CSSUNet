@@ -14,7 +14,7 @@ from sif_utils import plot_histogram
 import torch
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-08-01")
+DATASET_DIR = os.path.join(DATA_DIR, "dataset_2_2018-08-01")
 INFO_CSV_FILES = [os.path.join(DATASET_DIR, "reflectance_cover_to_sif.csv")] #,
                   #os.path.join(DATASET_DIR, "reflectance_cover_to_sif_r2.csv")]
 #                  os.path.join(DATA_DIR, "dataset_2019-07-16/reflectance_cover_to_sif.csv")]

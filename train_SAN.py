@@ -11,25 +11,53 @@ from reflectance_cover_sif_dataset import ReflectanceCoverSIFDataset
 from SAN import SAN
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-07-16")
+DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-08-01") #07-16")
 INFO_FILE_TRAIN = os.path.join(DATASET_DIR, "tile_info_train.csv")
 INFO_FILE_VAL = os.path.join(DATASET_DIR, "tile_info_val.csv")
-LOSS_PLOT_FILE = "exploratory_plots/losses_SAN.png"
+METHOD = "5_SAN"
+LOSS_PLOT_FILE = "exploratory_plots/losses_" + METHOD + ".png"
 BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
 RESNET_FROM_PRETRAINED = True  #True
-RESNET_MODEL_FILE = os.path.join(DATA_DIR, "models/large_tile_resnet18")
+RESNET_MODEL_FILE = os.path.join(DATA_DIR, "models/AUG_large_tile_resnet")
 SAN_FROM_PRETRAINED = False # False #True #False #True  # Falsei
-SAN_MODEL_FILE = os.path.join(DATA_DIR, "models/SAN_feat111_unconstrained")
+SAN_MODEL_FILE = os.path.join(DATA_DIR, "models/AUG_SAN")
 NUM_EPOCHS = 50
 INPUT_CHANNELS = 43
+OPTIMIZER_TYPE = "Adam"
 LEARNING_RATE = 1e-4 #5
 WEIGHT_DECAY = 1e-5 
 BATCH_SIZE = 16
 NUM_WORKERS = 4
 INPUT_SIZE = 371
 OUTPUT_SIZE = 37
+NUM_FEATURES = OUTPUT_SIZE*3
 MIN_SIF = 0.2
 MAX_SIF = 1.7
+AUGMENT = True
+
+# Print params for reference
+print("=========================== PARAMS ===========================")
+print("Method:", METHOD)
+print("Dataset:", os.path.basename(DATASET_DIR))
+if RESNET_FROM_PRETRAINED:
+    print("From pretrained ResNet:", os.path.basename(RESNET_MODEL_FILE))
+else:
+    print("Training ResNet (front-end layers) from scratch")
+if SAN_FROM_PRETRAINED:
+    print("From pretrained SAN")
+else:
+    print("Training SAN from scratch")
+print("Output model:", os.path.basename(SAN_MODEL_FILE))
+print("---------------------------------")
+print("Num features:", NUM_FEATURES)
+print("Optimizer:", OPTIMIZER_TYPE)
+print("Learning rate:", LEARNING_RATE)
+print("Weight decay:", WEIGHT_DECAY)
+print("Batch size:", BATCH_SIZE)
+print("Num epochs:", NUM_EPOCHS)
+print("Augment:", AUGMENT)
+print("SIF range:", MIN_SIF, "to", MAX_SIF)
+print("==============================================================")
 
 
 if __name__ == "__main__":
@@ -61,13 +89,14 @@ if __name__ == "__main__":
 
     # Constrain predicted SIF to be between 0.2 and 1.7 (unstandardized)
     # Don't forget to standardize
-    min_output = None# (MIN_SIF - sif_mean) / sif_std
-    max_output = None #(MAX_SIF - sif_mean) / sif_std
+    min_output = (MIN_SIF - sif_mean) / sif_std
+    max_output = (MAX_SIF - sif_mean) / sif_std
 
     # Set up image transforms
     transform_list = []
     transform_list.append(tile_transforms.StandardizeTile(band_means, band_stds))
-    transform_list.append(tile_transforms.RandomFlipAndRotate())
+    if AUGMENT:
+        transform_list.append(tile_transforms.RandomFlipAndRotate())
     transform_list.append(tile_transforms.ToFloatTensor())
     transform = transforms.Compose(transform_list)
 
@@ -86,7 +115,7 @@ if __name__ == "__main__":
 
     model = SAN(resnet_model, input_height=INPUT_SIZE, input_width=INPUT_SIZE,
                 output_height=OUTPUT_SIZE, output_width=OUTPUT_SIZE,
-                feat_width=3*OUTPUT_SIZE, feat_height=3*OUTPUT_SIZE,
+                feat_width=NUM_FEATURES, feat_height=NUM_FEATURES,
                 in_channels=INPUT_CHANNELS, min_output=min_output, max_output=max_output).to(device)
     if SAN_FROM_PRETRAINED:
         model.load_state_dict(torch.load(SAN_MODEL_FILE, map_location=device))
@@ -96,7 +125,13 @@ if __name__ == "__main__":
 
     # Set up loss/optimizer
     criterion = nn.MSELoss(reduction='mean')
-    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
+
+    if OPTIMIZER_TYPE == "Adam":
+        optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
+    else:
+        print("Optimizer type not supported.")
+        exit(1)
+
     dataset_sizes = {'train': len(train_metadata),
                  'val': len(val_metadata)}
 

@@ -58,7 +58,7 @@ def plot_images(image_rows, image_filename_column, output_file):
  
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-TRAIN_DATE = "2018-07-16"
+TRAIN_DATE = "2018-08-01" #"2018-07-16"
 TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_" + TRAIN_DATE)
 TILE_AVERAGE_TRAIN_FILE = os.path.join(TRAIN_DATASET_DIR, "tile_averages_train.csv")
 TILE_AVERAGE_VAL_FILE = os.path.join(TRAIN_DATASET_DIR, "tile_averages_val.csv")
@@ -68,7 +68,8 @@ ALL_TILE_DATASET = os.path.join(TRAIN_DATASET_DIR, "reflectance_cover_to_sif.csv
 
 
 #TILES_DIR = os.path.join(DATA_DIR, "tiles_2016-07-16")
-TILES_DIR = os.path.join(DATA_DIR, "tiles_2016-07-16")
+EVAL_DATE = "2016-08-01"
+TILES_DIR = os.path.join(DATA_DIR, "tiles_" + EVAL_DATE)
 #LAT = 41.15
 #LON = -89.35
 #LAT = 48.65
@@ -89,9 +90,9 @@ IMAGE_FILE = os.path.join(TILES_DIR, "reflectance_" + LAT_LON + ".npy")
 CFIS_SIF_FILE = os.path.join(DATA_DIR, "CFIS/CFIS_201608a_300m.npy")
 TROPOMI_SIF_FILE = os.path.join(DATA_DIR, "TROPOMI_SIF/TROPO-SIF_01deg_biweekly_Apr18-Jan20.nc")
 TROPOMI_DATE_RANGE = slice("2018-08-01", "2018-08-16")
-EVAL_SUBTILE_DATASET = os.path.join(DATA_DIR, "dataset_2016-07-16/eval_subtiles.csv")
+EVAL_SUBTILE_DATASET = os.path.join(DATA_DIR, "dataset_" + EVAL_DATE + "/eval_subtiles.csv")
 RGB_BANDS = [3, 2, 1]
-SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_12")
+SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_13")
 TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_recon_5/TileNet.ckpt") #finetuned_tile2vec.ckpt") #TileNet.ckpt")
 EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_embedding_to_sif") #finetuned_tile2vec_embedding_to_sif.ckpt") #tile2vec_embedding_to_sif")
 EMBEDDING_TYPE = 'tile2vec'
@@ -133,7 +134,7 @@ max_output = (MAX_SIF - sif_mean) / sif_std
 
 
 # Load subtile SIF model
-subtile_sif_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, reduced_channels=43, output_dim=1, min_output=min_output, max_output=max_output).to(device)
+subtile_sif_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, reduced_channels=43, output_dim=1, min_output=None, max_output=None).to(device)
 subtile_sif_model.load_state_dict(torch.load(SUBTILE_SIF_MODEL_FILE, map_location=device))
 subtile_sif_model.eval()
 

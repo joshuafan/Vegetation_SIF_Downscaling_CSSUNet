@@ -39,8 +39,10 @@ FINETUNED_TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_recon_5/
 PRETRAINED_EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_embedding_to_sif")
 EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/finetuned_tile2vec_embedding_to_sif.ckpt")
 #PRETRAINED_EMBEDDING_TO_SIF_MODEL_FILE = EMBEDDING_TO_SIF_MODEL_FILE
-TRAINING_PLOT_FILE = 'exploratory_plots/losses_finetuned_tile2vec.png'
+METHOD = "4d_finetuned_tile2vec"
+TRAINING_PLOT_FILE = 'exploratory_plots/losses_' + METHOD + '.png'
 EMBEDDING_TYPE = 'tile2vec'
+OPTIMIZER = "Adam"
 
 FROM_PRETRAINED_EMBEDDING_TO_SIF = True #False #False # False
 FREEZE_TILE2VEC = False # True # False
@@ -57,6 +59,32 @@ NUM_WORKERS = 4
 AUGMENT = False #True
 MIN_SIF = 0.2
 MAX_SIF = 1.7
+
+# Print params for reference
+print("=========================== PARAMS ===========================")
+print("Method:", METHOD)
+print("Dataset: ", os.path.basename(TRAIN_DATASET_DIR))
+if FROM_PRETRAINED_EMBEDDING_TO_SIF:
+    print("Embedding to SIF from pretrained model:", os.path.basename(PRETRAINED_EMBEDDING_TO_SIF_MODEL_FILE))
+else:
+    print("Embedding to SIF from scratch")
+print("Output Embedding to SIF model:", os.path.basename(EMBEDDING_TO_SIF_MODEL_FILE))
+print("Pretrained Tile2Vec model:", os.path.basename(PRETRAINED_TILE2VEC_MODEL_FILE))
+print("Output fine-tuned Tile2Vec model:", os.path.basename(FINETUNED_TILE2VEC_MODEL_FILE))
+print("---------------------------------")
+print("Optimizer:", OPTIMIZER_TYPE)
+print("Learning rate (Tile2Vec):", LEARNING_RATE_TILE2VEC)
+print("Learning rate (Embedding to SIF):", LEARNING_RATE_EMBEDDING_TO_SIF)
+print("Weight decay:", WEIGHT_DECAY)
+print("Batch size:", BATCH_SIZE)
+print("Num epochs:", NUM_EPOCHS)
+print("Z-dim:", Z_DIM)
+print("Hidden size:", HIDDEN_DIM)
+print("Subtile dim:", SUBTILE_DIM)
+print("Augment:", AUGMENT)
+print("SIF range:", MIN_SIF, "to", MAX_SIF)
+print("==============================================================")
+
 
 # TODO should there be 2 separate models?
 def train_model(tile2vec_model, embedding_to_sif_model, freeze_tile2vec, dataloaders, dataset_sizes, criterion, tile2vec_optimizer, embedding_to_sif_optimizer, device, sif_mean, sif_std, subtile_dim, num_epochs=25):
@@ -248,13 +276,18 @@ if FROM_PRETRAINED_EMBEDDING_TO_SIF:
     print('Loaded embedding->SIF model frmo', PRETRAINED_EMBEDDING_TO_SIF_MODEL_FILE)
 criterion = nn.MSELoss(reduction='mean')
 
-if FREEZE_TILE2VEC:
-    # Don't optimize Tile2vec model; just use pre-trained version
-    tile2vec_optimizer = None
-else:
-    tile2vec_optimizer = optim.Adam(tile2vec_model.parameters(), lr=LEARNING_RATE_TILE2VEC, weight_decay=WEIGHT_DECAY)
 
-embedding_to_sif_optimizer = optim.Adam(embedding_to_sif_model.parameters(), lr=LEARNING_RATE_EMBEDDING_TO_SIF, weight_decay=WEIGHT_DECAY)
+if OPTIMIZER_TYPE == "Adam"
+    if FREEZE_TILE2VEC:
+        # Don't optimize Tile2vec model; just use pre-trained version
+        tile2vec_optimizer = None
+    else:
+        tile2vec_optimizer = optim.Adam(tile2vec_model.parameters(), lr=LEARNING_RATE_TILE2VEC, weight_decay=WEIGHT_DECAY)
+
+    embedding_to_sif_optimizer = optim.Adam(embedding_to_sif_model.parameters(), lr=LEARNING_RATE_EMBEDDING_TO_SIF, weight_decay=WEIGHT_DECAY)
+else:
+    print("Optimizer type not supported.")
+    exit(1)
 #embedding_to_sif_optimizer = optim.Adam(list(embedding_to_sif_model.parameters()) + list(tile2vec_model.parameters()), lr=LEARNING_RATE_EMBEDDING_TO_SIF)
 
 dataset_sizes = {'train': len(train_metadata),

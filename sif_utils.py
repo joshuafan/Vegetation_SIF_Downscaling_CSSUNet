@@ -67,6 +67,7 @@ def print_stats(true, predicted, average_sif):
     print('NRMSE (unstandardized):', round(nrmse_unstd, 3))
     print('Spearman rank corr:', round(spearman_rank_corr, 3))
 
+
 # For each tile in the batch, returns a list of subtiles.
 # Given a Tensor of tiles, with shape (batch x C x H x W), returns a Tensor of
 # shape (batch x SUBTILE x C x subtile_dim x subtile_dim)
@@ -126,7 +127,7 @@ def train_single_model(model, dataloaders, dataset_sizes, criterion, optimizer, 
             j = 0
             for sample in dataloaders[phase]: 
                 # Standardized input tile, (batch x C x W x H)
-                input_tile_standardized = sample['subtile'].to(device)
+                input_tile_standardized = sample['tile'].to(device)
                 #print(input_tile_standardized.shape)
                 #print('=========================')
                 #print('Input tile - random pixel', input_tile_standardized[0, :, 200, 370])

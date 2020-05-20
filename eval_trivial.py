@@ -30,16 +30,17 @@ from tile2vec.src.tilenet import make_tilenet
 
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-08-01") #07-16")
-EVAL_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2016-08-01") #2016-07-16")
-#EVAL_FILE = os.path.join(EVAL_DATASET_DIR, "eval_subtiles.csv")
-# EVAL_FILE = os.path.join(TRAIN_DATASET_DIR, "tile_info_val.csv")
+TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-07-16") #7-16") #07-16") #07-16")
+EVAL_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2016-07-16") #07-16") #07-16") #2016-07-16")
 EVAL_FILE = os.path.join(EVAL_DATASET_DIR, "eval_subtiles.csv")
-#TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_11")
-TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_aug") #cfis_sif")
+# EVAL_FILE = os.path.join(TRAIN_DATASET_DIR, "tile_info_val.csv")
+TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_13") #aug")
+#"subtile_sif_simple_cnn_11")
+#TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/cfis_sif_jul")
+#RAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_aug") #cfis_sif")
 #TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/small_tile_simple") #large_tile_resnet18")  #test_large_tile_simple")  # small_tile_sif_prediction")
 BAND_STATISTICS_FILE = os.path.join(TRAIN_DATASET_DIR, "band_statistics_train.csv")
-METHOD = 'AUG_4a_subtile_simple_cnn'  #'3_small_tile_simple' # '2_large_tile_resnet18'
+METHOD = '4a_subtile_simple_cnn'  #'3_small_tile_simple' # '2_large_tile_resnet18'
 TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_eval_subtile_' + METHOD 
 
 
@@ -55,7 +56,7 @@ COLUMN_NAMES = ['true', 'predicted',
 RESULTS_CSV_FILE = os.path.join(EVAL_DATASET_DIR, 'results_' + METHOD + '.csv')
 
 INPUT_CHANNELS = 43
-REDUCED_CHANNELS = 43 # 30
+REDUCED_CHANNELS = 43
 RESIZE = False # False #True
 RESIZED_DIM = [10, 10] #[371, 371]
 DISCRETE_BANDS = list(range(12, 43))
@@ -128,9 +129,12 @@ sif_std = train_stds[-1]
 
 # Constrain predicted SIF to be between 0.2 and 1.7 (unstandardized)
 # Don't forget to standardize
-min_output = None # (MIN_SIF - sif_mean) / sif_std
-max_output = None #(MAX_SIF - sif_mean) / sif_std
-
+if MIN_SIF is not None and MAX_SIF is not None:
+    min_output = (MIN_SIF - sif_mean) / sif_std
+    max_output = (MAX_SIF - sif_mean) / sif_std
+else:
+    min_output = None
+    max_output = None
 
 # Set up image transforms
 transform_list = []

@@ -1,7 +1,6 @@
 """
 Learns embedding-to-SIF model, given pre-computed (fixed) embeddings,
 """
-# TODO
 import copy
 import pickle
 import math
@@ -47,16 +46,12 @@ EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_embedding_
 SUBTILE_EMBEDDING_DATASET_TRAIN = os.path.join(DATASET_DIR, "tile2vec_embeddings_train.csv")
 SUBTILE_EMBEDDING_DATASET_VAL = os.path.join(DATASET_DIR, "tile2vec_embeddings_val.csv")
 FROM_PRETRAINED = True #False #True #True  #True #False # True
-
-# Ignore this comment,.
-# If EMBEDDING_TYPE is 'average', the embedding is just the average of each band.
-# If it is 'tile2vec', we use the Tile2Vec model 
-# EMBEDDING_TYPE = 'average'
-TRAINING_PLOT_FILE = 'exploratory_plots/losses_tile2vec_subtile_sif_prediction.png'
-PLOT_TITLE = 'Loss curves: avg embedding to SIF'
+METHOD = '4c_tile2vec_fixed'
+TRAINING_PLOT_FILE = 'exploratory_plots/losses_aug_' + METHOD + '.png'
+PLOT_TITLE = 'Loss curves: ' + METHOD
 SUBTILE_DIM = 10
 Z_DIM = 256 #43 #64 #256
-HIDDEN_SIZE = 1024 #256
+HIDDEN_DIM = 1024 #256
 INPUT_CHANNELS = 43
 NUM_EPOCHS = 150
 LEARNING_RATE = 1e-4 #1e-2 #1e-2:Wq
@@ -65,6 +60,28 @@ BATCH_SIZE = 8
 MIN_SIF = 0.2
 MAX_SIF = 1.7
 NUM_WORKERS = 4
+OPTIMIZER_TYPE = "Adam"
+
+# Print params for reference
+print("=========================== PARAMS ===========================")
+print("Method:", METHOD)
+print("Dataset: ", os.path.basename(DATASET_DIR))
+if FROM_PRETRAINED:
+    print("From pretrained model")
+else:
+    print("Training from scratch")
+print("Output model:", os.path.basename(EMBEDDING_TO_SIF_MODEL_FILE))
+print("---------------------------------")
+print("Optimizer:", OPTIMIZER_TYPE)
+print("Learning rate:", LEARNING_RATE)
+print("Weight decay:", WEIGHT_DECAY)
+print("Batch size:", BATCH_SIZE)
+print("Num epochs:", NUM_EPOCHS)
+print("Z-dim:", Z_DIM)
+print("Hidden size:", HIDDEN_DIM)
+print("Subtile dim:", SUBTILE_DIM)
+print("SIF range:", MIN_SIF, "to", MAX_SIF)
+print("==============================================================")
 
 def train_embedding_to_sif_model(embedding_to_sif_model, dataloaders, dataset_sizes, criterion, optimizer, device, sif_mean, sif_std, num_epochs=25):
     since = time.time()
@@ -100,7 +117,6 @@ def train_embedding_to_sif_model(embedding_to_sif_model, dataloaders, dataset_si
                 true_sif_standardized = ((true_sif_non_standardized - sif_mean) / sif_std).to(device)
 
                 # zero the parameter gradients
-                optimizer.zero_grad()
                 predicted_subtile_sifs = torch.empty((batch_size, subtile_embeddings.shape[1]), device=device)
                 #print('Subtile embeddings', subtile_embeddings.shape)
                 #print('Predicted subtile SIFs', predicted_subtile_sifs.shape)
@@ -108,6 +124,8 @@ def train_embedding_to_sif_model(embedding_to_sif_model, dataloaders, dataset_si
                 # Forward pass: feed subtiles through embedding model and then the
                 # embedding -> SIF model
                 with torch.set_grad_enabled(phase == 'train'):
+                    optimizer.zero_grad()
+
                     for i in range(batch_size):
                         #print('Embedding', subtile_embeddings[i])
                         predicted_sifs = embedding_to_sif_model(subtile_embeddings[i])
@@ -204,11 +222,16 @@ embedding_dataloaders = {x: torch.utils.data.DataLoader(embedding_datasets[x], b
                   for x in ['train', 'val']}
 
 # Create embedding-to-SIF model
-embedding_to_sif_model = EmbeddingToSIFNonlinearModel(embedding_size=Z_DIM, hidden_size=HIDDEN_SIZE, min_output=min_output, max_output=max_output).to(device)
+embedding_to_sif_model = EmbeddingToSIFNonlinearModel(embedding_size=Z_DIM, hidden_size=HIDDEN_DIM, min_output=min_output, max_output=max_output).to(device)
 if FROM_PRETRAINED:
     embedding_to_sif_model.load_state_dict(torch.load(EMBEDDING_TO_SIF_MODEL_FILE, map_location=device))
 criterion = nn.MSELoss(reduction='mean')
-optimizer = optim.Adam(embedding_to_sif_model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
+if OPTIMIZER_TYPE == "Adam":
+    optimizer = optim.Adam(embedding_to_sif_model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
+else:
+    print("Optimizer not supported.")
+    exit(1)
+
 dataset_sizes = {'train': len(train_tile_rows),
                  'val': len(val_tile_rows)}
 

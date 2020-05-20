@@ -31,23 +31,21 @@ from tile2vec.src.tilenet import make_tilenet
 
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-08-01") #07-16")
-CFIS_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2016-08-01") #07-16")
+DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-08-01") #08-01") #07-16")
+CFIS_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2016-08-01") #07-16") #-01") #07-16")
 CFIS_INFO_FILE = os.path.join(CFIS_DATASET_DIR, "eval_subtiles.csv")
 CFIS_INFO_FILE_TRAIN = os.path.join(CFIS_DATASET_DIR, "eval_subtiles_train.csv")
 CFIS_INFO_FILE_VAL = os.path.join(CFIS_DATASET_DIR, "eval_subtiles_val.csv")
-
-
-#INFO_FILE_TRAIN = os.path.join(DATASET_DIR, "tile_info_train.csv")
-#INFO_FILE_VAL = os.path.join(DATASET_DIR, "tile_info_val.csv")
-TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/cfis_sif") #small_tile_simple")  # "models/large_tile_resnet50")
-LOSS_PLOT_FILE = "exploratory_plots/losses_cfis_sif.png" # small_tile_simple.png"  #losses_large_tile_resnet50.png"
+TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/cfis_sif_aug") #jul")
+METHOD = "0_cheating_cfis_sif"
+LOSS_PLOT_FILE = "exploratory_plots/losses_" + METHOD + ".png"
 BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
-FROM_PRETRAINED = False  #True # False  # Truei
+FROM_PRETRAINED = False
 SHRINK = False # True
 AUGMENT = False #True
 NUM_EPOCHS = 50
 INPUT_CHANNELS = 43
+OPTIMIZER_TYPE = "Adam"
 LEARNING_RATE = 1e-3 # 0.01 # 1e-5 # 0.00001  # 1e-3
 WEIGHT_DECAY = 0 #1e-4
 BATCH_SIZE = 32
@@ -55,6 +53,27 @@ NUM_WORKERS = 4
 RGB_BANDS = [1, 2, 3]
 MIN_SIF = 0.2
 MAX_SIF = 1.7
+
+# Print params for reference
+print("=========================== PARAMS ===========================")
+print("Method:", METHOD)
+print("Dataset (band statistics):", os.path.basename(DATASET_DIR))
+print("CFIS dataset (band statistics):", os.path.basename(CFIS_DATASET_DIR))
+if FROM_PRETRAINED:
+    print("From pretrained model")
+else:
+    print("Training from scratch")
+print("Output model:", os.path.basename(TRAINED_MODEL_FILE))
+print("---------------------------------")
+print("Optimizer:", OPTIMIZER_TYPE)
+print("Learning rate:", LEARNING_RATE)
+print("Weight decay:", WEIGHT_DECAY)
+print("Batch size:", BATCH_SIZE)
+print("Num epochs:", NUM_EPOCHS)
+print("Augment:", AUGMENT)
+print("Shrink:", SHRINK)
+print("SIF range:", MIN_SIF, "to", MAX_SIF)
+print("==============================================================")
 
 # Visualize images (RGB bands only)
 # Image is assumed to be standardized. You need to pass in band_means and band_stds
@@ -84,9 +103,7 @@ else:
     device = "cpu"
 print("Device", device)
 
-# Read train/val tile metadata
-#train_metadata = pd.read_csv(INFO_FILE_TRAIN) #.iloc[0:100]
-#val_metadata = pd.read_csv(INFO_FILE_VAL) # .iloc[0:100]
+# Read CFIS tile metadata, and randomly split into train/val sets
 all_metadata = pd.read_csv(CFIS_INFO_FILE)
 train_metadata, val_metadata = train_test_split(all_metadata, test_size=0.3)
 train_metadata.to_csv(CFIS_INFO_FILE_TRAIN)
@@ -119,7 +136,6 @@ if AUGMENT:
 transform = transforms.Compose(transform_list)
 
 # Set up Datasets and Dataloaders
-# resize_transform = torchvision.transforms.Resize((224, 224))
 datasets = {'train': EvalSubtileDataset(train_metadata, transform),
             'val': EvalSubtileDataset(val_metadata, transform)}
 
@@ -129,7 +145,7 @@ dataloaders = {x: torch.utils.data.DataLoader(datasets[x], batch_size=BATCH_SIZE
 
 print("Dataloaders")
 resnet_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, output_dim=1, min_output=min_output, max_output=max_output).to(device)
-#resnet_model = resnet.resnet18(input_channels=INPUT_CHANNELS).to(device)
+# resnet_model = resnet.resnet18(input_channels=INPUT_CHANNELS).to(device)
 # resnet_model = make_tilenet(in_channels=INPUT_CHANNELS, z_dim=1)  #.to(device)
 if FROM_PRETRAINED:
     resnet_model.load_state_dict(torch.load(TRAINED_MODEL_FILE, map_location=device))
