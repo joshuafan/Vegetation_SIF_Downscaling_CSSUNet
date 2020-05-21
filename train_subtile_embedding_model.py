@@ -35,22 +35,22 @@ from embedding_to_sif_nonlinear_model import EmbeddingToSIFNonlinearModel
 
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-07-16")
+DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-08-01") #07-16")
 # INFO_FILE_TRAIN = os.path.join(DATASET_DIR, "tile_info_train.csv")
 # INFO_FILE_VAL = os.path.join(DATASET_DIR, "tile_info_val.csv")
 BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
 # TILE2VEC_MODEL_FILE = "models/tile2vec_dim10_v2/TileNet_epoch50.ckpti"
-EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_embedding_to_sif")
+EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/avg_embedding_to_sif")
 
 # LOAD_EMBEDDINGS = False
-SUBTILE_EMBEDDING_DATASET_TRAIN = os.path.join(DATASET_DIR, "tile2vec_embeddings_train.csv")
-SUBTILE_EMBEDDING_DATASET_VAL = os.path.join(DATASET_DIR, "tile2vec_embeddings_val.csv")
-FROM_PRETRAINED = True #False #True #True  #True #False # True
-METHOD = '4c_tile2vec_fixed'
+SUBTILE_EMBEDDING_DATASET_TRAIN = os.path.join(DATASET_DIR, "avg_embeddings_train.csv")
+SUBTILE_EMBEDDING_DATASET_VAL = os.path.join(DATASET_DIR, "avg_embeddings_val.csv")
+FROM_PRETRAINED = False #True #False #True #True  #True #False # True
+METHOD = '4b_avg_embedding' # '4c_tile2vec_fixed'
 TRAINING_PLOT_FILE = 'exploratory_plots/losses_aug_' + METHOD + '.png'
 PLOT_TITLE = 'Loss curves: ' + METHOD
 SUBTILE_DIM = 10
-Z_DIM = 256 #43 #64 #256
+Z_DIM = 43 #256 #43 #64 #256
 HIDDEN_DIM = 1024 #256
 INPUT_CHANNELS = 43
 NUM_EPOCHS = 150

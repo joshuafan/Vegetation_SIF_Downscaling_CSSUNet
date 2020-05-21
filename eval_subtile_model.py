@@ -33,20 +33,22 @@ from sif_utils import print_stats
 
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-EVAL_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2016-07-16")
-TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-07-16")
+EVAL_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2016-08-01") # "dataset_2016-07-16")
+TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-08-01") #"dataset_2018-07-16")
 EVAL_FILE = os.path.join(EVAL_DATASET_DIR, "eval_subtiles.csv") 
 BAND_STATISTICS_FILE = os.path.join(TRAIN_DATASET_DIR, "band_statistics_train.csv")
 TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_recon_5/TileNet.ckpt") #finetuned_tile2vec.ckpt")
 # TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_dim512_neighborhood100/finetuned_tile2vec.ckpt"
 
-EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_embedding_to_sif")
+EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/avg_embedding_to_sif")
+#EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_embedding_to_sif")
 #EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/finetuned_tile2vec_embedding_to_sif.ckpt")
 # EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/finetuned_embedding_to_sif.ckpt")
-METHOD = "4c_tile2vec_fixed"
+METHOD = "4b_subtile_avg"
+#METHOD = "4c_tile2vec_fixed"
 #METHOD = "4d_tile2vec_finetuned" #4b_subtile_avg" #"tile2vec_finetuned"
-TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_eval_subtile_' + METHOD
-EMBEDDING_TYPE = 'tile2vec'  # average'  # 'tile2vec'  # average'  # 'tile2vec'
+TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_AUG_eval_subtile_' + METHOD
+EMBEDDING_TYPE = 'average'  # 'tile2vec'  # average'  # 'tile2vec'
 
 
 COLUMN_NAMES = ['true', 'predicted',
@@ -59,7 +61,7 @@ COLUMN_NAMES = ['true', 'predicted',
                     'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
                     'lentils']
 RESULTS_CSV_FILE = os.path.join(EVAL_DATASET_DIR, 'results_' + METHOD + '.csv')
-Z_DIM = 256 # 43
+Z_DIM = 43 # 256 # 43
 HIDDEN_DIM = 1024
 INPUT_CHANNELS = 43
 COVER_INDICES = list(range(12, 42))

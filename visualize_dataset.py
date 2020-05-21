@@ -13,6 +13,7 @@ from scipy.stats import pearsonr
 from numpy import poly1d
 
 from sif_utils import lat_long_to_index, plot_histogram, get_subtiles_list
+import cdl_utils
 import simple_cnn
 import tile_transforms
 import resnet
@@ -78,10 +79,10 @@ TILES_DIR = os.path.join(DATA_DIR, "tiles_" + EVAL_DATE)
 #LON = -93.55 #-101.35  #-93.35
 #LAT = 42.65
 #LON = -93.35
-LAT = 42.55 #47.55
-LON = -93.35 #101.35
-#LAT = 47.55
-#LON = -101.35
+# LAT = 42.55
+# LON = -93.35
+LAT = 47.55
+LON = -101.35
 
 LAT_LON = 'lat_' + str(LAT) + '_lon_' + str(LON)
 TILE_DEGREES = 0.1
@@ -92,6 +93,7 @@ TROPOMI_SIF_FILE = os.path.join(DATA_DIR, "TROPOMI_SIF/TROPO-SIF_01deg_biweekly_
 TROPOMI_DATE_RANGE = slice("2018-08-01", "2018-08-16")
 EVAL_SUBTILE_DATASET = os.path.join(DATA_DIR, "dataset_" + EVAL_DATE + "/eval_subtiles.csv")
 RGB_BANDS = [3, 2, 1]
+CDL_BANDS = list(range(12, 42))
 SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_13")
 TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_recon_5/TileNet.ckpt") #finetuned_tile2vec.ckpt") #TileNet.ckpt")
 EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_embedding_to_sif") #finetuned_tile2vec_embedding_to_sif.ckpt") #tile2vec_embedding_to_sif")
@@ -198,6 +200,9 @@ print('Array shape', array.shape)
 #plt.savefig("exploratory_plots/" + LAT_LON + "_rgb.png")
 #plt.close()
 
+# Visualize CDL
+cdl_utils.plot_cdl_layers(tile[CDL_BANDS, :, :], "exploratory_plots/" + LAT_LON + "_cdl.png")
+
 fig, axeslist = plt.subplots(ncols=6, nrows=8, figsize=(24, 24))
 for band in range(0, 43):
     layer = array[:, :, band]
@@ -205,7 +210,7 @@ for band in range(0, 43):
     axeslist.ravel()[band].set_title('Band ' + str(band))
     axeslist.ravel()[band].set_axis_off()
 plt.tight_layout() # optional
-plt.savefig('exploratory_plots/' + LAT_LON +'_all_bands.png')
+plt.savefig('exploratory_plots/' + LAT_LON + '_all_bands.png')
 plt.close()
 
 

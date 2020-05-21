@@ -30,18 +30,19 @@ from tile2vec.src.tilenet import make_tilenet
 
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-07-16") #7-16") #07-16") #07-16")
-EVAL_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2016-07-16") #07-16") #07-16") #2016-07-16")
+TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-08-01") #"dataset_2018-07-16") #7-16") #07-16") #07-16")
+EVAL_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2016-08-01") #"dataset_2016-07-16") #07-16") #07-16") #2016-07-16")
 EVAL_FILE = os.path.join(EVAL_DATASET_DIR, "eval_subtiles.csv")
 # EVAL_FILE = os.path.join(TRAIN_DATASET_DIR, "tile_info_val.csv")
-TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_13") #aug")
+#TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_13") #aug")
 #"subtile_sif_simple_cnn_11")
-#TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/cfis_sif_jul")
+TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/AUG_large_tile_resnet") #AUG_small_tile_simple")
+#TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/cfis_sif_aug")
 #RAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_aug") #cfis_sif")
 #TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/small_tile_simple") #large_tile_resnet18")  #test_large_tile_simple")  # small_tile_sif_prediction")
 BAND_STATISTICS_FILE = os.path.join(TRAIN_DATASET_DIR, "band_statistics_train.csv")
-METHOD = '4a_subtile_simple_cnn'  #'3_small_tile_simple' # '2_large_tile_resnet18'
-TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_eval_subtile_' + METHOD 
+METHOD = '2_large_tile_resnet' # '3_small_tile_simple' #'0_cfis_cheating' #'4a_subtile_simple_cnn'  #'3_small_tile_simple' # '2_large_tile_resnet18'
+TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_AUG_eval_subtile_' + METHOD 
 
 
 COLUMN_NAMES = ['true', 'predicted',
@@ -57,12 +58,12 @@ RESULTS_CSV_FILE = os.path.join(EVAL_DATASET_DIR, 'results_' + METHOD + '.csv')
 
 INPUT_CHANNELS = 43
 REDUCED_CHANNELS = 43
-RESIZE = False # False #True
-RESIZED_DIM = [10, 10] #[371, 371]
+RESIZE = True #False # False #True
+RESIZED_DIM = [371, 371]
 DISCRETE_BANDS = list(range(12, 43))
 COVER_INDICES = list(range(12, 42))
-MIN_SIF = 0.2
-MAX_SIF = 1.7
+MIN_SIF = None #0.2
+MAX_SIF = None #1.7
 
 
 def eval_model(model, dataloader, dataset_size, criterion, device, sif_mean, sif_std):
@@ -152,8 +153,8 @@ dataloader = torch.utils.data.DataLoader(dataset, batch_size=4,
                                          shuffle=True, num_workers=4)
 
 # Load trained model from file
-resnet_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, reduced_channels=REDUCED_CHANNELS, output_dim=1, min_output=min_output, max_output=max_output).to(device)  
-#resnet_model = resnet.resnet18(input_channels=INPUT_CHANNELS).to(device)
+#resnet_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, reduced_channels=REDUCED_CHANNELS, output_dim=1, min_output=min_output, max_output=max_output).to(device)  
+resnet_model = resnet.resnet18(input_channels=INPUT_CHANNELS).to(device)
 # resnet_model = make_tilenet(in_channels=INPUT_CHANNELS, z_dim=1).to(device)
 resnet_model.load_state_dict(torch.load(TRAINED_MODEL_FILE, map_location=device))
 
