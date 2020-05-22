@@ -48,8 +48,8 @@ COVER_DIR = os.path.join(DATA_DIR, "CDL_" + YEAR)
 SIF_FILE = os.path.join(DATA_DIR, "TROPOMI_SIF/TROPO-SIF_01deg_biweekly_Apr18-Jan20.nc")
 
 # Output directories
-OUTPUT_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2_" + START_DATE)  # Directory containing list of tiles
-OUTPUT_TILES_DIR = os.path.join(DATA_DIR, "tiles_2_" + START_DATE)  # Directory containing 0.1x0.1 degree tiles
+OUTPUT_DATASET_DIR = os.path.join(DATA_DIR, "dataset_" + START_DATE)  # Directory containing list of tiles
+OUTPUT_TILES_DIR = os.path.join(DATA_DIR, "tiles_" + START_DATE)  # Directory containing 0.1x0.1 degree tiles
 OUTPUT_CSV_FILE = os.path.join(OUTPUT_DATASET_DIR, "reflectance_cover_to_sif.csv")  # Output csv file referencing all tiles
 
 # List of cover types to include (see https://developers.google.com/earth-engine/datasets/catalog/USDA_NASS_CDL
