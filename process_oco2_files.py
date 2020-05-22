@@ -36,21 +36,23 @@ for oco2_file in os.listdir(OCO2_DIR):
     # Loop through all points
     for i in range(vertex_lats.shape[0]):
         # Restrict region
-        if (-108 < vertex_lons[i, 0] < -82) and (38 < vertex_lats[i, 0] < 48):
-            # Read vertices of observation, construct polygon
-            vertices = np.zeros((vertex_lats.shape[1], 2))
-            vertices[:, 0] = vertex_lons[i, :]
-            vertices[:, 1] = vertex_lats[i, :]
-            if (vertices[:, 0] < -180).any() or (vertices[:, 0] > 180).any() or (vertices[:, 1] < -90).any() or (vertices[:, 1] > 90).any():
-                print("illegal vertices!", vertices)
-                continue
-            if math.isnan(sif_757[i]) or math.isnan(sif_771[i]):
-                print("sif was nan!", sif_757[i], sif_771[i])
-                continue
-            polygon = Polygon(vertices, True)
-            patches.append(polygon)
-            sif = (sif_757[i] + 1.5 * sif_771[i]) / 2
-            sifs.append(sif)
+        if not((-108 < vertex_lons[i, 0] < -82) and (38 < vertex_lats[i, 0] < 48)):
+            continue
+
+        # Read vertices of observation, construct polygon
+        vertices = np.zeros((vertex_lats.shape[1], 2))
+        vertices[:, 0] = vertex_lons[i, :]
+        vertices[:, 1] = vertex_lats[i, :]
+        if (vertices[:, 0] < -180).any() or (vertices[:, 0] > 180).any() or (vertices[:, 1] < -90).any() or (vertices[:, 1] > 90).any():
+            print("illegal vertices!", vertices)
+            continue
+        if math.isnan(sif_757[i]) or math.isnan(sif_771[i]):
+            print("sif was nan!", sif_757[i], sif_771[i])
+            continue
+        polygon = Polygon(vertices, True)
+        patches.append(polygon)
+        sif = (sif_757[i] + 1.5 * sif_771[i]) / 2
+        sifs.append(sif)
 
 sifs = np.array(sifs)
 print('SIFs', np.min(sifs), np.max(sifs))

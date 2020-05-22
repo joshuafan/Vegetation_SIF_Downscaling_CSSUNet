@@ -30,7 +30,7 @@ from tile2vec.src.tilenet import make_tilenet
 
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-08-01")
+DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-07-16") #08-01")
 INFO_FILE_TRAIN = os.path.join(DATASET_DIR, "tile_info_train.csv")
 INFO_FILE_VAL = os.path.join(DATASET_DIR, "tile_info_val.csv")
 TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/AUG_large_tile_resnet") #small_tile_simple") #small_tile_simple")  # "models/large_tile_resnet50")

@@ -12,11 +12,13 @@ from sif_utils import plot_histogram, lat_long_to_index
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
 OCO2_DIR = os.path.join(DATA_DIR, "fluo.gps.caltech.edu/data/OCO2/sif_lite_B8100/2018/08")
 DATE = "2018-08-01" #"2016-07-16"
-TILES_DIR = os.path.join(DATA_DIR, "tiles_2_" + DATE)
+TILES_DIR = os.path.join(DATA_DIR, "tiles_" + DATE)
 # For plotting
 patches = []
+point_lons = []
+point_lats = []
 sifs = []
-RES = (0.00026949, 0.00026949)
+RES = (0.00026949458523585647, 0.00026949458523585647)
 LARGE_TILE_PIXELS = 371
 SUBTILE_PIXELS = 10
 MAX_FRACTION_MISSING_SUBTILE = 0.1
@@ -61,7 +63,7 @@ for oco2_file in os.listdir(OCO2_DIR):
         if math.isnan(sif_757[i]) or math.isnan(sif_771[i]):
             print("sif was nan!", sif_757[i], sif_771[i])
             continue
-        
+
         vertex_list = vertices.tolist()
         vertex_list.append(vertex_list[0])
         print("Vertex list", vertex_list)
@@ -84,17 +86,20 @@ for oco2_file in os.listdir(OCO2_DIR):
 
         # Figure out which reflectance files to open. For each edge of the bounding box,
         # find the center of the surrounding reflectance large tile.
-        left_tile = (math.floor(min_lon * 10) / 10)
-        right_tile = (math.floor(max_lon * 10) / 10)
-        bottom_tile = (math.ceil(min_lat * 10) / 10)
-        top_tile = (math.ceil(max_lat * 10) / 10)
-        num_tiles_lon = int((right_tile - left_tile) / 10) + 1
-        num_tiles_lat = int((top_tile - bottom_tile) / 10) + 1
-        file_left_lons = np.linspace(left_tile, right_tile, num_tiles_lon, endpoint=True)
-        file_top_lats = np.linspace(bottom_tile, top_tile, num_tiles_lat, endpoint=True)
+        min_lon_tile_left = (math.floor(min_lon * 10) / 10)
+        max_lon_tile_left = (math.floor(max_lon * 10) / 10)
+        min_lat_tile_top = (math.ceil(min_lat * 10) / 10)
+        max_lat_tile_top = (math.ceil(max_lat * 10) / 10)
+        num_tiles_lon = round((max_lon_tile_left - min_lon_tile_left) * 10) + 1
+        num_tiles_lat = round((max_lat_tile_top - min_lat_tile_top) * 10) + 1
+        file_left_lons = np.linspace(min_lon_tile_left, max_lon_tile_left, num_tiles_lon, endpoint=True)
+        file_top_lats = np.linspace(min_lat_tile_top, max_lat_tile_top, num_tiles_lat, endpoint=True)
+        print("File left lons", file_left_lons)
+        print("File top lats", file_top_lats)
         all_subtiles = []
         for file_left_lon in file_left_lons:
             for file_top_lat in file_top_lats:
+                # Find what reflectance file to read from
                 file_center_lon = round(file_left_lon + 0.05, 2)
                 file_center_lat = round(file_top_lat - 0.05, 2)
                 large_tile_filename = TILES_DIR + "/reflectance_lat_" + str(file_center_lat) + "_lon_" + str(file_center_lon) + ".npy"
@@ -104,15 +109,16 @@ for oco2_file in os.listdir(OCO2_DIR):
                 print('Large tile filename', large_tile_filename)
                 large_tile = np.load(large_tile_filename)
 
+                # Find indices of bounding box within this file 
                 bottom_idx, left_idx = lat_long_to_index(min_lat, min_lon, file_top_lat, file_left_lon, RES)
                 top_idx, right_idx = lat_long_to_index(max_lat, max_lon, file_top_lat, file_left_lon, RES)
+
+                # Note: if the bounding box extends off the edge of the file, clip the indices
                 top_idx = max(top_idx, 0)
                 bottom_idx = min(bottom_idx, LARGE_TILE_PIXELS)
                 left_idx = max(left_idx, 0)
                 right_idx = min(right_idx, LARGE_TILE_PIXELS)
                 print('Indices: top', top_idx, 'bottom', bottom_idx, 'left', left_idx, 'right', right_idx)
-                #num_subtiles_lon = math.floor((right_idx - left_idx) / SUBTILE_PIXELS)
-                #num_subtiles_lat = math.floor((bottom_idx - top_idx) / SUBTILE_PIXELS)
                 subtile_lon_indices = np.arange(left_idx, right_idx - SUBTILE_PIXELS, SUBTILE_PIXELS) # left_idx + num_subtiles_lon * SUBTILE_PIXELS, num_subtiles_lon, endpoint=False)
                 subtile_lat_indices = np.arange(top_idx, bottom_idx - SUBTILE_PIXELS, SUBTILE_PIXELS) # + num_subtiles_lat * SUBTILE_PIXELS, num_subtiles_lat, endpoint=False)
                 print("subtile lon indices", subtile_lon_indices)
@@ -121,10 +127,15 @@ for oco2_file in os.listdir(OCO2_DIR):
                     for subtile_lat_idx in subtile_lat_indices:
                         subtile_lon = file_left_lon + RES[1] * subtile_lon_idx
                         subtile_lat = file_top_lat - RES[0] * subtile_lat_idx
+
+                        # Check if this point actually falls in the parallelogram
                         in_region = p.contains_point((subtile_lon, subtile_lat))
                         print('Subtile lon', subtile_lon, 'lat', subtile_lat, 'In region:', in_region)
                         if not in_region:
                             continue
+                        
+                        point_lons.append(subtile_lon)
+                        point_lats.append(subtile_lat)
                         subtile = large_tile[:, subtile_lat_idx:subtile_lat_idx+SUBTILE_PIXELS,
                                                 subtile_lon_idx:subtile_lon_idx+SUBTILE_PIXELS]
                         if np.mean(subtile[-1, :, :]) > MAX_FRACTION_MISSING_SUBTILE:
@@ -152,6 +163,11 @@ for oco2_file in os.listdir(OCO2_DIR):
             print('Pure soy')
         sif = (sif_757[i] + 1.5 * sif_771[i]) / 2
         sifs.append(sif)
+        polygon = Polygon(vertices, True)
+        patches.append(polygon)
+        if i > 20:
+            break
+    break
 
 print('Pure corn points', pure_corn_points)
 print('Pure soy points', pure_soy_points)
@@ -163,11 +179,12 @@ print('SIFs', np.min(sifs), np.max(sifs))
 plot_histogram(sifs, "sif_distribution_oco2.png")
 
 # Plot OCO-2 regions
-fig, ax = plt.subplots(figsize=(40, 40))
+fig, ax = plt.subplots(figsize=(10, 10))
 p = PatchCollection(patches, alpha=1, cmap="YlGn")
 p.set_array(sifs)
 p.set_clim(0, 2)
 ax.add_collection(p)
+ax.scatter(point_lons, point_lats)
 ax.autoscale()
 fig.colorbar(p, ax=ax)
 plt.savefig("exploratory_plots/oco2_coverage.png")
