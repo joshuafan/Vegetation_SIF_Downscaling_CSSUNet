@@ -59,7 +59,7 @@ def plot_images(image_rows, image_filename_column, output_file):
  
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-TRAIN_DATE = "2018-08-01" #"2018-07-16"
+TRAIN_DATE = "2018-07-16" # "2018-08-01" #"2018-07-16"
 TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_" + TRAIN_DATE)
 TILE_AVERAGE_TRAIN_FILE = os.path.join(TRAIN_DATASET_DIR, "tile_averages_train.csv")
 TILE_AVERAGE_VAL_FILE = os.path.join(TRAIN_DATASET_DIR, "tile_averages_val.csv")
@@ -67,10 +67,11 @@ BAND_STATISTICS_FILE = os.path.join(TRAIN_DATASET_DIR, "band_statistics_train.cs
 TRAIN_TILE_DATASET = os.path.join(TRAIN_DATASET_DIR, "tile_info_train.csv")
 ALL_TILE_DATASET = os.path.join(TRAIN_DATASET_DIR, "reflectance_cover_to_sif.csv")
 
-
 #TILES_DIR = os.path.join(DATA_DIR, "tiles_2016-07-16")
 EVAL_DATE = "2016-08-01"
 TILES_DIR = os.path.join(DATA_DIR, "tiles_" + EVAL_DATE)
+OCO2_TILES_DIR = os.path.join(DATA_DIR, "tiles_" + TRAIN_DATE)
+
 #LAT = 41.15
 #LON = -89.35
 #LAT = 48.65
@@ -88,6 +89,8 @@ LAT_LON = 'lat_' + str(LAT) + '_lon_' + str(LON)
 TILE_DEGREES = 0.1
 eps = TILE_DEGREES / 2
 IMAGE_FILE = os.path.join(TILES_DIR, "reflectance_" + LAT_LON + ".npy")
+OCO2_IMAGE_FILE = os.path.join(OCO2_TILES_DIR, "reflectance_" + LAT_LON + ".npy")
+
 CFIS_SIF_FILE = os.path.join(DATA_DIR, "CFIS/CFIS_201608a_300m.npy")
 TROPOMI_SIF_FILE = os.path.join(DATA_DIR, "TROPOMI_SIF/TROPO-SIF_01deg_biweekly_Apr18-Jan20.nc")
 TROPOMI_DATE_RANGE = slice("2018-08-01", "2018-08-16")
@@ -139,6 +142,10 @@ max_output = (MAX_SIF - sif_mean) / sif_std
 subtile_sif_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, reduced_channels=43, output_dim=1, min_output=None, max_output=None).to(device)
 subtile_sif_model.load_state_dict(torch.load(SUBTILE_SIF_MODEL_FILE, map_location=device))
 subtile_sif_model.eval()
+
+
+
+# =========
 
 # Load trained models from file
 if EMBEDDING_TYPE == 'tile2vec':
@@ -349,7 +356,7 @@ plot_histogram(np.array(all_cfis_points[:, 0]), "sif_distribution_cfis_all.png")
 plot_histogram(np.array(eval_metadata['SIF']), "sif_distribution_cfis_filtered.png") #  cfis_points[:, 0])
 plot_histogram(np.array(tropomi_sifs), "sif_distribution_tropomi_eval_area.png")
 plot_histogram(np.array(train_metadata['SIF']), "sif_distribution_tropomi_train.png")
-plot_histogram(np.array(all_metadata['SIF']), "sif_distribution_tropomi_all.png")
+plot_histogram(np.array(all_metadata['SIF']), "sif_distribution_tropomi_all.png", title="TROPOMI SIF distribution (longitude: -108 to -82, latitude: 38 to 48.7)")
 
 # sif_mean = np.mean(train_metadata['SIF'])
 train_statistics = pd.read_csv(BAND_STATISTICS_FILE)

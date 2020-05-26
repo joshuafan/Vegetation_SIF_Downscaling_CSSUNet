@@ -29,7 +29,7 @@ def lat_long_to_index(lat, lon, dataset_top_bound, dataset_left_bound, resolutio
     return int(height_idx+eps), int(width_idx+eps)
 
 
-def plot_histogram(column, plot_filename):
+def plot_histogram(column, plot_filename, title=None):
     column = column.flatten()
     print('Column', column)
     column = column[~np.isnan(column)]
@@ -40,6 +40,8 @@ def plot_histogram(column, plot_filename):
     print('Max:', round(np.max(column), 4))
     print('Min:', round(np.min(column), 4))
     n, bins, patches = plt.hist(column, 20, facecolor='blue', alpha=0.5)
+    if title is not None:
+        plt.title(title)
     plt.savefig('exploratory_plots/' + plot_filename)
     plt.close()
 
@@ -203,7 +205,3 @@ def train_single_model(model, dataloaders, dataset_sizes, criterion, optimizer, 
     # load best model weights
     model.load_state_dict(best_model_wts)
     return model, train_losses, val_losses, best_loss
-
-
-
-

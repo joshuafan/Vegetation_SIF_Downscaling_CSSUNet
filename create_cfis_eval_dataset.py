@@ -33,16 +33,14 @@ if not os.path.exists(DATASET_DIR):
 
 OUTPUT_CSV_FILE = os.path.join(DATASET_DIR, "eval_subtiles.csv")
 TILE_AVERAGE_CSV_FILE = os.path.join(DATASET_DIR, "eval_large_tile_averages.csv")
-SUBTILE_AVERAGE_CSV_FILE = os.path.join(DATASET_DIR, "eval_subtile_averages.csv")
 CFIS_FILE = os.path.join(DATA_DIR, "CFIS/CFIS_201608a_300m_soundings.npy")
-headers = ["lat", "lon", "SIF", "tile_file", "subtile_file", "num_soundings"]
-csv_rows = [headers]
 TILE_SIZE_DEGREES = 0.1
 SUBTILE_SIZE_PIXELS = 10
 MAX_FRACTION_MISSING = 0.1  # If more than this fraction of reflectance pixels is missing, ignore the data point
 MIN_SIF = 0.2
 MIN_SOUNDINGS = 100
-column_names = ['lat', 'lon', 'ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
+column_names = ['lat', 'lon', 'date', 'tile_file', 'subtile_file', 'num_soundings',
+                    'ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
                     'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg', 
                     'grassland_pasture', 'corn', 'soybean', 'shrubland',
                     'deciduous_forest', 'evergreen_forest', 'spring_wheat', 'developed_open_space',
@@ -52,23 +50,19 @@ column_names = ['lat', 'lon', 'ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_
                     'canola', 'sunflower', 'dry_beans', 'developed_med_intensity',
                     'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
                     'lentils', 'missing_reflectance', 'SIF']
- 
+csv_rows = [column_names]
 tile_averages = [column_names]
-subtile_averages = [column_names]
 
 # Each row is a datapoint. First column is the dc_sif. Second/third columns lon/lat of the grid center.
 validation_points = np.load(CFIS_FILE)
 print("Validation points shape", validation_points.shape)
 
+plot_histogram(validation_points[:, 0], "sif_distribution_cfis_all.png", title="CFIS SIF distribution (longitude: -108 to -82, latitude: 38 to 48.7)")
 plot_histogram(validation_points[:, 3], "cfis_soundings.png")
 print('Total points', validation_points.shape[0])
 print('More than 100 soundings', validation_points[validation_points[:, 3] >= 100].shape[0])
 print('More than 200 soundings', validation_points[validation_points[:, 3] >= 200].shape[0])
 print('More than 500 soundings', validation_points[validation_points[:, 3] >= 500].shape[0])
-
-
-
-
 
 # Scatterplot of CFIS points
 green_cmap = plt.get_cmap('Greens')
@@ -156,11 +150,12 @@ for i in range(validation_points.shape[0]):
     # We're constructing 3 datasets. "csv_rows" contains the filename of the surrounding large
     # tile and the subtile. "tile_averages" contains the band averages of the surrounding large
     # tile. "subtile_averages" contains the band averages of the subtile.
-    csv_rows.append([point_lat, point_lon, sif, large_tile_filename, subtile_filename, num_soundings])
-    tile_averages.append([point_lat, point_lon] + np.nanmean(large_tile, axis=(1,2)).tolist() + [sif])
-    subtile_averages.append([point_lat, point_lon] + np.nanmean(subtile, axis=(1,2)).tolist() + [sif])
+    csv_rows.append([point_lat, point_lon, large_tile_filename, subtile_filename, num_soundings] +
+                    np.nanmean(subtile, axis=(1,2)).tolist() + [sif])
+    tile_averages.append([point_lat, point_lon, large_tile_filename, subtile_filename, num_soundings] +
+                         np.nanmean(large_tile, axis=(1,2)).tolist() + [sif])
     sifs.append(sif)
- 
+
 print('=====================================================')
 print('Number of points with NO reflectance data', points_no_reflectance)
 print('Number of points with MISSING reflectance data', points_missing_reflectance)
@@ -170,7 +165,7 @@ print('Number of points WITH reflectance data', points_with_reflectance)
 # Plot histograms of reflectance coverage percentage and SIF
 plot_histogram(np.array(subtile_reflectance_coverage), "CFIS_subtile_reflectance_coverage.png")
 
-# Write 3 datasets to CSV files
+# Write datasets to CSV files
 with open(OUTPUT_CSV_FILE, "w") as output_csv_file:
     csv_writer = csv.writer(output_csv_file, delimiter=",", quoting=csv.QUOTE_MINIMAL)
     for row in csv_rows:
@@ -178,9 +173,5 @@ with open(OUTPUT_CSV_FILE, "w") as output_csv_file:
 with open(TILE_AVERAGE_CSV_FILE, "w") as output_csv_file:
     csv_writer = csv.writer(output_csv_file, delimiter=",", quoting=csv.QUOTE_MINIMAL)
     for row in tile_averages:
-        csv_writer.writerow(row) 
-with open(SUBTILE_AVERAGE_CSV_FILE, "w") as output_csv_file:
-    csv_writer = csv.writer(output_csv_file, delimiter=",", quoting=csv.QUOTE_MINIMAL)
-    for row in subtile_averages:
-        csv_writer.writerow(row) 
+        csv_writer.writerow(row)
  

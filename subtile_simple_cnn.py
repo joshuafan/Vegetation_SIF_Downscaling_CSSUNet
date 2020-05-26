@@ -29,7 +29,7 @@ from tile2vec.src.tilenet import make_tilenet
 from embedding_to_sif_model import EmbeddingToSIFModel
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-07-16") #08-01") #-16")
+DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-08-01") #07-16") #08-01") #-16")
 INFO_FILE_TRAIN = os.path.join(DATASET_DIR, "tile_info_train.csv")
 INFO_FILE_VAL = os.path.join(DATASET_DIR, "tile_info_val.csv")
 BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
@@ -37,15 +37,15 @@ METHOD = "4a_subtile_simple_cnn"
 TRAINING_PLOT_FILE = 'exploratory_plots/losses_' + METHOD + '.png'
 
 PRETRAINED_SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/small_tile_simple")
-SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_13") #aug_2")
+SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/AUG_subtile_simple_cnn_2") #aug_2")
 SUBTILE_DIM = 10
 INPUT_CHANNELS = 43
 REDUCED_CHANNELS = 43
 OPTIMIZER_TYPE = "Adam"
-LEARNING_RATE = 1e-4  # 0.001  #1e-4i
+LEARNING_RATE = 1e-3  # 0.001  #1e-4i
 WEIGHT_DECAY = 0 #1e-3 #0 #1e-6
-NUM_EPOCHS = 100
-BATCH_SIZE = 32 
+NUM_EPOCHS = 50
+BATCH_SIZE = 128 
 NUM_WORKERS = 4
 AUGMENT = True
 FROM_PRETRAINED = False #True  #False  # True
