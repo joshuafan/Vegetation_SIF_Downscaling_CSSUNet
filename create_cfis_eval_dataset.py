@@ -150,9 +150,9 @@ for i in range(validation_points.shape[0]):
     # We're constructing 3 datasets. "csv_rows" contains the filename of the surrounding large
     # tile and the subtile. "tile_averages" contains the band averages of the surrounding large
     # tile. "subtile_averages" contains the band averages of the subtile.
-    csv_rows.append([point_lat, point_lon, large_tile_filename, subtile_filename, num_soundings] +
+    csv_rows.append([point_lat, point_lon, DATE, large_tile_filename, subtile_filename, num_soundings] +
                     np.nanmean(subtile, axis=(1,2)).tolist() + [sif])
-    tile_averages.append([point_lat, point_lon, large_tile_filename, subtile_filename, num_soundings] +
+    tile_averages.append([point_lat, point_lon, DATE, large_tile_filename, subtile_filename, num_soundings] +
                          np.nanmean(large_tile, axis=(1,2)).tolist() + [sif])
     sifs.append(sif)
 
