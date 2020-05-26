@@ -18,7 +18,7 @@ sifs = []
 for oco2_file in os.listdir(OCO2_DIR):
     # Extract the date from the filename, restrict it to only days between August 1 and 16
     date_string = oco2_file.split('_LtSIF_')[1][4:6]
-    if date_string > '16':
+    if date_string > '05':
        continue
 
     # Open netCDF file, extract SIF and vertex lat/lon
@@ -33,11 +33,25 @@ for oco2_file in os.listdir(OCO2_DIR):
     assert(vertex_lats.shape[0] == sif_757.shape[0])
     assert(vertex_lats.shape[0] == sif_771.shape[0])
 
+    IGBP_index = dataset.IGBP_index.values
+    sounding_id = dataset.sounding_id.values
+    orbit_number = dataset.orbit_number.values
+    center_lon = dataset.longitude.values
+    center_lat = dataset.latitude.values
+
+    print('Center lon', center_lon[:20])
+    print('Center lat', center_lat[:20])
+    print('IGBP index', IGBP_index[:20])
+    print('Sounding id', sounding_id[:20])
+    print('Orbit number', orbit_number[:20])
+
     # Loop through all points
     for i in range(vertex_lats.shape[0]):
-        # Restrict region
-        if not((-108 < vertex_lons[i, 0] < -82) and (38 < vertex_lats[i, 0] < 48)):
-            continue
+        if i >= 17:
+            break
+        # # Restrict region
+        # if not((-108 < vertex_lons[i, 0] < -82) and (38 < vertex_lats[i, 0] < 48.7)):
+        #     continue
 
         # Read vertices of observation, construct polygon
         vertices = np.zeros((vertex_lats.shape[1], 2))
@@ -54,20 +68,24 @@ for oco2_file in os.listdir(OCO2_DIR):
         sif = (sif_757[i] + 1.5 * sif_771[i]) / 2
         sifs.append(sif)
 
+    break
+
 sifs = np.array(sifs)
 print('SIFs', np.min(sifs), np.max(sifs))
 
 # Plot histogram of SIFs
-plot_histogram(sifs, "sif_distribution_oco2.png")
+#plot_histogram(sifs, "sif_distribution_oco2.png", "OCO-2 SIF distribution (longitude: -108 to -82, latitude: 38 to 48.7)")
 
 # Plot OCO-2 regions
-fig, ax = plt.subplots(figsize=(40, 40))
+fig, ax = plt.subplots(figsize=(10, 10))
 p = PatchCollection(patches, alpha=1, cmap="YlGn")
 p.set_array(sifs)
 p.set_clim(0, 2)
 ax.add_collection(p)
 ax.autoscale()
+ax.ticklabel_format(useOffset=False)
 fig.colorbar(p, ax=ax)
-plt.savefig("exploratory_plots/oco2_coverage.png")
+ax.set_title("OCO-2 datapoints")
+plt.savefig("exploratory_plots/oco2_coverage_first_17.png")
 plt.close()
 

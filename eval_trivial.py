@@ -36,12 +36,13 @@ EVAL_FILE = os.path.join(EVAL_DATASET_DIR, "eval_subtiles.csv")
 # EVAL_FILE = os.path.join(TRAIN_DATASET_DIR, "tile_info_val.csv")
 #TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_13") #aug")
 #"subtile_sif_simple_cnn_11")
-TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/AUG_large_tile_resnet") #AUG_small_tile_simple")
+TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/AUG_subtile_simple_cnn_2") #AUG_small_tile_simple")
 #TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/cfis_sif_aug")
 #RAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_aug") #cfis_sif")
 #TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/small_tile_simple") #large_tile_resnet18")  #test_large_tile_simple")  # small_tile_sif_prediction")
 BAND_STATISTICS_FILE = os.path.join(TRAIN_DATASET_DIR, "band_statistics_train.csv")
-METHOD = '2_large_tile_resnet' # '3_small_tile_simple' #'0_cfis_cheating' #'4a_subtile_simple_cnn'  #'3_small_tile_simple' # '2_large_tile_resnet18'
+METHOD = '4a_subtile_simple_cnn' # '2_large_tile_resnet' # '3_small_tile_simple' #'0_cfis_cheating' # #'3_small_tile_simple' # '2_large_tile_resnet18'
+MODEL_TYPE = 'simple_cnn'
 TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_AUG_eval_subtile_' + METHOD 
 
 
@@ -58,12 +59,12 @@ RESULTS_CSV_FILE = os.path.join(EVAL_DATASET_DIR, 'results_' + METHOD + '.csv')
 
 INPUT_CHANNELS = 43
 REDUCED_CHANNELS = 43
-RESIZE = True #False # False #True
+RESIZE = False #False # False #True
 RESIZED_DIM = [371, 371]
 DISCRETE_BANDS = list(range(12, 43))
 COVER_INDICES = list(range(12, 42))
-MIN_SIF = None #0.2
-MAX_SIF = None #1.7
+MIN_SIF = 0.2
+MAX_SIF = 1.7
 
 
 def eval_model(model, dataloader, dataset_size, criterion, device, sif_mean, sif_std):
@@ -88,7 +89,6 @@ def eval_model(model, dataloader, dataset_size, criterion, device, sif_mean, sif
         # with torch.set_grad_enabled(False):
         predicted_sif_standardized = model(input_tile_standardized).flatten()
         predicted_sif_non_standardized = torch.tensor(predicted_sif_standardized * sif_std + sif_mean, dtype=torch.float).to(device)
-        predicted_sif_non_standardized = torch.clamp(predicted_sif_non_standardized, min=0.2, max=1.7)
         loss = criterion(predicted_sif_non_standardized, true_sif_non_standardized)
 
         # statistics
@@ -153,15 +153,21 @@ dataloader = torch.utils.data.DataLoader(dataset, batch_size=4,
                                          shuffle=True, num_workers=4)
 
 # Load trained model from file
-#resnet_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, reduced_channels=REDUCED_CHANNELS, output_dim=1, min_output=min_output, max_output=max_output).to(device)  
-resnet_model = resnet.resnet18(input_channels=INPUT_CHANNELS).to(device)
-# resnet_model = make_tilenet(in_channels=INPUT_CHANNELS, z_dim=1).to(device)
-resnet_model.load_state_dict(torch.load(TRAINED_MODEL_FILE, map_location=device))
+if MODEL_TYPE == 'simple_cnn':
+    model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, reduced_channels=REDUCED_CHANNELS, output_dim=1, min_output=min_output, max_output=max_output).to(device)  
+elif MODEL_TYPE == 'resnet18':
+    model = resnet.resnet18(input_channels=INPUT_CHANNELS).to(device)
+else:
+    print('Unsupported model type', MODEL_TYPE)
+    exit(1)
+
+# model = make_tilenet(in_channels=INPUT_CHANNELS, z_dim=1).to(device)
+model.load_state_dict(torch.load(TRAINED_MODEL_FILE, map_location=device))
 
 criterion = nn.MSELoss(reduction='mean')
 
 # Evaluate the model
-results_numpy = eval_model(resnet_model, dataloader, dataset_size, criterion, device, sif_mean, sif_std)
+results_numpy = eval_model(model, dataloader, dataset_size, criterion, device, sif_mean, sif_std)
 
 results_df = pd.DataFrame(results_numpy, columns=COLUMN_NAMES)
 results_df.to_csv(RESULTS_CSV_FILE)

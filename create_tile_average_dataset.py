@@ -93,7 +93,6 @@ for split in ["train", "val"]:
             #print('CDL coverage too low:', cdl_coverage)
             #print(row.loc['tile_file'])
             continue
-        #print('FLDAS average', tile_averages[10])
  
         # If too much of this pixel is covered by clouds (reflectance
         # data is missing), throw this tile out

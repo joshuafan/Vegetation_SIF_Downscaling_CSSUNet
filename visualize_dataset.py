@@ -80,24 +80,25 @@ OCO2_TILES_DIR = os.path.join(DATA_DIR, "tiles_" + TRAIN_DATE)
 #LON = -93.55 #-101.35  #-93.35
 #LAT = 42.65
 #LON = -93.35
-# LAT = 42.55
-# LON = -93.35
-LAT = 47.55
-LON = -101.35
-
+#LAT = 42.55
+#LON = -93.35
+# LAT = 47.55
+# LON = -101.35
+LAT = 41.15
+LON = -96.45
 LAT_LON = 'lat_' + str(LAT) + '_lon_' + str(LON)
 TILE_DEGREES = 0.1
 eps = TILE_DEGREES / 2
 IMAGE_FILE = os.path.join(TILES_DIR, "reflectance_" + LAT_LON + ".npy")
 OCO2_IMAGE_FILE = os.path.join(OCO2_TILES_DIR, "reflectance_" + LAT_LON + ".npy")
 
-CFIS_SIF_FILE = os.path.join(DATA_DIR, "CFIS/CFIS_201608a_300m.npy")
+CFIS_SIF_FILE = os.path.join(DATA_DIR, "CFIS/CFIS_201608a_300m_soundings.npy")
 TROPOMI_SIF_FILE = os.path.join(DATA_DIR, "TROPOMI_SIF/TROPO-SIF_01deg_biweekly_Apr18-Jan20.nc")
 TROPOMI_DATE_RANGE = slice("2018-08-01", "2018-08-16")
 EVAL_SUBTILE_DATASET = os.path.join(DATA_DIR, "dataset_" + EVAL_DATE + "/eval_subtiles.csv")
 RGB_BANDS = [3, 2, 1]
 CDL_BANDS = list(range(12, 42))
-SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_13")
+SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/AUG_subtile_simple_cnn_2")
 TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_recon_5/TileNet.ckpt") #finetuned_tile2vec.ckpt") #TileNet.ckpt")
 EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_embedding_to_sif") #finetuned_tile2vec_embedding_to_sif.ckpt") #tile2vec_embedding_to_sif")
 EMBEDDING_TYPE = 'tile2vec'
@@ -139,13 +140,9 @@ max_output = (MAX_SIF - sif_mean) / sif_std
 
 
 # Load subtile SIF model
-subtile_sif_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, reduced_channels=43, output_dim=1, min_output=None, max_output=None).to(device)
+subtile_sif_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, reduced_channels=43, output_dim=1, min_output=min_output, max_output=max_output).to(device)
 subtile_sif_model.load_state_dict(torch.load(SUBTILE_SIF_MODEL_FILE, map_location=device))
 subtile_sif_model.eval()
-
-
-
-# =========
 
 # Load trained models from file
 if EMBEDDING_TYPE == 'tile2vec':
@@ -225,7 +222,6 @@ plt.close()
 
 # Load "band average" dataset
 train_set = pd.read_csv(TILE_AVERAGE_TRAIN_FILE).dropna()
-EXCLUDE_FROM_INPUT = ['date', 'tile_file', 'lat', 'lon', 'SIF']
 INPUT_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
                     'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg', 
                     'grassland_pasture', 'corn', 'soybean', 'shrubland',
@@ -333,6 +329,7 @@ highest_cfis_sifs = eval_metadata.nlargest(25, 'SIF')
 plot_images(highest_cfis_sifs, 'subtile_file', 'exploratory_plots/cfis_sif_high_subtiles.png')
 lowest_cfis_sifs = eval_metadata.nsmallest(25, 'SIF')
 plot_images(lowest_cfis_sifs, 'subtile_file', 'exploratory_plots/cfis_sif_low_subtiles.png')
+print('Most common regions in CFIS:', eval_metadata['tile_file'].value_counts())
 
 # Open CFIS SIF evaluation dataset
 all_cfis_points = np.load(CFIS_SIF_FILE)
@@ -508,5 +505,4 @@ nrmse = math.sqrt(mean_squared_error(y, x)) / sif_mean
 corr, _ = pearsonr(y, x)
 print('NRMSE', round(nrmse, 3))
 print('Correlation', round(corr, 3))
-
 
