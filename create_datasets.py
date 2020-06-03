@@ -76,7 +76,7 @@ def plot_and_print_covers(covers, filename):
     mask = np.zeros_like(covers)
     mask[covers == 1] = 1.
     plt.imshow(mask, cmap='Greens', vmin=0, vmax=1)
-    plt.savefig('datasets/CDL_2019/visualizations/' + filename)
+    plt.savefig('exploratory_plots/' + filename)
     plt.close()
 
     # Count how many pixels contain each crop
@@ -145,8 +145,11 @@ for cover_file in os.listdir(COVER_DIR):
         print('Height:', cover_dataset.height)
         print('===================================================')
 
+        if cover_dataset.bounds.right < -90:
+            continue
         # Print stats about cover dataset
-        # plot_and_print_covers(cover_dataset.read(1), 'original_covers_corn_big.png')
+        #plot_and_print_covers(cover_dataset.read(1), 'original_covers_corn_big_r2.png')
+        #exit(1)
 
         # Stores a version of cover dataset, reprojected to the resolution of
         # the reflectance dataset
@@ -172,7 +175,7 @@ for cover_file in os.listdir(COVER_DIR):
 
                     target_res = (reflectance_dataset.res[0], reflectance_dataset.res[1])
                     TARGET_TILE_SIZE = int(SIF_TILE_DEGREE_SIZE / target_res[0])
-                    print("target tile size", TARGET_TILE_SIZE)
+                    #print("target tile size", TARGET_TILE_SIZE)
 
                     # Resample cover data into target resolution, if we haven't done so already and the
                     # cover dataset is in a different resolution
@@ -309,8 +312,8 @@ for cover_file in os.listdir(COVER_DIR):
                             cover_bottom_idx = cover_top_idx + TARGET_TILE_SIZE
                             cover_right_idx = cover_left_idx + TARGET_TILE_SIZE
 
-                            print("Reflectance dataset idx: top", reflectance_top_idx, "bottom", reflectance_bottom_idx,
-                                  "left", reflectance_left_idx, "right", reflectance_right_idx)
+                            #print("Reflectance dataset idx: top", reflectance_top_idx, "bottom", reflectance_bottom_idx,
+                            #      "left", reflectance_left_idx, "right", reflectance_right_idx)
                             print("Cover dataset idx: top", cover_top_idx, "bottom", cover_bottom_idx,
                                   "left", cover_left_idx, "right", cover_right_idx)
 

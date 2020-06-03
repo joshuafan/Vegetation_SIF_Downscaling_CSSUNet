@@ -11,7 +11,7 @@ from sif_utils import plot_histogram, lat_long_to_index
 
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-OCO2_DIR = os.path.join(DATA_DIR, "fluo.gps.caltech.edu/data/OCO2/sif_lite_B8100/2018/08")
+OCO2_FILE = os.path.join(DATA_DIR, "OCO2/oco2_20180801_20180816_1800m.nc")
 DATE = "2018-08-01" #"2016-07-16"
 TILES_DIR = os.path.join(DATA_DIR, "tiles_" + DATE)
 DATASET_DIR = os.path.join(DATA_DIR, "dataset_" + DATE)
@@ -22,8 +22,8 @@ if not os.path.exists(OCO2_SUBTILES_DIR):
     os.makedirs(OCO2_SUBTILES_DIR)
 
 dataset_rows = []
-dataset_rows.append(["center_lon", "center_lat", "lon_0", "lat_0", "lon_1", "lat_1", "lon_2", "lat_2", "lon_3", "lat_3", "date",
-                     "subtiles_file", 'ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
+dataset_rows.append(["lon", "lat", "date",
+                     "subtile_file", 'ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
                     'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg', 
                     'grassland_pasture', 'corn', 'soybean', 'shrubland',
                     'deciduous_forest', 'evergreen_forest', 'spring_wheat', 'developed_open_space',
@@ -34,91 +34,60 @@ dataset_rows.append(["center_lon", "center_lat", "lon_0", "lat_0", "lon_1", "lat
                     'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
                     'lentils', 'missing_reflectance', "SIF"])
 
+
+
 # For plotting
-patches = []
 point_lons = []
 point_lats = []
-sifs = []
+point_sifs = []
 RES = (0.00026949458523585647, 0.00026949458523585647)
 LARGE_TILE_PIXELS = 371
-SUBTILE_PIXELS = 10
+SUBTILE_PIXELS = 60
+SUBTILE_DEGREES = RES[0] * SUBTILE_PIXELS
 MAX_FRACTION_MISSING_SUBTILE = 0.1
 MAX_FRACTION_MISSING_OVERALL = 0.1
 PURE_THRESHOLD = 0.7
 MIN_SIF = 0.2
+INPUT_CHANNELS = 43
+CDL_BANDS = list(range(12, 42))
+MIN_CDL_COVERAGE = 0.5
 
 pure_corn_points = 0
 pure_soy_points = 0
 missing_points = 0
 
-# Loop through OCO-2 files
-for oco2_file in os.listdir(OCO2_DIR):
-    # Extract the date from the filename, restrict it to only days between August 1 and 16
-    oco2_date_string = oco2_file.split('_LtSIF_')[1][0:6]
-    day_string = oco2_date_string[4:6]
-    print("OCO2 Date string", oco2_date_string)
-    if day_string > '16':
-        print("Ignore")
-        continue
-    print("Keep")
-    date_string = "20" + oco2_date_string[0:2] + "-" + oco2_date_string[2:4] + "-" + oco2_date_string[4:6]
-    print("Standardized date string", date_string)
+dataset = xr.open_dataset(OCO2_FILE)
+print(dataset)
+dataset = dataset.mean('time')
+lons = dataset.lon.values
+lats = dataset.lat.values
+sifs = dataset.dcSIF.values
 
-    # Open netCDF file, extract SIF and vertex lat/lon
-    dataset = xr.open_dataset(os.path.join(OCO2_DIR, oco2_file))
-    print(dataset)
-    vertex_lons = dataset.footprint_vertex_longitude.values
-    vertex_lats = dataset.footprint_vertex_latitude.values
-    sif_757 = dataset.SIF_757nm.values
-    sif_771 = dataset.SIF_771nm.values
-    daily_correction_factor = dataset.daily_correction_factor.values
-    measurement_mode = dataset.measurement_mode.values
-    IGBP_index = dataset.IGBP_index.values
-    sounding_id = dataset.sounding_id.values
-    orbit_number = dataset.orbit_number.values
-    center_lon = dataset.longitude.values
-    center_lat = dataset.latitude.values
-    
-    assert(vertex_lats.shape[0] == vertex_lons.shape[0])
-    assert(vertex_lats.shape[1] == vertex_lons.shape[1])
-    assert(vertex_lats.shape[0] == sif_757.shape[0])
-    assert(vertex_lats.shape[0] == sif_771.shape[0])
-    assert(vertex_lats.shape[0] == center_lat.shape[0])
-    assert(vertex_lats.shape[0] == center_lon.shape[0])
+plot_histogram(sifs, "sif_distribution_oco2_all.png", title="OCO2 SIF distribution (longitude: -108 to -82, latitude: 38 to 48.7)")
+print('Lons', lons.shape)
+print('Lats', lats.shape)
+print('Sifs', sifs.shape)
 
-    # Loop through all points
-    for i in range(vertex_lats.shape[0]):
-        # Restrict region
-        if not ((-108 < vertex_lons[i, 0] < -82) and (38 < vertex_lats[i, 0] < 48)):
-            continue
-        
-        # Only include points where measurement mode is 0
-        if measurement_mode[i] != 0:
-            continue
 
-        # Read vertices of observation, construct polygon
-        vertices = np.zeros((vertex_lats.shape[1], 2))
-        vertices[:, 0] = vertex_lons[i, :]
-        vertices[:, 1] = vertex_lats[i, :]
+points_no_reflectance = 0  # Number of points outside bounds of reflectance dataset
+points_missing_reflectance = 0  # Number of points with missing reflectance data (due to cloud cover)
+points_with_reflectance = 0  # Number of points with reflectance data
 
-        if (vertices[:, 0] < -180).any() or (vertices[:, 0] > 180).any() or (vertices[:, 1] < -90).any() or (vertices[:, 1] > 90).any():
-            print("illegal vertices!", vertices)
+# Loop through all OCO-2 data points
+for lon_idx in range(len(lons)):
+    for lat_idx in range(len(lats)):
+        lon = lons[lon_idx]
+        lat = lats[lat_idx]
+        sif = sifs[lat_idx, lon_idx]
+        if math.isnan(sif):
             continue
-        if math.isnan(sif_757[i]) or math.isnan(sif_771[i]):
-            print("sif was nan!", sif_757[i], sif_771[i])
-            continue
-        vertex_list = vertices.tolist()
-        vertex_list.append(vertex_list[0])  # Make the path return to starting point
-        print("Vertex list", vertex_list)
-        parallelogram = path.Path(vertex_list)
 
         # Compute rectangle that bounds this OCO-2 observation
-        min_lon = np.min(vertices[:, 0])
-        max_lon = np.max(vertices[:, 0])
-        min_lat = np.min(vertices[:, 1])
-        max_lat = np.max(vertices[:, 1])
+        min_lon = lon - SUBTILE_DEGREES / 2
+        max_lon = lon + SUBTILE_DEGREES / 2
+        min_lat = lat - SUBTILE_DEGREES / 2
+        max_lat = lat + SUBTILE_DEGREES / 2
         print('====================================')
-        print("Vertices:", vertices)
         print("Lon: min", min_lon, "max:", max_lon)
         print("Lat: min", min_lat, "max:", max_lat)
 
@@ -131,81 +100,58 @@ for oco2_file in os.listdir(OCO2_DIR):
         num_tiles_lon = round((max_lon_tile_left - min_lon_tile_left) * 10) + 1
         num_tiles_lat = round((max_lat_tile_top - min_lat_tile_top) * 10) + 1
         file_left_lons = np.linspace(min_lon_tile_left, max_lon_tile_left, num_tiles_lon, endpoint=True)
-        file_top_lats = np.linspace(min_lat_tile_top, max_lat_tile_top, num_tiles_lat, endpoint=True)
+        file_top_lats = np.linspace(min_lat_tile_top, max_lat_tile_top, num_tiles_lat, endpoint=True)[::-1]  # Go through lats from top to bottom, because indices are numbered from top to bottom
         print("File left lons", file_left_lons)
         print("File top lats", file_top_lats)
-        all_subtiles = []
+
+        # Because a sub-tile could span multiple files, patch all of the files together
+        columns = []
         for file_left_lon in file_left_lons:
+            rows = []
             for file_top_lat in file_top_lats:
                 # Find what reflectance file to read from
                 file_center_lon = round(file_left_lon + 0.05, 2)
                 file_center_lat = round(file_top_lat - 0.05, 2)
                 large_tile_filename = TILES_DIR + "/reflectance_lat_" + str(file_center_lat) + "_lon_" + str(file_center_lon) + ".npy"
                 if not os.path.exists(large_tile_filename):
-                    print('Needed data file', large_tile_filename, 'does not exist.')
-                    continue
-                print('Large tile filename', large_tile_filename)
-                large_tile = np.load(large_tile_filename)
+                    print('Needed data file', large_tile_filename, 'does not exist!')
+                    # For now, consider the data for this section as missing
+                    missing_tile = np.zeros((INPUT_CHANNELS, LARGE_TILE_PIXELS, LARGE_TILE_PIXELS))
+                    missing_tile[-1, :, :] = 1
+                    rows.append(missing_tile)
+                else:
+                    print('Large tile filename', large_tile_filename)
+                    large_tile = np.load(large_tile_filename)
+                    rows.append(large_tile)
 
-                # Find indices of bounding box within this file 
-                bottom_idx, left_idx = lat_long_to_index(min_lat, min_lon, file_top_lat, file_left_lon, RES)
-                top_idx, right_idx = lat_long_to_index(max_lat, max_lon, file_top_lat, file_left_lon, RES)
+            column = np.concatenate(rows, axis=1)
+            columns.append(column)
+        
+        combined_large_tiles = np.concatenate(columns, axis=2)
+        print('All large tiles shape', combined_large_tiles.shape)
 
-                # Note: if the bounding box extends off the edge of the file, clip the indices
-                top_idx = max(top_idx, 0)
-                bottom_idx = min(bottom_idx, LARGE_TILE_PIXELS)
-                left_idx = max(left_idx, 0)
-                right_idx = min(right_idx, LARGE_TILE_PIXELS)
-                print('Indices: top', top_idx, 'bottom', bottom_idx, 'left', left_idx, 'right', right_idx)
-                subtile_lon_indices = np.arange(left_idx, right_idx - SUBTILE_PIXELS + 1, SUBTILE_PIXELS) # left_idx + num_subtiles_lon * SUBTILE_PIXELS, num_subtiles_lon, endpoint=False)
-                subtile_lat_indices = np.arange(top_idx, bottom_idx - SUBTILE_PIXELS + 1, SUBTILE_PIXELS) # + num_subtiles_lat * SUBTILE_PIXELS, num_subtiles_lat, endpoint=False)
-                print("subtile lon indices", subtile_lon_indices)
-                print("subtile lat indices", subtile_lat_indices)
-                for subtile_lon_idx in subtile_lon_indices:
-                    for subtile_lat_idx in subtile_lat_indices:
-                        subtile_center_lon = file_left_lon + RES[1] * (subtile_lon_idx + SUBTILE_PIXELS / 2)
-                        subtile_center_lat = file_top_lat - RES[0] * (subtile_lat_idx + SUBTILE_PIXELS / 2)
+        # Find indices of bounding box within this combined large tile 
+        top_idx, left_idx = lat_long_to_index(max_lat, min_lon, max_lat_tile_top, min_lon_tile_left, RES)
+        bottom_idx = top_idx + SUBTILE_PIXELS
+        right_idx = left_idx + SUBTILE_PIXELS
+        print('From combined large tile: Top', top_idx, 'Botom', bottom_idx, 'Left', left_idx, 'Right', right_idx)
 
-                        # Check if this point actually falls in the parallelogram
-                        in_region = parallelogram.contains_point((subtile_center_lon, subtile_center_lat))
-                        print('Subtile lon', subtile_center_lon, 'lat', subtile_center_lat, 'In region:', in_region)
-                        if not in_region:
-                            continue
+        # If the selected region (box) goes outside the range of the cover or reflectance dataset, that's a bug!
+        if top_idx < 0 or left_idx < 0:
+            print("Index was negative!")
+            exit(1)
+        if (bottom_idx >= combined_large_tiles.shape[1] or right_idx >= combined_large_tiles.shape[2]):
+            print("Reflectance index went beyond edge of array!")
+            exit(1)
 
-                        # Read the sub-tile from the large tile
-                        point_lons.append(subtile_center_lon)
-                        point_lats.append(subtile_center_lat)
-                        subtile = large_tile[:, subtile_lat_idx:subtile_lat_idx+SUBTILE_PIXELS,
-                                                subtile_lon_idx:subtile_lon_idx+SUBTILE_PIXELS]
-                        if np.mean(subtile[-1, :, :]) > MAX_FRACTION_MISSING_SUBTILE:
-                            print('Subtile had too much missing data!')
-                            continue
-                        else:
-                            print('Subtile shape', subtile.shape)
-                            all_subtiles.append(subtile)
+        subtile = combined_large_tiles[:, top_idx:bottom_idx, left_idx:right_idx]
 
-        if len(all_subtiles) == 0:
-            print('No subtiles found??????')
-            continue
-
-        # Stack all sub-tiles on top of each other (creating a new axis)
-        all_subtiles_numpy = np.stack(all_subtiles)
-        print('All subtiles numpy dim', all_subtiles_numpy.shape)
-
-        # Save the sub-tiles array to file
-        subtiles_filename = OCO2_SUBTILES_DIR + "/lat_" + str(center_lat[i]) + "_lon_" + str(center_lon[i]) + ".npy"
-        # if os.path.exists(subtiles_filename):
-        #     print('Uh-oh! duplicate subtile location!', subtiles_filename)
-        #     exit(1)
-        np.save(subtiles_filename, all_subtiles_numpy)
-
-        # Calculate band averages across this OCO-2 region
-        band_averages = np.mean(all_subtiles_numpy, axis=(0, 2, 3))
+        # Calculate band averages across this sub-tile
+        band_averages = np.mean(subtile, axis=(1, 2))
         print("Band averages", band_averages)
         fraction_missing_reflectance = band_averages[-1]
-        sif = daily_correction_factor[i] * (sif_757[i] + 1.5 * sif_771[i]) / 2
 
-        # If there's too much missing data, skip this point
+        # If there's too much missing reflectance data, skip this point
         if fraction_missing_reflectance > MAX_FRACTION_MISSING_OVERALL:
             missing_points += 1
             print('Too much missing')
@@ -215,10 +161,10 @@ for oco2_file in os.listdir(OCO2_DIR):
         if sif < MIN_SIF:
             continue
 
+        # If too much CDL data is missing, skip this point
         cdl_coverage = np.sum(band_averages[CDL_BANDS])
         if cdl_coverage < MIN_CDL_COVERAGE:
             print('CDL coverage too low:', cdl_coverage)
-            print(row.loc['tile_file'])
             continue
 
         if band_averages[13] > PURE_THRESHOLD:
@@ -227,14 +173,17 @@ for oco2_file in os.listdir(OCO2_DIR):
         if band_averages[14] > PURE_THRESHOLD:
             pure_soy_points += 1
             print('Pure soy')
-        sifs.append(sif)
-        polygon = Polygon(vertices, True)
-        patches.append(polygon)
 
-        dataset_rows.append([center_lon[i], center_lat[i],
-                             vertices[0,0], vertices[0,1], vertices[1,0], vertices[1,1],
-                             vertices[2,0], vertices[2,1], vertices[3,0], vertices[3,1],
-                             date_string, subtiles_filename] + band_averages.tolist() + 
+
+        # Save the sub-tiles array to file
+        subtile_filename = OCO2_SUBTILES_DIR + "/lat_" + str(lat) + "_lon_" + str(lon) + ".npy"
+        np.save(subtile_filename, subtile)
+
+        point_lons.append(lon)
+        point_lats.append(lat)
+        point_sifs.append(sif)
+
+        dataset_rows.append([lon, lat, DATE, subtile_filename] + band_averages.tolist() + 
                              [sif])
         
 
@@ -248,20 +197,17 @@ print('Missing points', missing_points)
 print('Pure corn points', pure_corn_points)
 print('Pure soy points', pure_soy_points)
 
-sifs = np.array(sifs)
-print('SIFs', np.min(sifs), np.max(sifs))
+point_sifs = np.array(point_sifs)
+print('SIFs', np.min(point_sifs), np.max(point_sifs))
 
 # Plot histogram of SIFs
-plot_histogram(sifs, "sif_distribution_oco2.png")
+plot_histogram(point_sifs, "sif_distribution_oco2.png")
 
-# Plot OCO-2 regions
-fig, ax = plt.subplots(figsize=(10, 10))
-p = PatchCollection(patches, alpha=1, cmap="YlGn")
-p.set_array(sifs)
-p.set_clim(0, 2)
-ax.add_collection(p)
-ax.autoscale()
-fig.colorbar(p, ax=ax)
-plt.savefig("exploratory_plots/oco2_coverage.png")
+# Scatterplot of OCO-2 points
+green_cmap = plt.get_cmap('Greens')
+plt.scatter(point_lons, point_lats, c=point_sifs, cmap=green_cmap)
+plt.xlabel('Longitude')
+plt.ylabel('Latitude')
+plt.title('All OCO-2 points')
+plt.savefig('exploratory_plots/oco2_points.png')
 plt.close()
-

@@ -31,7 +31,7 @@ def lat_long_to_index(lat, lon, dataset_top_bound, dataset_left_bound, resolutio
 
 def plot_histogram(column, plot_filename, title=None):
     column = column.flatten()
-    print('Column', column)
+    #print('Column', column)
     column = column[~np.isnan(column)]
     print(plot_filename)
     print('Number of datapoints:', len(column))
@@ -63,32 +63,94 @@ def print_stats(true, predicted, average_sif):
     nrmse_unstd = math.sqrt(mean_squared_error(true, predicted)) / average_sif
     spearman_rank_corr, _ = spearmanr(true, predicted_rescaled)
     print('R2:', round(r2, 3))
-    print('Pearson correlation:', round(corr, 3))
-    print('Pearson (unstandardized):', round(pearsonr(true, predicted)[0], 3))
     print('NRMSE:', round(nrmse, 3))
-    print('NRMSE (unstandardized):', round(nrmse_unstd, 3))
-    print('Spearman rank corr:', round(spearman_rank_corr, 3))
+    #print('NRMSE (unstandardized):', round(nrmse_unstd, 3))
+    print('Pearson correlation:', round(corr, 3))
+    #print('Pearson (unstandardized):', round(pearsonr(true, predicted)[0], 3))
+    #print('Spearman rank corr:', round(spearman_rank_corr, 3))
 
 
-# For each tile in the batch, returns a list of subtiles.
-# Given a Tensor of tiles, with shape (batch x C x H x W), returns a Tensor of
-# shape (batch x SUBTILE x C x subtile_dim x subtile_dim)
-def get_subtiles_list(tile, subtile_dim, device):
-    batch_size, bands, height, width = tile.shape
+# For the given tile, returns a list of subtiles.
+# Given a tile Tensor with shape (C x H x W), returns a Tensor of
+# shape (SUBTILE x C x subtile_dim x subtile_dim).
+# NOTE: some sub-tiles will be removed if its fraction covered by clouds
+# exceeds "max_subtile_cloud_cover"
+def get_subtiles_list(tile, subtile_dim, device, max_subtile_cloud_cover=None):
+    bands, height, width = tile.shape
     num_subtiles_along_height = int(height / subtile_dim)
     num_subtiles_along_width = int(width / subtile_dim)
     num_subtiles = num_subtiles_along_height * num_subtiles_along_width
-    assert(num_subtiles_along_height == 37)
-    assert(num_subtiles_along_width == 37)
-    subtiles = torch.empty((batch_size, num_subtiles, bands, subtile_dim, subtile_dim), device=device)
-    for b in range(batch_size):
-        subtile_idx = 0
-        for i in range(num_subtiles_along_height):
-            for j in range(num_subtiles_along_width):
-                subtile = tile[b, :, subtile_dim*i:subtile_dim*(i+1), subtile_dim*j:subtile_dim*(j+1)].to(device)
-                subtiles[b, subtile_idx, :, :, :] = subtile
-                subtile_idx += 1
+    subtiles = []
+    skipped = 0
+    for i in range(num_subtiles_along_height):
+        for j in range(num_subtiles_along_width):
+            subtile = tile[:, subtile_dim*i:subtile_dim*(i+1), subtile_dim*j:subtile_dim*(j+1)].to(device)
+            fraction_missing = 1 - torch.mean(subtile[-1, :, :])
+            #print("Missing", fraction_missing)
+            if (max_subtile_cloud_cover is not None) and fraction_missing > max_subtile_cloud_cover:
+                skipped += 1
+                continue
+            subtiles.append(subtile)
+    subtiles = torch.stack(subtiles)
+    #print('Subtile tensor shape', subtiles.shape, 'num skipped:', skipped)
     return subtiles
+
+
+# If any of the specified crop types (listed in "crop_indices") makes up
+# more than "pure_threshold" fraction of the sub-tile, return that crop type.
+# Otherwise, if none of the specified crop types dominates, return -1.
+def get_crop_type(band_means, crop_indices, pure_threshold):
+    assert(pure_threshold >= 0.5)
+    for crop_idx in crop_indices:
+        if band_means[crop_idx] >= pure_threshold:
+            return crop_idx
+    return -1 # Return -1 if sub-tile is not pure
+
+
+# For the given tile, returns a dictionary mapping (crop type -> list of subtiles)
+# The key is the index of the crop type channel in the tile. -1 is the key for
+# mixed sub-tiles that are not dominated by any crop type.
+# Each list of subtiles is a  Tensor with shape (C x H x W), returns a Tensor of
+# shape (SUBTILE x C x subtile_dim x subtile_dim).
+# NOTE: sub-tiles can be returned in any order
+# NOTE: sub-tiles will be removed if its fraction covered by clouds
+# exceeds "max_subtile_cloud_cover"
+def get_subtiles_list_by_crop(tile, subtile_dim, device, crop_indices, pure_threshold, max_subtile_cloud_cover=None):
+    assert(pure_threshold >= 0.5)
+    bands, height, width = tile.shape
+    num_subtiles_along_height = int(height / subtile_dim)
+    num_subtiles_along_width = int(width / subtile_dim)
+    num_subtiles = num_subtiles_along_height * num_subtiles_along_width
+    subtiles = {}
+    skipped = 0
+    num_subtiles = 0
+
+    # Loop through all sub-tiles
+    for i in range(num_subtiles_along_height):
+        for j in range(num_subtiles_along_width):
+            # Extract subtile, compute mean of each band (channel)
+            subtile = tile[:, subtile_dim*i:subtile_dim*(i+1), subtile_dim*j:subtile_dim*(j+1)].to(device)
+            band_means = torch.mean(subtile, dim=(1, 2))
+            #print('=====================================')
+            #print('Band means:', band_means)
+
+            # Remove subtile if it's covered by clouds
+            if (max_subtile_cloud_cover is not None) and 1 - band_means[-1] > max_subtile_cloud_cover:
+                skipped += 1
+                continue
+
+            # Find which crop type dominates this subtile (if any)
+            num_subtiles += 1
+            crop = get_crop_type(band_means, crop_indices, pure_threshold)
+            #print('Crop type:', crop)
+            if crop not in subtiles:
+                subtiles[crop] = []
+            subtiles[crop].append(subtile)
+
+    for crop, subtile_list in subtiles.items():
+        subtiles[crop] = torch.stack(subtile_list)
+        #print('Crop type', crop, 'Shape', subtiles[crop].shape)
+    return subtiles, num_subtiles
 
 
 def get_top_bound(point_lat):

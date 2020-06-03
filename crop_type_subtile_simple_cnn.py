@@ -16,7 +16,7 @@ import torch.nn as nn
 import torch.optim as optim
 
 from reflectance_cover_sif_dataset import ReflectanceCoverSIFDataset
-from sif_utils import get_subtiles_list
+from sif_utils import get_subtiles_list_by_crop
 import simple_cnn
 import small_resnet
 import tile_transforms
@@ -37,7 +37,7 @@ METHOD = "4a_subtile_simple_cnn_small"
 TRAINING_PLOT_FILE = 'exploratory_plots/losses_' + METHOD + '.png'
 
 PRETRAINED_SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/AUG_subtile_simple_cnn_4crop_small")
-SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/AUG_subtile_simple_cnn_4crop_small") #aug_2")
+SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/AUG_subtile_simple_cnn_croptype_16crop") #aug_2")
 SUBTILE_DIM = 10
 OPTIMIZER_TYPE = "Adam"
 MODEL_TYPE = "simple_cnn_small"
@@ -52,9 +52,15 @@ MIN_SIF = 0.2
 MAX_SIF = 1.7
 MAX_SUBTILE_CLOUD_COVER = 0.1
 
-BANDS = list(range(0, 12)) + [12, 13, 14, 16] + [42] #  list(range(0, 12)) + list(range(12, 27)) + [28] + [42] #list(range(0, 43)) #
-INPUT_CHANNELS = len(BANDS)
-REDUCED_CHANNELS = 15
+# CROP_TYPE_INDICES = [12, 13, 14, 16]
+CROP_TYPE_INDICES = list(range(12, 27)) + [28]  
+#CROP_TYPE_INDICES = [12, 13, 14, 16] # list(range(12, 42))
+# BANDS = list(range(0, 12)) + CROP_TYPE_INDICES + [42] # Don't include crop types?
+FEATURE_BANDS = list(range(0, 12)) + [42]
+PURE_THRESHOLD = 0.5
+
+INPUT_CHANNELS = len(FEATURE_BANDS)
+REDUCED_CHANNELS = 12
 
 # Print params for reference
 print("=========================== PARAMS ===========================")
@@ -65,7 +71,8 @@ if FROM_PRETRAINED:
 else:
     print("Training from scratch")
 print("Output model:", os.path.basename(SUBTILE_SIF_MODEL_FILE))
-print("Bands:", BANDS)
+print("Crop types:", CROP_TYPE_INDICES)
+print("Bands:", FEATURE_BANDS)
 print("---------------------------------")
 print("Model:", MODEL_TYPE)
 print("Optimizer:", OPTIMIZER_TYPE)
@@ -81,9 +88,11 @@ print("==============================================================")
 
 
 # TODO should there be 2 separate models?
-def train_model(subtile_sif_model, dataloaders, dataset_sizes, criterion, optimizer, device, sif_mean, sif_std, subtile_dim, sif_min=0.2, sif_max=1.7, num_epochs=25):
+def train_model(models, dataloaders, dataset_sizes, criterion, optimizers, device, sif_mean, sif_std, subtile_dim, sif_min=0.2, sif_max=1.7, num_epochs=25):
     since = time.time()
-    best_model_wts = copy.deepcopy(subtile_sif_model.state_dict())
+
+    # Store weights for the best model for each crop type
+    best_model_wts = {crop:copy.deepcopy(model.state_dict()) for (crop, model) in models.items()}
     best_loss = float('inf')
     train_losses = []
     val_losses = []
@@ -98,14 +107,19 @@ def train_model(subtile_sif_model, dataloaders, dataset_sizes, criterion, optimi
 
         # Each epoch has a training and validation phase
         for phase in ['train', 'val']:
-            if phase == 'train':
-                subtile_sif_model.train()
-            else:
-                subtile_sif_model.eval()
+            for crop, model in models.items():
+                if phase == 'train':
+                    model.train()
+                else:
+                    model.eval()
 
-            running_loss = 0.0
+            # Count number of subtiles per crop
+            num_subtiles_per_crop = {}
+            for crop in models:
+                num_subtiles_per_crop[crop] = 0
 
             # Iterate over data.
+            running_loss = 0.0
             j = 0
             for sample in dataloaders[phase]:
                 # Read batch from dataloader
@@ -119,18 +133,29 @@ def train_model(subtile_sif_model, dataloaders, dataset_sizes, criterion, optimi
                 # For each large tile, predict SIF by passing each of its sub-tiles through the model
                 predicted_sifs_standardized = torch.empty((batch_size)).to(device)
                 with torch.set_grad_enabled(phase == 'train'):
-                    optimizer.zero_grad()  # Clear gradients
+                    # Clear gradients
+                    for crop, optimizer in optimizers.items():
+                        optimizer.zero_grad()
+                    
+                    # seen_crops = set()
                     for i in range(batch_size):
-                        # Get list of sub-tiles in this large tile
-                        subtiles = get_subtiles_list(input_tiles_standardized[i, BANDS, :, :], subtile_dim, device, MAX_SUBTILE_CLOUD_COVER)
-                        # print(' ====== Random pixels =======')
-                        # print(subtiles[0, :, 8, 8])
-                        # print(subtiles[0, :, 8, 9])
-                        # print(subtiles[0, :, 9, 9])
-                        predicted_subtile_sifs = subtile_sif_model(subtiles)
-                        #print('predicted_subtile_sifs requires grad', predicted_subtile_sifs.requires_grad)
-                        #print('Predicted subtile SIFs', predicted_subtile_sifs[100:120] * sif_std + sif_mean)
-                        #print(predicted_subtile_sifs.shape)
+                        # Get list of sub-tiles in this large tile, by crop type
+                        subtiles_by_crop, num_subtiles = get_subtiles_list_by_crop(input_tiles_standardized[i], subtile_dim, device,
+                                                                               CROP_TYPE_INDICES, PURE_THRESHOLD, MAX_SUBTILE_CLOUD_COVER)
+
+                        # For each crop type: pass the subtiles dominated by the crop through that
+                        # crop type's network.
+                        predicted_subtile_sifs = torch.empty((num_subtiles))
+                        subtile_idx = 0
+                        for crop, subtiles in subtiles_by_crop.items():
+                            num_subtiles_this_crop = subtiles.shape[0]
+                            num_subtiles_per_crop[crop] += num_subtiles_this_crop
+                            subtiles = subtiles[:, FEATURE_BANDS, :, :]
+                            predicted_subtile_sifs[subtile_idx:subtile_idx+num_subtiles_this_crop] = models[crop](subtiles).flatten()
+                            subtile_idx += num_subtiles_this_crop
+                            # if crop not in seen_crops:
+                            #     seen_crops.append(crop)
+
                         predicted_sifs_standardized[i] = torch.mean(predicted_subtile_sifs)
                     #print('predicted_sifs_standardized requires grad', predicted_sifs_standardized.requires_grad)
                     #print('Shape of predicted total SIFs', predicted_sifs_standardized.shape)
@@ -142,16 +167,21 @@ def train_model(subtile_sif_model, dataloaders, dataset_sizes, criterion, optimi
                     # backward + optimize only if in training phase
                     if phase == 'train':
                         loss.backward()
-                        #print("Conv1 grad after backward", subtile_sif_model.conv1.bias.grad)
-                        optimizer.step()      
+                        #print("Conv1 grad after backward", models[12].conv1.bias.grad)
+                        for crop, optimizer in optimizers.items():
+                            optimizer.step()
+
+                        #print("Seen crops", seen_crops)
+                        #for crop in seen_crops:
+                        #    optimizers[crop].step()
 
                     # statistics
                     predicted_sifs_non_standardized = torch.tensor(predicted_sifs_standardized * sif_std + sif_mean, dtype=torch.float).to(device)
                     non_standardized_loss = criterion(predicted_sifs_non_standardized, true_sifs_non_standardized)
                     j += 1
-                    if j % 100 == 0:
+                    if j % 50 == 0:
                         print('========================')
-                        print('*** >>> predicted subtile sifs for 0th', predicted_subtile_sifs[0] * sif_std + sif_mean)
+                        print('*** >>> predicted subtile sifs for last', predicted_subtile_sifs * sif_std + sif_mean)
                         print('*** Predicted', predicted_sifs_non_standardized)
                         print('*** True', true_sifs_non_standardized)
                         print('*** batch loss', (math.sqrt(non_standardized_loss.item()) / sif_mean).item())
@@ -161,14 +191,15 @@ def train_model(subtile_sif_model, dataloaders, dataset_sizes, criterion, optimi
 
             print('{} Loss: {:.4f}'.format(
                 phase, epoch_loss))
+            print('Num subtiles per crop', num_subtiles_per_crop)
 
-
-            # deep copy the model
+            # deep copy the models
             if phase == 'val' and epoch_loss < best_loss:
                 best_loss = epoch_loss
-                best_model_wts = copy.deepcopy(subtile_sif_model.state_dict())
-                torch.save(subtile_sif_model.state_dict(), SUBTILE_SIF_MODEL_FILE)
-                torch.save(subtile_sif_model.state_dict(), SUBTILE_SIF_MODEL_FILE + "_epoch" + str(epoch))
+                best_model_wts = {crop:copy.deepcopy(model.state_dict()) for (crop, model) in models.items()}
+                for crop, model in models.items():
+                    torch.save(model.state_dict(), SUBTILE_SIF_MODEL_FILE + "_crop_" + str(crop))
+
 
             # Record loss
             if phase == 'train':
@@ -184,7 +215,8 @@ def train_model(subtile_sif_model, dataloaders, dataset_sizes, criterion, optimi
     print('Best val loss: {:4f}'.format(best_loss))
 
     # load best model weights
-    subtile_sif_model.load_state_dict(best_model_wts)
+    for crop, model_wts in best_model_wts:
+        models[crop].load_state_dict(model_wts)
     return subtile_sif_model, train_losses, val_losses, best_loss
 
 
@@ -242,33 +274,41 @@ dataloaders = {x: torch.utils.data.DataLoader(datasets[x], batch_size=BATCH_SIZE
 
 print("Dataloaders")
 
-if MODEL_TYPE == 'resnet18':
-    subtile_sif_model = small_resnet.resnet18(input_channels=INPUT_CHANNELS).to(device)
-elif MODEL_TYPE == 'simple_cnn':
-    subtile_sif_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, reduced_channels=REDUCED_CHANNELS, output_dim=1, min_output=min_output, max_output=max_output).to(device)
-elif MODEL_TYPE == 'simple_cnn_small':
-    subtile_sif_model = simple_cnn.SimpleCNNSmall(input_channels=INPUT_CHANNELS, reduced_channels=REDUCED_CHANNELS, output_dim=1, min_output=min_output, max_output=max_output).to(device)
-else:
-    print('Model type not supported')
-    exit(1)
+# Initialize models for each crop type
+models = dict()
+optimizers = dict()
+for crop in [-1] + CROP_TYPE_INDICES:
+    if MODEL_TYPE == 'resnet18':
+        model = small_resnet.resnet18(input_channels=INPUT_CHANNELS).to(device)
+    elif MODEL_TYPE == 'simple_cnn':
+        model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, reduced_channels=REDUCED_CHANNELS, output_dim=1, min_output=min_output, max_output=max_output).to(device)
+    elif MODEL_TYPE == 'simple_cnn_small':
+        model = simple_cnn.SimpleCNNSmall(input_channels=INPUT_CHANNELS, reduced_channels=REDUCED_CHANNELS, output_dim=1, min_output=min_output, max_output=max_output).to(device)
+    else:
+        print('Model type not supported')
+        exit(1)
+    models[crop] = model
 
+    # Create optimizer for the model
+    if OPTIMIZER_TYPE == "Adam":
+        optimizers[crop] = optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
+    else:
+        print("Optimizer not supported")
+        exit(1)
+
+# If "FROM_PRETRAINED" is true, load pre-trained models
 if FROM_PRETRAINED:
-    subtile_sif_model.load_state_dict(torch.load(PRETRAINED_SUBTILE_SIF_MODEL_FILE, map_location=device))
+    for crop, model in models.items():
+        model.load_state_dict(torch.load(PRETRAINED_SUBTILE_SIF_MODEL_FILE + "_crop_" + str(crop), map_location=device))
 
+# Loss function
 criterion = nn.MSELoss(reduction='mean')
-
-if OPTIMIZER_TYPE == "Adam":
-    optimizer = optim.Adam(subtile_sif_model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
-else:
-    print("Optimizer not supported")
-    exit(1)
 
 dataset_sizes = {'train': len(train_metadata),
                  'val': len(val_metadata)}
 
-subtile_sif_model, train_losses, val_losses, best_loss = train_model(subtile_sif_model, dataloaders, dataset_sizes, criterion, optimizer, device, sif_mean, sif_std, subtile_dim=SUBTILE_DIM, num_epochs=NUM_EPOCHS)
+models, train_losses, val_losses, best_loss = train_model(models, dataloaders, dataset_sizes, criterion, optimizers, device, sif_mean, sif_std, subtile_dim=SUBTILE_DIM, num_epochs=NUM_EPOCHS)
 
-torch.save(subtile_sif_model.state_dict(), SUBTILE_SIF_MODEL_FILE)
 
 # Plot loss curves
 print("Train losses:", train_losses)

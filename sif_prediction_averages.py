@@ -14,19 +14,27 @@ import matplotlib.pyplot as plt
 from sif_utils import plot_histogram, print_stats
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
+
+# Train files
 TRAIN_DATE = "2018-08-01" # "2018-07-16"
 TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_" + TRAIN_DATE)
 TILE_AVERAGE_TRAIN_FILE = os.path.join(TRAIN_DATASET_DIR, "tile_info_train.csv")
 TILE_AVERAGE_VAL_FILE = os.path.join(TRAIN_DATASET_DIR, "tile_info_val.csv")
-OCO2_AVERAGE_FILE = os.path.join(TRAIN_DATASET_DIR, "oco2_eval_subtiles.csv")
 BAND_STATISTICS_FILE = os.path.join(TRAIN_DATASET_DIR, "band_statistics_train.csv")
 
+# OCO-2 eval file
+OCO2_AVERAGE_FILE = os.path.join(TRAIN_DATASET_DIR, "oco2_eval_subtiles.csv")
+print("OCO2 file", OCO2_AVERAGE_FILE)
+# CFIS eval files
 EVAL_DATE = "2016-08-01" #"2016-07-16"
 EVAL_DATASET_DIR = os.path.join(DATA_DIR, "dataset_" + EVAL_DATE)
-EVAL_SUBTILE_AVERAGE_FILE = os.path.join(EVAL_DATASET_DIR, "eval_subtile_averages.csv")
-METHOD = "1a_Linear_Regression" #"1b_Ridge_regression" #"Gradient_Boosting_Regressor"
+EVAL_SUBTILE_AVERAGE_FILE = os.path.join(EVAL_DATASET_DIR, "eval_subtiles.csv")
+
+METHOD = "1b_Ridge_Regression" #"1c_Gradient_Boosting_Regressor" # #"Gradient_Boosting_Regressor"
 CFIS_TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_eval_subtile_' + METHOD
 OCO2_TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_OCO2_' + METHOD
+
+PURE_THRESHOLD = 0.7
 
 # Read datasets
 train_set = pd.read_csv(TILE_AVERAGE_TRAIN_FILE).dropna()
@@ -35,9 +43,12 @@ eval_oco2_set = pd.read_csv(OCO2_AVERAGE_FILE).dropna()
 eval_cfis_set = pd.read_csv(EVAL_SUBTILE_AVERAGE_FILE).dropna()
 band_statistics = pd.read_csv(BAND_STATISTICS_FILE)
 average_sif = band_statistics['mean'].iloc[-1]
+band_means = band_statistics['mean'].values[:-1]
+band_stds = band_statistics['std'].values[:-1]
 
 print('Train samples:', len(train_set))
-print('Val samples;', len(val_set))
+print('Val samples:', len(val_set))
+print('OCO2 samples:', len(eval_oco2_set))
 print('average sif (train, according to band statistics file)', average_sif)
 print('average sif (train, large tiles)', train_set['SIF'].mean())
 print('average sif (val, large_tiles)', val_set['SIF'].mean())
@@ -55,15 +66,26 @@ INPUT_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
                     'canola', 'sunflower', 'dry_beans', 'developed_med_intensity',
                     'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
                     'lentils', 'missing_reflectance']
+# INPUT_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
+#                     'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg', 
+#                     'grassland_pasture', 'corn', 'soybean', 'shrubland',
+#                     'deciduous_forest', 'evergreen_forest', 'spring_wheat', 'developed_open_space',
+#                     'other_hay_non_alfalfa', 'winter_wheat', 'herbaceous_wetlands',
+#                     'woody_wetlands', 'open_water', 'alfalfa', 'fallow_idle_cropland',
+#                     'sorghum', 'developed_low_intensity',
+#                     'missing_reflectance']
 OUTPUT_COLUMN = ['SIF']
+# COVER_COLUMN_NAMES = ['grassland_pasture', 'corn', 'soybean', 'shrubland',
+#                     'deciduous_forest', 'evergreen_forest', 'spring_wheat', 'developed_open_space',
+#                     'other_hay_non_alfalfa', 'winter_wheat', 'herbaceous_wetlands',
+#                     'woody_wetlands', 'open_water', 'alfalfa', 'fallow_idle_cropland',
+#                     'sorghum', 'developed_low_intensity', 'barren', 'durum_wheat',
+#                     'canola', 'sunflower', 'dry_beans', 'developed_med_intensity',
+#                     'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
+#                     'lentils']
 COVER_COLUMN_NAMES = ['grassland_pasture', 'corn', 'soybean', 'shrubland',
-                    'deciduous_forest', 'evergreen_forest', 'spring_wheat', 'developed_open_space',
-                    'other_hay_non_alfalfa', 'winter_wheat', 'herbaceous_wetlands',
-                    'woody_wetlands', 'open_water', 'alfalfa', 'fallow_idle_cropland',
-                    'sorghum', 'developed_low_intensity', 'barren', 'durum_wheat',
-                    'canola', 'sunflower', 'dry_beans', 'developed_med_intensity',
-                    'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
-                    'lentils']
+                    'deciduous_forest', 'evergreen_forest', 'spring_wheat']
+
 X_train = train_set[INPUT_COLUMNS]
 Y_train = train_set[OUTPUT_COLUMN].values.ravel()
 X_val = val_set[INPUT_COLUMNS]
@@ -78,13 +100,25 @@ print('Train set: feature averages')
 for column_name in INPUT_COLUMNS:
     print(column_name, round(np.mean(X_train[column_name]), 3))
 
+
 #plot_histogram(Y_train, "train_large_tile_sif.png")
 #plot_histogram(Y_val, "val_large_tile_sif.png")
 #plot_histogram(Y_cfis, "eval_subtile_sif.png")
 
 
 # Fit model on band averages
-regression_model = LinearRegression().fit(X_train, Y_train)
+if METHOD == "1a_Linear_Regression":
+    regression_model = LinearRegression().fit(X_train, Y_train)
+elif METHOD == "1b_Ridge_Regression":
+    regression_model = Ridge().fit(X_train, Y_train)
+elif METHOD == "1c_Gradient_Boosting_Regressor":
+    regression_model = GradientBoostingRegressor().fit(X_train, Y_train)
+else:
+    print("Unsupported method")
+    exit(1)
+
+# print('Coefficients', regression_model.coef_)
+
 predictions_train = regression_model.predict(X_train)
 predictions_val = regression_model.predict(X_val)
 predictions_oco2 = regression_model.predict(X_oco2)
@@ -131,12 +165,12 @@ print_stats(Y_cfis, predictions_cfis, average_sif)  #eval_cfis_set['SIF'].mean()
 print('========== OCO-2 Eval subtile stats ===========')
 print_stats(Y_oco2, predictions_oco2, average_sif)  #eval_cfis_set['SIF'].mean())  #average_sif)
 
-# Scatter plot of true vs predicted
+# Scatter plot of true vs predicted on large tiles
 plt.scatter(Y_val, predictions_val)
 plt.xlabel('True')
 plt.ylabel('Predicted')
-plt.xlim(left=0, right=2)
-plt.ylim(bottom=0, top=2)
+plt.xlim(left=0, right=1.5)
+plt.ylim(bottom=0, top=1.5)
 plt.title('Large tile val set: predicted vs true SIF (' + METHOD + ')')
 plt.savefig('exploratory_plots/true_vs_predicted_sif_large_tile_' + METHOD + '.png')
 plt.close()
@@ -145,8 +179,8 @@ plt.close()
 plt.scatter(Y_cfis, predictions_cfis)
 plt.xlabel('True')
 plt.ylabel('Predicted')
-plt.xlim(left=0, right=2)
-plt.ylim(bottom=0, top=2)
+plt.xlim(left=0, right=1.5)
+plt.ylim(bottom=0, top=1.5)
 plt.title('CFIS subtile set: predicted vs true SIF (' + METHOD + ')')
 plt.savefig('exploratory_plots/true_vs_predicted_sif_eval_subtile_' + METHOD + '.png')
 plt.close()
@@ -155,8 +189,8 @@ plt.close()
 fig, axeslist = plt.subplots(ncols=3, nrows=10, figsize=(15, 50))
 fig.suptitle('True vs predicted SIF (CFIS): ' + METHOD)
 for idx, crop_type in enumerate(COVER_COLUMN_NAMES):
-    predicted = predictions_cfis[eval_cfis_set[crop_type] > 0.7]
-    true = Y_cfis[eval_cfis_set[crop_type] > 0.7]
+    predicted = predictions_cfis[eval_cfis_set[crop_type] > PURE_THRESHOLD]  # Find CFIS tiles which are "purely" this crop type
+    true = Y_cfis[eval_cfis_set[crop_type] > PURE_THRESHOLD]
     print('======================= CROP: ', crop_type, '==============================')
     print(len(predicted), 'subtiles that are pure', crop_type)
     if len(predicted) >= 2:
@@ -169,6 +203,7 @@ for idx, crop_type in enumerate(COVER_COLUMN_NAMES):
         crop_regression = LinearRegression().fit(X_crop, Y_crop)
         predicted_crop = crop_regression.predict(X_crop)
         print(' ----- Crop specific regression -----')
+        print('Coefficients:', crop_regression.coef_)
         print_stats(Y_crop, predicted_crop, average_sif)
  
     # Plot true vs. predicted for that specific crop
@@ -186,8 +221,8 @@ plt.close()
 plt.scatter(Y_oco2, predictions_oco2)
 plt.xlabel('True')
 plt.ylabel('Predicted')
-plt.xlim(left=0, right=2)
-plt.ylim(bottom=0, top=2)
+plt.xlim(left=0, right=1.5)
+plt.ylim(bottom=0, top=1.5)
 plt.title('OCO-2 set: predicted vs true SIF (' + METHOD + ')')
 plt.savefig('exploratory_plots/true_vs_predicted_sif_OCO2_' + METHOD + '.png')
 plt.close()

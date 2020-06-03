@@ -1,5 +1,5 @@
 """
-Evaluate a "subtile -> SIF" model
+Evaluate a "subtile -> SIF" model on the OCO-2 dataset
 """
 import copy
 import math
@@ -12,8 +12,8 @@ from sklearn.metrics import mean_squared_error, r2_score
 from scipy.stats import pearsonr, spearmanr
 from torch.optim import lr_scheduler
 from reflectance_cover_sif_dataset import ReflectanceCoverSIFDataset
-from eval_subtile_dataset import EvalSubtileDataset
-from sif_utils import print_stats
+from eval_subtile_dataset import EvalSubtileDataset #EvalOCO2Dataset
+from sif_utils import print_stats, get_subtiles_list_by_crop
 import tile_transforms
 import time
 import torch
@@ -30,21 +30,19 @@ from tile2vec.src.tilenet import make_tilenet
 
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-08-01") #"dataset_2018-07-16") #7-16") #07-16") #07-16")
-EVAL_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2016-08-01") #"dataset_2016-07-16") #07-16") #07-16") #2016-07-16")
-EVAL_FILE = os.path.join(EVAL_DATASET_DIR, "eval_subtiles.csv") 
-# EVAL_FILE = os.path.join(TRAIN_DATASET_DIR, "tile_info_val.csv")
-#TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_13") #aug")
-#"subtile_sif_simple_cnn_11")
-TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/AUG_subtile_simple_cnn_16crop_small_2_epoch0") #AUG_small_tile_simple")
-#TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/cfis_sif_aug")
-#RAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_aug") #cfis_sif")
-#TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/small_tile_simple") #large_tile_resnet18")  #test_large_tile_simple")  # small_tile_sif_prediction")
-BAND_STATISTICS_FILE = os.path.join(TRAIN_DATASET_DIR, "band_statistics_train.csv")
-METHOD = '4a_subtile_simple_cnn_small' # '2_large_tile_resnet' # '3_small_tile_simple' #'0_cfis_cheating' # #'3_small_tile_simple' # '2_large_tile_resnet18'
-MODEL_TYPE = 'simple_cnn'
-TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_AUG_eval_subtile_' + METHOD 
+TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-08-01")
+#EVAL_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2016-08-01")
+#OCO2_EVAL_FILE = os.path.join(EVAL_DATASET_DIR, "eval_subtiles.csv")
+EVAL_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-08-01")
+OCO2_EVAL_FILE = os.path.join(EVAL_DATASET_DIR, "oco2_eval_subtiles.csv")
+TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/AUG_subtile_simple_cnn_croptype_4crop")
 
+BAND_STATISTICS_FILE = os.path.join(TRAIN_DATASET_DIR, "band_statistics_train.csv")
+METHOD = '4a_subtile_simple_cnn_small'  #'3_small_tile_simple' # '2_large_tile_resnet18'
+MODEL_TYPE = 'simple_cnn_small'
+TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_OCO2_eval_subtile_' + METHOD 
+MODEL_SUBTILE_DIM = 10
+MAX_SUBTILE_CLOUD_COVER = 0.1
 COLUMN_NAMES = ['true', 'predicted',
                     'lon', 'lat',
                     'ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
@@ -65,25 +63,26 @@ CROP_TYPES = ['grassland_pasture', 'corn', 'soybean', 'shrubland',
                     'canola', 'sunflower', 'dry_beans', 'developed_med_intensity',
                     'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
                     'lentils']
+RESULTS_CSV_FILE = os.path.join(EVAL_DATASET_DIR, 'OCO2_results_' + METHOD + '.csv')
 
-RESULTS_CSV_FILE = os.path.join(EVAL_DATASET_DIR, 'results_' + METHOD + '.csv')
-
-#BANDS = list(range(0, 43))
-BANDS =  list(range(0, 12)) + list(range(12, 27)) + [28] + [42]
-INPUT_CHANNELS = len(BANDS)
-REDUCED_CHANNELS = 15
-RESIZE = False #False # False #True
-RESIZED_DIM = [371, 371]
-DISCRETE_BANDS = list(range(12, 43))
-COVER_INDICES = list(range(12, 42))
-PURE_THRESHOLD = 0.7
-
+# CROP_TYPE_INDICES = list(range(12, 42))
+# BANDS = list(range(0, 12)) + CROP_TYPES + [42] # Don't include crop types?
+CROP_TYPE_INDICES = [12, 13, 14, 16]
+FEATURE_BANDS = list(range(0, 12)) + [42]
+INPUT_CHANNELS = len(FEATURE_BANDS)
+REDUCED_CHANNELS = 8
+PURE_THRESHOLD = 0.5
+RESIZE = False
 MIN_SIF = 0.2
 MAX_SIF = 1.7
+BATCH_SIZE = 1
+assert(BATCH_SIZE == 1)
 
 
-def eval_model(model, dataloader, dataset_size, criterion, device, sif_mean, sif_std):
-    model.eval()   # Set model to evaluate mode
+def eval_model(models, dataloader, dataset_size, criterion, device, sif_mean, sif_std):
+    for crop, model in models.items():
+        model.eval()  # Set model to evaluate mode
+
     print('SIF mean', sif_mean)
     print('SIF std', sif_std)
     sif_mean = torch.tensor(sif_mean).to(device)
@@ -93,30 +92,38 @@ def eval_model(model, dataloader, dataset_size, criterion, device, sif_mean, sif
 
     # Iterate over data.
     for sample in dataloader:
-        input_tile_standardized = sample['subtile'].to(device)
-        #print('=========================')
-        #print('Input band means')
-        #print(torch.mean(input_tile_standardized, dim=(2,3)))
-        true_sif_non_standardized = sample['SIF'].to(device)
+        for i in range(len(sample['SIF'])):
+            input_tile_standardized = sample['subtile'][i].to(device)
+            true_sif_non_standardized = sample['SIF'][i].to(device)
 
-        # forward
-        # track history if only in train
-        with torch.set_grad_enabled(False):
-            predicted_sif_standardized = model(input_tile_standardized[:, BANDS, :, :]).flatten()
-            predicted_sif_non_standardized = torch.tensor(predicted_sif_standardized * sif_std + sif_mean, dtype=torch.float).to(device)
-            loss = criterion(predicted_sif_non_standardized, true_sif_non_standardized)
+            with torch.set_grad_enabled(False):
+                # Get list of sub-tiles for each crop type
+                subtiles_by_crop, num_subtiles = get_subtiles_list_by_crop(input_tile_standardized, MODEL_SUBTILE_DIM, device,
+                                                                           CROP_TYPE_INDICES, PURE_THRESHOLD, MAX_SUBTILE_CLOUD_COVER)
+                predicted_subtile_sifs = torch.empty((num_subtiles))
+                subtile_idx = 0
 
-        # statistics
-        batch_size = len(sample['SIF'])
-        band_means = torch.mean(input_tile_standardized, dim=(2,3))
-        results[j:j+batch_size, 0] = true_sif_non_standardized.cpu().numpy()
-        results[j:j+batch_size, 1] = predicted_sif_non_standardized.cpu().numpy()
-        results[j:j+batch_size, 2] = sample['lon']
-        results[j:j+batch_size, 3] = sample['lat']
-        results[j:j+batch_size, 4:] = band_means.cpu().numpy()
-        j += batch_size
-        #if j > 50:
-        #    break
+                # Loop through all crop types. For each crop type, pass their sub-tiles through model to predict sub-tile SIF
+                for crop, subtiles in subtiles_by_crop.items():
+                    num_subtiles_this_crop = subtiles.shape[0]
+                    subtiles = subtiles[:, FEATURE_BANDS, :, :]
+                    predicted_subtile_sifs[subtile_idx:subtile_idx+num_subtiles_this_crop] = models[crop](subtiles).flatten()
+                    subtile_idx += num_subtiles_this_crop
+
+                # Take the average predicted SIF over all sub-tiles
+                predicted_sif_standardized = torch.mean(predicted_subtile_sifs)
+                predicted_sif_non_standardized = torch.tensor(predicted_sif_standardized * sif_std + sif_mean, dtype=torch.float).to(device)
+                loss = criterion(predicted_sif_non_standardized, true_sif_non_standardized)
+                #print('Predicted', predicted_sif_non_standardized, 'True', true_sif_non_standardized)
+
+            # statistics
+            band_means = torch.mean(input_tile_standardized, dim=(1, 2))
+            results[j, 0] = true_sif_non_standardized.item()
+            results[j, 1] = predicted_sif_non_standardized.item()
+            results[j, 2] = sample['lon'][i].item()
+            results[j, 3] = sample['lat'][i].item()
+            results[j, 4:] = band_means.cpu().numpy()
+            j += 1
  
     return results
 
@@ -131,7 +138,7 @@ else:
 print("Device", device)
 
 # Read train/val tile metadata
-eval_metadata = pd.read_csv(EVAL_FILE)
+eval_metadata = pd.read_csv(OCO2_EVAL_FILE)
 print("Eval samples", len(eval_metadata))
 
 # Read mean/standard deviation for each band, for standardization purposes
@@ -166,25 +173,28 @@ transform = transforms.Compose(transform_list)
 dataset_size = len(eval_metadata)
 # dataset = ReflectanceCoverSIFDataset(eval_metadata, transform)
 dataset = EvalSubtileDataset(eval_metadata, transform=transform)
-dataloader = torch.utils.data.DataLoader(dataset, batch_size=4,
+dataloader = torch.utils.data.DataLoader(dataset, batch_size=BATCH_SIZE,
                                          shuffle=True, num_workers=4)
 
-# Load trained model from file
-if MODEL_TYPE == 'simple_cnn':
-    model = simple_cnn.SimpleCNNSmall(input_channels=INPUT_CHANNELS, reduced_channels=REDUCED_CHANNELS, output_dim=1, min_output=min_output, max_output=max_output).to(device)  
-elif MODEL_TYPE == 'resnet18':
-    model = resnet.resnet18(input_channels=INPUT_CHANNELS).to(device)
-else:
-    print('Unsupported model type', MODEL_TYPE)
-    exit(1)
-
-# model = make_tilenet(in_channels=INPUT_CHANNELS, z_dim=1).to(device)
-model.load_state_dict(torch.load(TRAINED_MODEL_FILE, map_location=device))
+# Load trained models from file
+models = dict()
+for crop in [-1] + CROP_TYPE_INDICES:
+    if MODEL_TYPE == 'resnet18':
+        model = small_resnet.resnet18(input_channels=INPUT_CHANNELS).to(device)
+    elif MODEL_TYPE == 'simple_cnn':
+        model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, reduced_channels=REDUCED_CHANNELS, output_dim=1, min_output=min_output, max_output=max_output).to(device)
+    elif MODEL_TYPE == 'simple_cnn_small':
+        model = simple_cnn.SimpleCNNSmall(input_channels=INPUT_CHANNELS, reduced_channels=REDUCED_CHANNELS, output_dim=1, min_output=min_output, max_output=max_output).to(device)
+    else:
+        print('Model type not supported')
+        exit(1)
+    model.load_state_dict(torch.load(TRAINED_MODEL_FILE + "_crop_" + str(crop), map_location=device))
+    models[crop] = model
 
 criterion = nn.MSELoss(reduction='mean')
 
 # Evaluate the model
-results_numpy = eval_model(model, dataloader, dataset_size, criterion, device, sif_mean, sif_std)
+results_numpy = eval_model(models, dataloader, dataset_size, criterion, device, sif_mean, sif_std)
 
 results_df = pd.DataFrame(results_numpy, columns=COLUMN_NAMES)
 results_df.to_csv(RESULTS_CSV_FILE)
@@ -199,14 +209,16 @@ print_stats(true, predicted, sif_mean)
 plt.scatter(true, predicted)
 plt.xlabel('True')
 plt.ylabel('Predicted')
-plt.title('True vs predicted SIF (CFIS):' + METHOD)
-plt.xlim(left=0, right=2)
-plt.ylim(bottom=0, top=2)
+plt.title('True vs predicted SIF (OCO2):' + METHOD)
+plt.xlim(left=0, right=1.5)
+plt.ylim(bottom=0, top=1.5)
 plt.savefig(TRUE_VS_PREDICTED_PLOT + '.png')
 plt.close()
 
+PURE_THRESHOLD = 0.7
+
 fig, axeslist = plt.subplots(ncols=3, nrows=10, figsize=(15, 50))
-fig.suptitle('True vs predicted SIF (CFIS): ' + METHOD)
+fig.suptitle('True vs predicted SIF (OCO2): ' + METHOD)
 for idx, crop_type in enumerate(CROP_TYPES):
     crop_rows = results_df.loc[results_df[crop_type] > PURE_THRESHOLD]
     print(len(crop_rows), 'subtiles that are majority', crop_type)
@@ -214,8 +226,8 @@ for idx, crop_type in enumerate(CROP_TYPES):
     # Scatter plot of true vs predicted
     axeslist.ravel()[idx].scatter(crop_rows['true'], crop_rows['predicted'])
     axeslist.ravel()[idx].set(xlabel='True', ylabel='Predicted')
-    axeslist.ravel()[idx].set_xlim(left=0, right=2)
-    axeslist.ravel()[idx].set_ylim(bottom=0, top=2)
+    axeslist.ravel()[idx].set_xlim(left=0, right=1.5)
+    axeslist.ravel()[idx].set_ylim(bottom=0, top=1.5)
     axeslist.ravel()[idx].set_title(crop_type)
 
 plt.tight_layout()

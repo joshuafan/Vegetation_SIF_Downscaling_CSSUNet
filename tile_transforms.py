@@ -16,6 +16,7 @@ class StandardizeTile(object):
 
     def __call__(self, tile):
         tile[self.bands_to_transform, :, :] = (tile[self.bands_to_transform, :, :] - self.band_means) / self.band_stds
+        tile[-1, :, :] = np.logical_not(tile[-1, :, :])
         return tile
 
 

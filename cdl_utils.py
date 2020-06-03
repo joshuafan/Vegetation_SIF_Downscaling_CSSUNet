@@ -30,6 +30,8 @@ CDL_COLORS = ["white",
               "#ffff00", "#a50000", "#999999", "#700049", "#a800e2",
               "#a05989", "#93cc93", "#54ff00", "#e2007c", "#00ddaf"]
 
+
+
 def plot_cdl_layers(cover_bands, filename):
     assert(len(cover_bands.shape) == 3)
     cover_tile = np.zeros((cover_bands.shape[1], cover_bands.shape[2]))
@@ -60,6 +62,8 @@ def plot_cdl_layers(cover_bands, filename):
     plt.close()
 
 
+
+# Test code
 if __name__ == "__main__":
     example_cdl = [[[0, 0, 0], [0, 1, 1], [0, 1, 1]],
                    [[1, 1, 1], [0, 0, 0], [0, 0, 0]]]

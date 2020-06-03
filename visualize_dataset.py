@@ -1,4 +1,6 @@
 import math
+import matplotlib
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import os
@@ -58,14 +60,48 @@ def plot_images(image_rows, image_filename_column, output_file):
     plot_figures(output_file, images, nrows=math.ceil(len(images) / 5), ncols=5)
  
 
+# Note there's a lot of redundant code here
+def plot_cdl_layers(image_rows, image_filename_column, output_file):
+    # Load all tiles and store the CDL bands
+    images = {}
+    for idx, image_row in image_rows.iterrows():
+        cdl_layers = np.load(image_row[image_filename_column])[CDL_BANDS, :, :]
+        title = 'Lat' + str(round(image_row['lat'], 6)) + ', Lon' + str(round(image_row['lon'], 6)) + ' (SIF = ' + str(round(image_row['SIF'], 3)) + ')'
+        images[title] = cdl_layers
+
+    # Set up plots
+    fig, axeslist = plt.subplots(ncols=5, nrows=math.ceil(len(images) / 5), figsize=(20, 20))
+    # Custom CDL colormap
+    cmap = matplotlib.colors.ListedColormap(cdl_utils.CDL_COLORS)
+
+    for ind, title in enumerate(images):
+        # Convert CDL bands into a single layer (each pixel has one number representing the crop type)
+        cover_bands = images[title]
+        cover_tile = np.zeros((cover_bands.shape[1], cover_bands.shape[2]))
+        for i in range(cover_bands.shape[0]):
+            # Reserving 0 for no cover, so add 1
+            cover_tile[cover_bands[i, :, :] == 1] = i + 1
+        img = axeslist.ravel()[ind].imshow(cover_tile, interpolation='nearest',
+                     cmap=cmap, vmin=-0.5, vmax=len(cdl_utils.CDL_COLORS)-0.5)
+        axeslist.ravel()[ind].set_title(title)
+        axeslist.ravel()[ind].set_axis_off()
+
+    ticks_loc = np.arange(0, len(cdl_utils.CDL_COLORS), 1) #len(COVERS_TO_MASK) / len(CDL_COLORS))
+    cb = plt.colorbar(img, cmap=cmap)
+    cb.set_ticks(ticks_loc)
+    cb.set_ticklabels(cdl_utils.COVER_NAMES)
+    cb.ax.tick_params(labelsize='small')
+    plt.tight_layout() # optional
+    plt.savefig(output_file)
+    plt.close()      
+
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-TRAIN_DATE = "2018-07-16" # "2018-08-01" #"2018-07-16"
+TRAIN_DATE = "2018-08-01" #"2018-07-16"
 TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_" + TRAIN_DATE)
-TILE_AVERAGE_TRAIN_FILE = os.path.join(TRAIN_DATASET_DIR, "tile_averages_train.csv")
-TILE_AVERAGE_VAL_FILE = os.path.join(TRAIN_DATASET_DIR, "tile_averages_val.csv")
 BAND_STATISTICS_FILE = os.path.join(TRAIN_DATASET_DIR, "band_statistics_train.csv")
 TRAIN_TILE_DATASET = os.path.join(TRAIN_DATASET_DIR, "tile_info_train.csv")
 ALL_TILE_DATASET = os.path.join(TRAIN_DATASET_DIR, "reflectance_cover_to_sif.csv")
+OCO2_SUBTILE_DATASET = os.path.join(TRAIN_DATASET_DIR, "oco2_eval_subtiles.csv")
 
 #TILES_DIR = os.path.join(DATA_DIR, "tiles_2016-07-16")
 EVAL_DATE = "2016-08-01"
@@ -98,7 +134,7 @@ TROPOMI_DATE_RANGE = slice("2018-08-01", "2018-08-16")
 EVAL_SUBTILE_DATASET = os.path.join(DATA_DIR, "dataset_" + EVAL_DATE + "/eval_subtiles.csv")
 RGB_BANDS = [3, 2, 1]
 CDL_BANDS = list(range(12, 42))
-SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/AUG_subtile_simple_cnn_2")
+SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/AUG_subtile_simple_cnn_16crop_2")
 TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_recon_5/TileNet.ckpt") #finetuned_tile2vec.ckpt") #TileNet.ckpt")
 EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_embedding_to_sif") #finetuned_tile2vec_embedding_to_sif.ckpt") #tile2vec_embedding_to_sif")
 EMBEDDING_TYPE = 'tile2vec'
@@ -109,6 +145,10 @@ SAN_MODEL_FILE_74 = os.path.join(DATA_DIR, "models/SAN_feat74")
 SAN_MODEL_FILE_111 = os.path.join(DATA_DIR, "models/SAN_feat111_3")
 
 INPUT_CHANNELS = 43
+
+BANDS =  list(range(0, 12)) + list(range(12, 27)) + [28] + [42] #list(range(0, 43)) #
+INPUT_CHANNELS_SIMPLE = len(BANDS)
+REDUCED_CHANNELS = 15
 SUBTILE_DIM = 10
 TILE_SIZE_DEGREES = 0.1
 INPUT_SIZE = 371
@@ -140,7 +180,7 @@ max_output = (MAX_SIF - sif_mean) / sif_std
 
 
 # Load subtile SIF model
-subtile_sif_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, reduced_channels=43, output_dim=1, min_output=min_output, max_output=max_output).to(device)
+subtile_sif_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS_SIMPLE, reduced_channels=REDUCED_CHANNELS, output_dim=1, min_output=min_output, max_output=max_output).to(device)
 subtile_sif_model.load_state_dict(torch.load(SUBTILE_SIF_MODEL_FILE, map_location=device))
 subtile_sif_model.eval()
 
@@ -183,8 +223,6 @@ san_model_111.eval()
 
 
 
-
-
 # Set up image transforms
 transform_list = []
 transform_list.append(tile_transforms.StandardizeTile(band_means, band_stds))
@@ -193,7 +231,7 @@ transform = transforms.Compose(transform_list)
 # Read an input tile
 tile = np.load(IMAGE_FILE)
 input_tile_non_standardized = torch.tensor(tile, dtype=torch.float).unsqueeze(0).to(device)
-subtiles_non_standardized = get_subtiles_list(input_tile_non_standardized, SUBTILE_DIM, device)[0]
+subtiles_non_standardized = get_subtiles_list(input_tile_non_standardized[0], SUBTILE_DIM, device, max_subtile_cloud_cover=None)
 subtile_averages = torch.mean(subtiles_non_standardized, dim=(2,3))
 
 # Visualize the input tile
@@ -220,8 +258,14 @@ plt.close()
 
 
 
-# Load "band average" dataset
-train_set = pd.read_csv(TILE_AVERAGE_TRAIN_FILE).dropna()
+# Load datasets
+#all_metadata = pd.read_csv(ALL_TILE_DATASET).dropna()
+train_metadata = pd.read_csv(TRAIN_TILE_DATASET).dropna()
+eval_metadata = pd.read_csv(EVAL_SUBTILE_DATASET).dropna()
+oco2_metadata = pd.read_csv(OCO2_SUBTILE_DATASET).dropna()
+
+
+
 INPUT_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
                     'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg', 
                     'grassland_pasture', 'corn', 'soybean', 'shrubland',
@@ -233,21 +277,89 @@ INPUT_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
                     'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
                     'lentils', 'missing_reflectance']
 
+CROP_TYPES = ['grassland_pasture', 'corn', 'soybean', 'shrubland',
+                    'deciduous_forest', 'evergreen_forest', 'spring_wheat', 'developed_open_space',
+                    'other_hay_non_alfalfa', 'winter_wheat', 'herbaceous_wetlands',
+                    'woody_wetlands', 'open_water', 'alfalfa', 'fallow_idle_cropland',
+                    'sorghum', 'developed_low_intensity', 'barren', 'durum_wheat',
+                    'canola', 'sunflower', 'dry_beans', 'developed_med_intensity',
+                    'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
+                    'lentils']
 print('input columns', INPUT_COLUMNS)
 OUTPUT_COLUMN = ['SIF']
 
 # Plot histogram of each band
 for column in INPUT_COLUMNS + OUTPUT_COLUMN:
-    plot_histogram(np.array(train_set[column]), "train_" + column + ".png")
+    print('============== Column:', column, '==================')
 
+    #print('-------------- Large tiles (unfiltered)-------------')
+    #plot_histogram(np.array(all_metadata[column]), "histogram_all_" + column + ".png")
+
+    print('-------------- Large tiles (train) -----------------')
+    plot_histogram(np.array(train_metadata[column]), "histogram_train_" + column + ".png")
+
+    print('-------------- CFIS sub-tiles ----------------------')
+    plot_histogram(np.array(eval_metadata[column]), "histogram_cfis_" + column + ".png")
+
+    print('-------------- OCO-2 sub-tiles ----------------------')
+    plot_histogram(np.array(oco2_metadata[column]), "histogram_oco2_" + column + ".png")
+
+for crop_type in CROP_TYPES:
+    print('========= SIF for crop type:', crop_type, '==========')
+
+    #print('-------------- Large tiles (unfiltered)-------------')
+    #crop_type_sif_all = all_metadata[all_metadata[crop_type] > 0.5]
+    #if len(crop_type_sif_all) >= 5:
+    #    plot_histogram(np.array(crop_type_sif_all['SIF']), "sif_distribution_all_" + column + ".png")
+
+    print('-------------- Large tiles (train) -----------------')
+    crop_type_sif_train = train_metadata[train_metadata[crop_type] > 0.7]
+    if len(crop_type_sif_train) >= 5:
+        plot_histogram(np.array(crop_type_sif_train['SIF']), "sif_distribution_train_" + crop_type + ".png")
+
+    print('-------------- CFIS sub-tiles ----------------------')
+    crop_type_sif_cfis = eval_metadata[eval_metadata[crop_type] > 0.7]
+    if len(crop_type_sif_cfis) >= 5:
+        plot_histogram(np.array(crop_type_sif_cfis['SIF']), "sif_distribution_cfis_" + crop_type + ".png")
+
+    print('-------------- OCO2 sub-tiles ----------------------')
+    crop_type_sif_oco2 = oco2_metadata[oco2_metadata[crop_type] > 0.7]
+    if len(crop_type_sif_oco2) >= 5:
+        plot_histogram(np.array(crop_type_sif_oco2['SIF']), "sif_distribution_oco2_" + crop_type + ".png")
+
+
+# Display tiles with largest/smallest TROPOMI SIFs
+highest_tropomi_sifs = train_metadata.nlargest(25, 'SIF')
+plot_images(highest_tropomi_sifs, 'tile_file', 'exploratory_plots/tropomi_sif_high_subtiles.png')
+lowest_tropomi_sifs = train_metadata.nsmallest(25, 'SIF')
+plot_images(lowest_tropomi_sifs, 'tile_file', 'exploratory_plots/tropomi_sif_low_subtiles.png')
+
+# Display tiles with largest/smallest CFIS SIFs
+highest_cfis_sifs = eval_metadata.nlargest(25, 'SIF')
+plot_images(highest_cfis_sifs, 'subtile_file', 'exploratory_plots/cfis_sif_high_subtiles.png')
+lowest_cfis_sifs = eval_metadata.nsmallest(25, 'SIF')
+plot_images(lowest_cfis_sifs, 'subtile_file', 'exploratory_plots/cfis_sif_low_subtiles.png')
+print('Most common regions in CFIS:', eval_metadata['tile_file'].value_counts())
+
+# Display tiles with largest/smallest OCO-2 SIFs
+highest_oco2_sifs = oco2_metadata.nlargest(25, 'SIF')
+plot_images(highest_oco2_sifs, 'subtile_file', 'exploratory_plots/oco2_sif_high_subtiles.png')
+plot_cdl_layers(highest_oco2_sifs, 'subtile_file', 'exploratory_plots/oco2_sif_high_subtiles_cdl.png')
+lowest_oco2_sifs = oco2_metadata.nsmallest(25, 'SIF')
+print("Lowest OCO2 SIFs")
+pd.options.display.max_columns = None
+print(lowest_oco2_sifs)
+exit(1)
+plot_images(lowest_oco2_sifs, 'subtile_file', 'exploratory_plots/oco2_sif_low_subtiles.png')
+plot_cdl_layers(lowest_oco2_sifs, 'subtile_file', 'exploratory_plots/oco2_sif_low_subtiles_cdl.png')
 
 
 sif_cmap = plt.get_cmap('YlGn')
 sif_cmap.set_bad(color='red')
 
 # Train linear regression to predict SIF given band averages
-X_train = train_set[INPUT_COLUMNS]
-Y_train = train_set[OUTPUT_COLUMN].values.ravel()
+X_train = train_metadata[INPUT_COLUMNS]
+Y_train = train_metadata[OUTPUT_COLUMN].values.ravel()
 linear_regression = LinearRegression().fit(X_train, Y_train)
 #print('First train tile', X_train.iloc[0])
 #print('Second train tile', X_train.iloc[1])
@@ -261,15 +373,15 @@ print('Predicted sifs linear', predicted_sifs_linear)
 #plt.close()
 
 # Standardize input tile
-input_tile_standardized = torch.tensor(transform(tile), dtype=torch.float).unsqueeze(0).to(device)
+input_tile_standardized = torch.tensor(transform(tile), dtype=torch.float).to(device)
 print('Input tile dim', input_tile_standardized.shape)
-print('Random pixel', input_tile_standardized[:, :, 8, 8])
+print('Random pixel', input_tile_standardized[:, 8, 8])
 
 # Obtain simple CNN model's subtile SIF predictions
-subtiles_standardized = get_subtiles_list(input_tile_standardized, SUBTILE_DIM, device)[0]  # (batch x num subtiles x bands x subtile_dim x subtile_dim)
+subtiles_standardized = get_subtiles_list(input_tile_standardized, SUBTILE_DIM, device, max_subtile_cloud_cover=None)  # (batch x num subtiles x bands x subtile_dim x subtile_dim)
 print('Subtile shape', subtiles_standardized.shape)
 with torch.set_grad_enabled(False):
-    predicted_sifs_simple_cnn_standardized = subtile_sif_model(subtiles_standardized).detach().numpy()
+    predicted_sifs_simple_cnn_standardized = subtile_sif_model(subtiles_standardized[:, BANDS, :, :]).detach().numpy()
 print('Predicted SIFs standardized', predicted_sifs_simple_cnn_standardized.shape)
 predicted_sifs_simple_cnn_non_standardized = (predicted_sifs_simple_cnn_standardized * sif_std + sif_mean).reshape((37, 37))
 
@@ -292,16 +404,16 @@ predicted_sifs_tile2vec_fixed_non_standardized = (predicted_sifs_tile2vec_fixed_
 
 
 # Obtain SAN model predictions
-_, _, _, _, predicted_sifs_san_37_standardized = san_model_37(input_tile_standardized)
+_, _, _, _, predicted_sifs_san_37_standardized = san_model_37(input_tile_standardized.unsqueeze(0))
 predicted_sifs_san_37_standardized = predicted_sifs_san_37_standardized.detach().numpy()
 predicted_sifs_san_37 = (predicted_sifs_san_37_standardized * sif_std + sif_mean).reshape((37, 37))
-_, _, _, _, predicted_sifs_san_111_standardized = san_model_111(input_tile_standardized)
+_, _, _, _, predicted_sifs_san_111_standardized = san_model_111(input_tile_standardized.unsqueeze(0))
 predicted_sifs_san_111_standardized = predicted_sifs_san_111_standardized.detach().numpy()
 predicted_sifs_san_111 = (predicted_sifs_san_37_standardized * sif_std + sif_mean).reshape((37, 37))
 
 
 
-_, _, _, _, predicted_sifs_san_74_standardized = san_model_74(input_tile_standardized)
+_, _, _, _, predicted_sifs_san_74_standardized = san_model_74(input_tile_standardized.unsqueeze(0))
 predicted_sifs_san_74_standardized = predicted_sifs_san_74_standardized.detach().numpy()
 predicted_sifs_san_74 = (predicted_sifs_san_74_standardized * sif_std + sif_mean).reshape((37, 37))
 
@@ -315,21 +427,6 @@ predicted_sifs_san_74 = (predicted_sifs_san_74_standardized * sif_std + sif_mean
 
 
 
-# Display tiles with largest/smallest TROPOMI SIFs
-train_metadata = pd.read_csv(TRAIN_TILE_DATASET)
-highest_tropomi_sifs = train_metadata.nlargest(25, 'SIF')
-plot_images(highest_tropomi_sifs, 'tile_file', 'exploratory_plots/tropomi_sif_high_subtiles.png')
-lowest_tropomi_sifs = train_metadata.nsmallest(25, 'SIF')
-plot_images(lowest_tropomi_sifs, 'tile_file', 'exploratory_plots/tropomi_sif_low_subtiles.png')
-all_metadata = pd.read_csv(ALL_TILE_DATASET)
-
-# Display tiles with largest/smallest CFIS SIFs
-eval_metadata = pd.read_csv(EVAL_SUBTILE_DATASET)
-highest_cfis_sifs = eval_metadata.nlargest(25, 'SIF')
-plot_images(highest_cfis_sifs, 'subtile_file', 'exploratory_plots/cfis_sif_high_subtiles.png')
-lowest_cfis_sifs = eval_metadata.nsmallest(25, 'SIF')
-plot_images(lowest_cfis_sifs, 'subtile_file', 'exploratory_plots/cfis_sif_low_subtiles.png')
-print('Most common regions in CFIS:', eval_metadata['tile_file'].value_counts())
 
 # Open CFIS SIF evaluation dataset
 all_cfis_points = np.load(CFIS_SIF_FILE)
@@ -341,19 +438,29 @@ tropomi_dataset = xr.open_dataset(TROPOMI_SIF_FILE)
 tropomi_array = tropomi_dataset.sif_dc.sel(time=TROPOMI_DATE_RANGE).mean(dim='time')
 
 # For each CFIS SIF point, find TROPOMI SIF of surrounding tile
-tropomi_sifs = []  # TROPOMI SIF corresponding to each CFIS point
+tropomi_sifs_filtered_cfis = []  # TROPOMI SIF corresponding to each CFIS point
 for i in range(len(eval_metadata)):  # range(cfis_points.shape[0]):
     point_lon = eval_metadata['lon'][i]  # cfis_points[i, 1]
     point_lat = eval_metadata['lat'][i]  # cfis_points[i, 2]
     tropomi_sif = tropomi_array.sel(lat=point_lat, lon=point_lon, method='nearest')
-    tropomi_sifs.append(tropomi_sif)
+    tropomi_sifs_filtered_cfis.append(tropomi_sif)
+
+# For each CFIS SIF point, find TROPOMI SIF of surrounding tile
+tropomi_sifs_all_cfis = []  # TROPOMI SIF corresponding to each CFIS point
+for i in range(len(eval_metadata)):  # range(cfis_points.shape[0]):
+    point_lon = all_cfis_points[i, 1]  # cfis_points[i, 1]
+    point_lat = all_cfis_points[i, 2]  # cfis_points[i, 2]
+    tropomi_sif = tropomi_array.sel(lat=point_lat, lon=point_lon, method='nearest')
+    tropomi_sifs_all_cfis.append(tropomi_sif)
 
 # Plot histogram of CFIS and TROPOMI SIFs
-plot_histogram(np.array(all_cfis_points[:, 0]), "sif_distribution_cfis_all.png")
-plot_histogram(np.array(eval_metadata['SIF']), "sif_distribution_cfis_filtered.png") #  cfis_points[:, 0])
-plot_histogram(np.array(tropomi_sifs), "sif_distribution_tropomi_eval_area.png")
-plot_histogram(np.array(train_metadata['SIF']), "sif_distribution_tropomi_train.png")
-plot_histogram(np.array(all_metadata['SIF']), "sif_distribution_tropomi_all.png", title="TROPOMI SIF distribution (longitude: -108 to -82, latitude: 38 to 48.7)")
+plot_histogram(np.array(all_cfis_points[:, 0]), "sif_distribution_cfis_all.png", title="CFIS SIF distribution (all)")
+plot_histogram(np.array(eval_metadata['SIF']), "sif_distribution_cfis_filtered.png", title="CFIS SIF distribution (filtered)") #  cfis_points[:, 0])
+plot_histogram(np.array(oco2_metadata['SIF']), "sif_distribution_oco2.png", title="OCO2 SIF distribution (filtered)") #  cfis_points[:, 0])
+plot_histogram(np.array(tropomi_sifs_all_cfis), "sif_distribution_tropomi_all_cfis_area.png", title="TROPOMI SIF distribution (regions overlapping with all CFIS)")
+plot_histogram(np.array(tropomi_sifs_filtered_cfis), "sif_distribution_tropomi_eval_area.png", title="TROPOMI SIF distribution (regions overlapping with filtered CFIS)")
+plot_histogram(np.array(train_metadata['SIF']), "sif_distribution_tropomi_train.png", title="TROPOMI SIF distribution (train set)")
+#plot_histogram(np.array(all_metadata['SIF']), "sif_distribution_tropomi_all.png", title="TROPOMI SIF distribution (longitude: -108 to -82, latitude: 38 to 48.7)")
 
 # sif_mean = np.mean(train_metadata['SIF'])
 train_statistics = pd.read_csv(BAND_STATISTICS_FILE)
@@ -417,13 +524,13 @@ for index, row in cfis_area.iterrows():
 #plt.close()
 
 # Scatterplot of TROPOMI points
-plt.figure(figsize=(24, 24))
-plt.scatter(all_metadata['lon'], all_metadata['lat'], c=all_metadata['SIF'], cmap=sif_cmap, vmin=0.2, vmax=1.5)
-plt.xlabel('Longitude')
-plt.ylabel('Latitude')
-plt.title('TROPOMI points (area)')
-plt.savefig('exploratory_plots/tropomi_points.png')
-plt.close()
+# plt.figure(figsize=(24, 24))
+# plt.scatter(all_metadata['lon'], all_metadata['lat'], c=all_metadata['SIF'], cmap=sif_cmap, vmin=0.2, vmax=1.5)
+# plt.xlabel('Longitude')
+# plt.ylabel('Latitude')
+# plt.title('TROPOMI points (area)')
+# plt.savefig('exploratory_plots/tropomi_points.png')
+# plt.close()
 
 print('CFIS SIF', cfis_area['SIF'])
 if len(cfis_area['SIF']) >= 1:
