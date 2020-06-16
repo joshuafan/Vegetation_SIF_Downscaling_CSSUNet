@@ -1,8 +1,7 @@
 """
 Randomly splits tiles into 80% train, 20% validation.
-Throws out tiles with cloud cover fraction exceeding "MAX_CLOUD_COVER".
+Throws out tiles with insufficient CDL coverage.
 Creates a dataset of tile averages.
-Computes mean/std of each band
 """
 import csv
 import matplotlib.pyplot as plt
@@ -14,15 +13,11 @@ from sif_utils import plot_histogram
 import torch
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-08-01")
+DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-07-22")
 INFO_CSV_FILES = [os.path.join(DATASET_DIR, "reflectance_cover_to_sif.csv")]
 #                  os.path.join(DATA_DIR, "dataset_2019-07-16/reflectance_cover_to_sif.csv")]
-SPLIT_INFO_CSV_FILES = {"train": os.path.join(DATASET_DIR, "tile_info_train.csv"),
-                        "val": os.path.join(DATASET_DIR, "tile_info_val.csv")}
-#TILE_AVERAGE_CSV_FILES = {"train": os.path.join(DATASET_DIR, "tile_averages_train.csv"),
-#                          "val": os.path.join(DATASET_DIR, "tile_averages_val.csv")}
-BAND_STATISTICS_CSV_FILES = {"train": os.path.join(DATASET_DIR, "band_statistics_train.csv"),
-                             "val": os.path.join(DATASET_DIR, "band_statistics_val.csv")}
+SPLIT_INFO_CSV_FILES = {"train": os.path.join(DATASET_DIR, "tile_info_unfiltered_train.csv"),
+                        "val": os.path.join(DATASET_DIR, "tile_info_unfiltered_val.csv")}
 
 NEW_COLUMNS = ['lon', 'lat', 'date', 'tile_file', 'ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
                     'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg', 
@@ -33,12 +28,12 @@ NEW_COLUMNS = ['lon', 'lat', 'date', 'tile_file', 'ref_1', 'ref_2', 'ref_3', 're
                     'sorghum', 'developed_low_intensity', 'barren', 'durum_wheat',
                     'canola', 'sunflower', 'dry_beans', 'developed_med_intensity',
                     'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
-                    'lentils', 'missing_reflectance', 'SIF']
-MAX_CLOUD_COVER = 0.1
+                    'lentils', 'missing_reflectance', 'SIF', 'cloud_fraction', 'num_soundings']
+
 CDL_BANDS = list(range(12, 42))
-MIN_SIF = 0.2
 MIN_CDL_COVERAGE = 0.5  # Throw out tiles if less than this fraction of land cover is unknown
 
+# Read all tile metadata
 frames = []
 for info_file in INFO_CSV_FILES:
     frames.append(pd.read_csv(info_file))
@@ -62,21 +57,17 @@ train_set, val_set = sklearn.model_selection.train_test_split(tile_metadata, tes
 datasets = {"train": train_set, "val": val_set}
 
 for split in ["train", "val"]:
-    # Create a dataset of tile-average values. Also, compute mean/std of each band
+    # Create a dataset of tile-average values
     csv_rows = []
-
-
     csv_rows.append(NEW_COLUMNS)
-
-    band_averages_all_tiles = []
     dataset = datasets[split]
-    sifs = []
     dataset.reset_index(drop=True, inplace=True)
     i = -1
     for index, row in dataset.iterrows():
         i += 1
         if i % 100 == 0:
             print('Processing tile', i)
+
         # Tile assumed to be (band x lat x long)
         tile = np.load(row.loc['tile_file'])
         # print('Tile', tile.shape, 'dtype', tile.dtype)
@@ -90,31 +81,27 @@ for split in ["train", "val"]:
         # Remove tiles with little CDL coverage (for the crops we're interested in)
         cdl_coverage = np.sum(tile_averages[CDL_BANDS])
         if cdl_coverage < MIN_CDL_COVERAGE:
-            #print('CDL coverage too low:', cdl_coverage)
-            #print(row.loc['tile_file'])
+            print('CDL coverage too low:', cdl_coverage)
+            print(row.loc['tile_file'])
             continue
  
-        # If too much of this pixel is covered by clouds (reflectance
-        # data is missing), throw this tile out
-        if tile_averages[-1] > MAX_CLOUD_COVER:
-            continue
+        # # If too much of this pixel is covered by clouds (reflectance
+        # # data is missing), throw this tile out
+        # if tile_averages[-1] > MAX_LANDSAT_CLOUD_COVER:
+        #     continue
 
-        # Remove tiles with low SIF (those observations may be unreliable)
-        if float(row.loc['SIF']) < MIN_SIF:
-            continue
+        # # Remove tiles with low SIF (those observations may be unreliable)
+        # if float(row.loc['SIF']) < MIN_SIF:
+        #     continue
 
-        csv_row = [row.loc['lon'], row.loc['lat'], row.loc['date'], row.loc['tile_file']] + tile_averages.tolist() + [row.loc['SIF']]
+        # if float(row.loc['cloud_fraction']) > MAX_TROPOMI_CLOUD_COVER:
+        #     continue
+
+        # if float(row.loc['num_soundings']) < MIN_NUM_SOUNDINGS:
+        #   continue
+
+        csv_row = [row.loc['lon'], row.loc['lat'], row.loc['date'], row.loc['tile_file']] + tile_averages.tolist() + [row.loc['SIF'], row.loc['cloud_fraction'], row.loc['num_soundings']]
         csv_rows.append(csv_row)
-        band_averages_all_tiles.append(tile_averages)
-        sifs.append(row.loc['SIF'])
-
-    # Select the rows that are mentioned in "valid indices" (low cloud cover)
-    band_averages_array = np.stack(band_averages_all_tiles)
-    print("Band values ARRAY shape", band_averages_array.shape)
-    band_means = np.mean(band_averages_array, axis=0)
-    band_stds = np.std(band_averages_array, axis=0)
-    print("Band means", band_means)
-    print("Band stds", band_stds)
 
     # Write rows to .csv file
     with open(SPLIT_INFO_CSV_FILES[split], "w") as output_csv_file:
@@ -122,14 +109,5 @@ for split in ["train", "val"]:
         for row in csv_rows:
             csv_writer.writerow(row)
 
-    # Write band averages to file
-    statistics_rows = [['mean', 'std']]
-    for i in range(len(band_means)):
-        statistics_rows.append([band_means[i], band_stds[i]])
-    statistics_rows.append([np.mean(sifs), np.std(sifs)])
-    with open(BAND_STATISTICS_CSV_FILES[split], 'w') as output_csv_file:
-        csv_writer = csv.writer(output_csv_file, delimiter=",", quoting=csv.QUOTE_MINIMAL)
-        for row in statistics_rows:
-            csv_writer.writerow(row)
 
 

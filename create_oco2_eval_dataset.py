@@ -11,7 +11,8 @@ from sif_utils import plot_histogram, lat_long_to_index
 
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-OCO2_FILE = os.path.join(DATA_DIR, "OCO2/oco2_20180801_20180816_1800m.nc")
+#OCO2_FILE = os.path.join(DATA_DIR, "OCO2/oco2_20180801_20180816_1800m.nc")
+OCO2_FILE = os.path.join(DATA_DIR, "OCO2/oco2_20180801_20180816_3km.nc")
 DATE = "2018-08-01" #"2016-07-16"
 TILES_DIR = os.path.join(DATA_DIR, "tiles_" + DATE)
 DATASET_DIR = os.path.join(DATA_DIR, "dataset_" + DATE)
@@ -32,7 +33,7 @@ dataset_rows.append(["lon", "lat", "date",
                     'sorghum', 'developed_low_intensity', 'barren', 'durum_wheat',
                     'canola', 'sunflower', 'dry_beans', 'developed_med_intensity',
                     'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
-                    'lentils', 'missing_reflectance', "SIF"])
+                    'lentils', 'missing_reflectance', "SIF", "num_soundings"])
 
 
 
@@ -42,15 +43,16 @@ point_lats = []
 point_sifs = []
 RES = (0.00026949458523585647, 0.00026949458523585647)
 LARGE_TILE_PIXELS = 371
-SUBTILE_PIXELS = 60
+SUBTILE_PIXELS = 100
 SUBTILE_DEGREES = RES[0] * SUBTILE_PIXELS
-MAX_FRACTION_MISSING_SUBTILE = 0.1
 MAX_FRACTION_MISSING_OVERALL = 0.1
-PURE_THRESHOLD = 0.7
+PURE_THRESHOLD = 0.5
 MIN_SIF = 0.2
+MIN_NUM_SOUNDINGS = 5
 INPUT_CHANNELS = 43
 CDL_BANDS = list(range(12, 42))
 MIN_CDL_COVERAGE = 0.5
+
 
 pure_corn_points = 0
 pure_soy_points = 0
@@ -62,11 +64,18 @@ dataset = dataset.mean('time')
 lons = dataset.lon.values
 lats = dataset.lat.values
 sifs = dataset.dcSIF.values
+num_soundings = dataset.n.values
 
 plot_histogram(sifs, "sif_distribution_oco2_all.png", title="OCO2 SIF distribution (longitude: -108 to -82, latitude: 38 to 48.7)")
 print('Lons', lons.shape)
 print('Lats', lats.shape)
 print('Sifs', sifs.shape)
+
+num_soundings_dist = num_soundings.flatten()
+num_soundings_dist = num_soundings_dist[~np.isnan(num_soundings_dist)]
+num_soundings_dist = num_soundings_dist[num_soundings_dist > 0]
+plot_histogram(num_soundings_dist, "oco2_num_soundings.png", title="OCO2 num soundings")
+
 
 
 points_no_reflectance = 0  # Number of points outside bounds of reflectance dataset
@@ -77,10 +86,35 @@ points_with_reflectance = 0  # Number of points with reflectance data
 for lon_idx in range(len(lons)):
     for lat_idx in range(len(lats)):
         lon = lons[lon_idx]
-        lat = lats[lat_idx]
+        lat = lats[lat_idx]        
         sif = sifs[lat_idx, lon_idx]
+        num_soundings_point = num_soundings[lat_idx, lon_idx]
+
         if math.isnan(sif):
             continue
+
+        # If SIF is low, we don't care about this point / it's likely to be noisy, so ignore it
+        # if sif < MIN_SIF:
+        #     continue
+        
+        # if num_soundings_point < MIN_NUM_SOUNDINGS:
+        #     continue
+         
+        # sifs_to_average = []
+        # sif_lat_idx_low = max(0, lat_idx - 1)
+        # sif_lat_idx_high = min(sifs.shape[0], lat_idx + 2) # Exclusive (high lat index)
+        # sif_lon_idx_low = max(0, lon_idx - 1)
+        # sif_lon_idx_high = min(sifs.shape[1], lon_idx + 2)
+        # print('Lon idx', sif_lon_idx_low, sif_lon_idx_high)
+        # print('Lat idx', sif_lat_idx_low, sif_lat_idx_high)
+        # for i in range(sif_lat_idx_low, sif_lat_idx_high):
+        #     for j in range(sif_lon_idx_low, sif_lon_idx_high):
+        #         neighbor_sif = sifs[i, j]
+        #         if not math.isnan(neighbor_sif):
+        #             sifs_to_average.append(neighbor_sif)
+        # print('Centre', sifs[lat_idx, lon_idx])
+        # print('SIFs to average', sifs_to_average)
+        # sif = sum(sifs_to_average) / len(sifs_to_average)
 
         # Compute rectangle that bounds this OCO-2 observation
         min_lon = lon - SUBTILE_DEGREES / 2
@@ -92,7 +126,7 @@ for lon_idx in range(len(lons)):
         print("Lat: min", min_lat, "max:", max_lat)
 
         # Figure out which reflectance files to open. For each edge of the bounding box,
-        # find the center of the surrounding reflectance large tile.
+        # find the left/top bound of the surrounding reflectance large tile.
         min_lon_tile_left = (math.floor(min_lon * 10) / 10)
         max_lon_tile_left = (math.floor(max_lon * 10) / 10)
         min_lat_tile_top = (math.ceil(min_lat * 10) / 10)
@@ -157,10 +191,6 @@ for lon_idx in range(len(lons)):
             print('Too much missing')
             continue
 
-        # If SIF is low, we don't care about this point / it's likely to be noisy, so ignore it
-        if sif < MIN_SIF:
-            continue
-
         # If too much CDL data is missing, skip this point
         cdl_coverage = np.sum(band_averages[CDL_BANDS])
         if cdl_coverage < MIN_CDL_COVERAGE:
@@ -184,7 +214,7 @@ for lon_idx in range(len(lons)):
         point_sifs.append(sif)
 
         dataset_rows.append([lon, lat, DATE, subtile_filename] + band_averages.tolist() + 
-                             [sif])
+                             [sif, num_soundings_point])
         
 
 # Write dataset to file

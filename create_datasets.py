@@ -23,13 +23,13 @@ from sif_utils import lat_long_to_index, plot_histogram
 
 
 # Date range of Landsat data
-#DATE_RANGE = pd.date_range(start="2018-07-16", end="2018-07-31")
-DATE_RANGE = pd.date_range(start="2018-08-01", end="2018-08-16")
+DATE_RANGE = pd.date_range(start="2018-08-05", end="2018-08-18")
 START_DATE = str(DATE_RANGE.date[0])
+YEAR = "2018"
+MONTH = "08"
 
 # Date range of SIF data
-SIF_DATE_RANGE = pd.date_range(start="2018-08-01", end="2018-08-16")
-YEAR = "2018"
+SIF_DATE_RANGE = pd.date_range(start="2018-08-05", end="2018-08-18")
 
 # Root directory of datasets
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
@@ -38,7 +38,7 @@ DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
 REFLECTANCE_DIR = os.path.join(DATA_DIR, "LandsatReflectance", START_DATE)
 
 # File containing FLDAS data
-FLDAS_FILE = os.path.join(DATA_DIR, "FLDAS/FLDAS_NOAH01_C_GL_M.A" + YEAR + "08.001.nc.SUB.nc4")
+FLDAS_FILE = os.path.join(DATA_DIR, "FLDAS/FLDAS_NOAH01_C_GL_M.A" + YEAR + MONTH + ".001.nc.SUB.nc4")
 FLDAS_VARS = ["Rainf_f_tavg", "SWdown_f_tavg", "Tair_f_tavg"]
 
 # Directory containing CDL (crop type) data
@@ -98,7 +98,7 @@ def plot_and_print_covers(covers, filename):
 # Dataset format: lon/lat, date, image file name, SIF
 dataset_rows = []
 if not APPEND:
-    dataset_rows.append(["lon", "lat", "date", "missing_reflectance", "tile_file", "SIF"])
+    dataset_rows.append(["lon", "lat", "date", "missing_reflectance", "tile_file", "SIF", "cloud_fraction", "num_soundings"])
 
 # For each tile, keep track of how much reflectance and cover data is present
 reflectance_coverage = []
@@ -107,28 +107,37 @@ cover_coverage = []
 # Open up the SIF file
 sif_dataset = xr.open_dataset(SIF_FILE)
 
-# Open up FLDAS dataset
-fldas_dataset = xr.open_dataset(FLDAS_FILE).mean(dim='time')
-print("FLDAS dataset", fldas_dataset)
-
 # Read SIF values that fall in the appropriate date range
-sif_array = sif_dataset.sif_dc.sel(time=slice(SIF_DATE_RANGE.date[0], SIF_DATE_RANGE.date[-1]))
-print("SIF array shape", sif_array.shape)
-print("SIF array:", sif_array)
+tropomi_sifs = sif_dataset.sif_dc.sel(time=slice(SIF_DATE_RANGE.date[0], SIF_DATE_RANGE.date[-1]))
+tropomi_cloud_fraction = sif_dataset.cloud_fraction.sel(time=slice(SIF_DATE_RANGE.date[0], SIF_DATE_RANGE.date[-1]))
+tropomi_n = sif_dataset.n.sel(time=slice(SIF_DATE_RANGE.date[0], SIF_DATE_RANGE.date[-1]))
+
+print("SIF array:", tropomi_sifs)
+print("FLDAS file", FLDAS_FILE)
 
 # Check if SIF is available for any date in time range. If there is, take the mean
 # over all dates in the time period. Otherwise, ask if we should still create the
 # dataset, but without the SIF label.
-if len(sif_array['time'].values) >= 1:
-    sif_array = sif_array.mean(dim='time')
+if len(tropomi_sifs['time'].values) >= 1:
+    tropomi_sifs = tropomi_sifs.mean(dim='time')
+    tropomi_cloud_fraction = tropomi_cloud_fraction.mean(dim='time')
+    tropomi_n = tropomi_n.mean(dim='time')
 else:
     response = input("No SIF data available for any date between " + str(SIF_DATE_RANGE.date[0]) +
                         " and " + str(SIF_DATE_RANGE.date[-1]) +
                         ". Create dataset anyways without total SIF label? (y/n) ")
     if response != 'y' and response != 'Y':
         exit(1)
+    tropomi_sifs = None
+    tropomi_cloud_fraction = None
+    tropomi_n = None
 
-# Open crop cover dataset
+# Open up FLDAS dataset
+fldas_dataset = xr.open_dataset(FLDAS_FILE).mean(dim='time')
+print("FLDAS dataset", fldas_dataset)
+
+
+# Open crop cover files
 for cover_file in os.listdir(COVER_DIR):
     with rio.open(os.path.join(COVER_DIR, cover_file)) as cover_dataset:
         # Print stats about cover dataset
@@ -145,8 +154,7 @@ for cover_file in os.listdir(COVER_DIR):
         print('Height:', cover_dataset.height)
         print('===================================================')
 
-        if cover_dataset.bounds.right < -90:
-            continue
+
         # Print stats about cover dataset
         #plot_and_print_covers(cover_dataset.read(1), 'original_covers_corn_big_r2.png')
         #exit(1)
@@ -243,7 +251,7 @@ for cover_file in os.listdir(COVER_DIR):
                     #                                                                  target_res)
                     # print("indices in reflectance:", reflectance_height_idx, reflectance_width_idx)
                     # cover_height_idx, cover_width_idx = lat_long_to_index(point[0], point[1], cover_dataset.bounds.top,
-                    #                                                      cover_dataset.bounds.left, target_res)
+                    #                                                       cover_dataset.bounds.left, target_res)
                     # print("indices in cover:", cover_height_idx, cover_width_idx)
                     # print('===================================================')
 
@@ -389,22 +397,28 @@ for cover_file in os.listdir(COVER_DIR):
                             # Extract corresponding SIF value
                             center_lat = round(top_degrees - SIF_TILE_DEGREE_SIZE / 2, 2)
                             center_lon = round(left_degrees + SIF_TILE_DEGREE_SIZE / 2, 2)
-                            if sif_array is not None:
-                                total_sif = sif_array.sel(lat=center_lat, lon=center_lon, method='nearest').values
+                            if tropomi_sifs is not None:
+                                total_sif = tropomi_sifs.sel(lat=center_lat, lon=center_lon, method='nearest').values
+                                cloud_fraction = tropomi_cloud_fraction.sel(lat=center_lat, lon=center_lon, method='nearest').values
+                                num_soundings = tropomi_n.sel(lat=center_lat, lon=center_lon, method='nearest').values
                                 if np.isnan(total_sif):  # If there's no SIF value, ignore this tile
                                     continue
                             else:
-                                total_sif = float.nan
+                                total_sif = float("nan")
+                                cloud_fraction = float("nan")
+                                num_soundings = float("nan")
 
                             # Write reflectance/cover pixels tile (as Numpy array) to .npy file
                             npy_filename = os.path.join(OUTPUT_TILES_DIR, "reflectance_lat_" + str(
                                 center_lat) + "_lon_" + str(center_lon) + ".npy")
                             np.save(npy_filename, combined_tile)
-                            dataset_rows.append([center_lon, center_lat, START_DATE, reflectance_fraction_missing, npy_filename, total_sif])
+                            dataset_rows.append([center_lon, center_lat, START_DATE, reflectance_fraction_missing, npy_filename, total_sif, cloud_fraction, num_soundings])
      
             except Exception as error:
                 print("Reading reflectance file", reflectance_file, "failed")
                 print(traceback.format_exc())
+                exit(1)
+
 
 # If APPEND is true, we're appending rows to an existing .csv.
 # Otherwise, we're overwriting.

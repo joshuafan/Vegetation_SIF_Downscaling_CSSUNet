@@ -38,7 +38,7 @@ TILE_SIZE_DEGREES = 0.1
 SUBTILE_SIZE_PIXELS = 10
 MAX_FRACTION_MISSING = 0.1  # If more than this fraction of reflectance pixels is missing, ignore the data point
 MIN_SIF = 0.2
-MIN_SOUNDINGS = 100
+MIN_SOUNDINGS = 500
 column_names = ['lat', 'lon', 'date', 'tile_file', 'subtile_file', 'num_soundings',
                     'ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
                     'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg', 
