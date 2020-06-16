@@ -16,7 +16,22 @@ class StandardizeTile(object):
 
     def __call__(self, tile):
         tile[self.bands_to_transform, :, :] = (tile[self.bands_to_transform, :, :] - self.band_means) / self.band_stds
+        tile[self.bands_to_transform, :, :] = np.clip(tile[self.bands_to_transform, :, :], a_min=-2, a_max=2)
         tile[-1, :, :] = np.logical_not(tile[-1, :, :])
+        return tile
+
+
+class GaussianNoise(object):
+    def __init__(self, continuous_bands, standard_deviation=0.1):
+        self.continuous_bands = continuous_bands
+        self.standard_deviation = standard_deviation
+
+    def __call__(self, tile):
+        #print('Before noise', tile[self.continuous_bands, 0:3, 0:3])
+        continuous_bands_shape = tile[self.continuous_bands, :, :].shape
+        noise = np.random.normal(loc=0, scale=self.standard_deviation, size=continuous_bands_shape)
+        tile[self.continuous_bands, :, :] = tile[self.continuous_bands, :, :] + noise
+        #print('After noise', tile[self.continuous_bands, 0:3, 0:3])
         return tile
 
 

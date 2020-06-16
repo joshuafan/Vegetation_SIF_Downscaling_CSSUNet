@@ -36,26 +36,28 @@ BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
 METHOD = "4a_subtile_simple_cnn_small"
 TRAINING_PLOT_FILE = 'exploratory_plots/losses_' + METHOD + '.png'
 
-PRETRAINED_SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/AUG_subtile_simple_cnn_4crop_small")
-SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/AUG_subtile_simple_cnn_4crop_small") #aug_2")
+PRETRAINED_SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/AUG_subtile_simple_cnn_16crop_gaussian_noise")
+SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/AUG_subtile_simple_cnn_16crop_gaussian_noise") #aug_2")
 SUBTILE_DIM = 10
 OPTIMIZER_TYPE = "Adam"
 MODEL_TYPE = "simple_cnn_small"
 LEARNING_RATE = 1e-3
-WEIGHT_DECAY = 1e-3
+WEIGHT_DECAY = 0
 NUM_EPOCHS = 50
 BATCH_SIZE = 64 
 NUM_WORKERS = 4
 AUGMENT = True
 FROM_PRETRAINED = False
-MIN_SIF = 0.2
+MIN_SIF = 0
 MAX_SIF = 1.7
 MAX_SUBTILE_CLOUD_COVER = 0.1
 
-BANDS = list(range(0, 12)) + [12, 13, 14, 16] + [42] #  list(range(0, 12)) + list(range(12, 27)) + [28] + [42] #list(range(0, 43)) #
+#BANDS = list(range(0, 9)) + [42] #  12)) + list(range(12, 27)) + [28] + [42] 
+#BANDS = list(range(0, 12)) + [12, 13, 14, 16] + [42]
+BANDS = list(range(0, 12)) + list(range(12, 27)) + [28] + [42]  #list(range(0, 43)) #
 INPUT_CHANNELS = len(BANDS)
-REDUCED_CHANNELS = 15
-
+REDUCED_CHANNELS = 20
+NOISE = 0.2
 # Print params for reference
 print("=========================== PARAMS ===========================")
 print("Method:", METHOD)
@@ -74,6 +76,7 @@ print("Weight decay:", WEIGHT_DECAY)
 print("Batch size:", BATCH_SIZE)
 print("Num epochs:", NUM_EPOCHS)
 print("Augment:", AUGMENT)
+print("Gaussian noise (std deviation):", NOISE)
 print("Reduced channels:", REDUCED_CHANNELS)
 print("Subtile dim:", SUBTILE_DIM)
 print("SIF range:", MIN_SIF, "to", MAX_SIF)
@@ -149,7 +152,7 @@ def train_model(subtile_sif_model, dataloaders, dataset_sizes, criterion, optimi
                     predicted_sifs_non_standardized = torch.tensor(predicted_sifs_standardized * sif_std + sif_mean, dtype=torch.float).to(device)
                     non_standardized_loss = criterion(predicted_sifs_non_standardized, true_sifs_non_standardized)
                     j += 1
-                    if j % 100 == 0:
+                    if j % 50 == 0:
                         print('========================')
                         print('*** >>> predicted subtile sifs for 0th', predicted_subtile_sifs[0] * sif_std + sif_mean)
                         print('*** Predicted', predicted_sifs_non_standardized)
@@ -227,6 +230,7 @@ else:
 # Set up image transforms
 transform_list = []
 transform_list.append(tile_transforms.StandardizeTile(band_means, band_stds))
+transform_list.append(tile_transforms.GaussianNoise(continuous_bands=list(range(0, 12)), standard_deviation=NOISE))
 if AUGMENT:
     transform_list.append(tile_transforms.RandomFlipAndRotate())
 transform = transforms.Compose(transform_list)

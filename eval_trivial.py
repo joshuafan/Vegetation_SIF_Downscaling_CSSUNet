@@ -36,14 +36,14 @@ EVAL_FILE = os.path.join(EVAL_DATASET_DIR, "eval_subtiles.csv")
 # EVAL_FILE = os.path.join(TRAIN_DATASET_DIR, "tile_info_val.csv")
 #TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_13") #aug")
 #"subtile_sif_simple_cnn_11")
-TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/AUG_subtile_simple_cnn_16crop_small_2_epoch0") #AUG_small_tile_simple")
+TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/AUG_subtile_simple_cnn_16crop_gaussian_noise") #AUG_small_tile_simple")
 #TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/cfis_sif_aug")
 #RAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_aug") #cfis_sif")
 #TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/small_tile_simple") #large_tile_resnet18")  #test_large_tile_simple")  # small_tile_sif_prediction")
 BAND_STATISTICS_FILE = os.path.join(TRAIN_DATASET_DIR, "band_statistics_train.csv")
 METHOD = '4a_subtile_simple_cnn_small' # '2_large_tile_resnet' # '3_small_tile_simple' #'0_cfis_cheating' # #'3_small_tile_simple' # '2_large_tile_resnet18'
 MODEL_TYPE = 'simple_cnn'
-TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_AUG_eval_subtile_' + METHOD 
+TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_cfis_eval_subtile_' + METHOD 
 
 COLUMN_NAMES = ['true', 'predicted',
                     'lon', 'lat',
@@ -57,22 +57,23 @@ COLUMN_NAMES = ['true', 'predicted',
                     'canola', 'sunflower', 'dry_beans', 'developed_med_intensity',
                     'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
                     'lentils', 'missing_reflectance']
-CROP_TYPES = ['grassland_pasture', 'corn', 'soybean', 'shrubland',
-                    'deciduous_forest', 'evergreen_forest', 'spring_wheat', 'developed_open_space',
-                    'other_hay_non_alfalfa', 'winter_wheat', 'herbaceous_wetlands',
-                    'woody_wetlands', 'open_water', 'alfalfa', 'fallow_idle_cropland',
-                    'sorghum', 'developed_low_intensity', 'barren', 'durum_wheat',
-                    'canola', 'sunflower', 'dry_beans', 'developed_med_intensity',
-                    'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
-                    'lentils']
+# CROP_TYPES = ['grassland_pasture', 'corn', 'soybean', 'shrubland',
+#                     'deciduous_forest', 'evergreen_forest', 'spring_wheat', 'developed_open_space',
+#                     'other_hay_non_alfalfa', 'winter_wheat', 'herbaceous_wetlands',
+#                     'woody_wetlands', 'open_water', 'alfalfa', 'fallow_idle_cropland',
+#                     'sorghum', 'developed_low_intensity', 'barren', 'durum_wheat',
+#                     'canola', 'sunflower', 'dry_beans', 'developed_med_intensity',
+#                     'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
+#                     'lentils']
+CROP_TYPES = ['grassland_pasture', 'corn', 'soybean', 'deciduous_forest']
 
 RESULTS_CSV_FILE = os.path.join(EVAL_DATASET_DIR, 'results_' + METHOD + '.csv')
 
 #BANDS = list(range(0, 43))
 BANDS =  list(range(0, 12)) + list(range(12, 27)) + [28] + [42]
 INPUT_CHANNELS = len(BANDS)
-REDUCED_CHANNELS = 15
-RESIZE = False #False # False #True
+REDUCED_CHANNELS = 10
+RESIZE = False
 RESIZED_DIM = [371, 371]
 DISCRETE_BANDS = list(range(12, 43))
 COVER_INDICES = list(range(12, 42))
@@ -210,6 +211,9 @@ fig.suptitle('True vs predicted SIF (CFIS): ' + METHOD)
 for idx, crop_type in enumerate(CROP_TYPES):
     crop_rows = results_df.loc[results_df[crop_type] > PURE_THRESHOLD]
     print(len(crop_rows), 'subtiles that are majority', crop_type)
+
+    print('======================== Crop type', crop_type, '==========================')
+    print_stats(crop_rows['true'].to_numpy(), crop_rows['predicted'].to_numpy(), sif_mean)
 
     # Scatter plot of true vs predicted
     axeslist.ravel()[idx].scatter(crop_rows['true'], crop_rows['predicted'])

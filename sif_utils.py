@@ -31,7 +31,6 @@ def lat_long_to_index(lat, lon, dataset_top_bound, dataset_left_bound, resolutio
 
 def plot_histogram(column, plot_filename, title=None):
     column = column.flatten()
-    #print('Column', column)
     column = column[~np.isnan(column)]
     print(plot_filename)
     print('Number of datapoints:', len(column))
@@ -39,7 +38,7 @@ def plot_histogram(column, plot_filename, title=None):
     print('Std:', round(np.std(column), 4))
     print('Max:', round(np.max(column), 4))
     print('Min:', round(np.min(column), 4))
-    n, bins, patches = plt.hist(column, 20, facecolor='blue', alpha=0.5)
+    n, bins, patches = plt.hist(column, 40, facecolor='blue', alpha=0.5)
     if title is not None:
         plt.title(title)
     plt.savefig('exploratory_plots/' + plot_filename)
@@ -51,11 +50,8 @@ def print_stats(true, predicted, average_sif):
         true = np.array(true)
     if isinstance(predicted, list):
         predicted = np.array(predicted)
-    #print('True', true[:50])
-    #print('Predicted', predicted[:50])
-    #print('Sif mean:', average_sif)
     predicted_to_true = LinearRegression().fit(predicted.reshape(-1, 1), true)
-    #print('True vs predicted regression', predicted_to_true.coef_, 'intercept', predicted_to_true.intercept_)
+    print('True vs predicted regression', predicted_to_true.coef_, 'intercept', predicted_to_true.intercept_)
     predicted_rescaled = predicted_to_true.predict(predicted.reshape(-1, 1))
     r2 = r2_score(true, predicted_rescaled)
     corr, _ = pearsonr(true, predicted_rescaled)
@@ -65,7 +61,7 @@ def print_stats(true, predicted, average_sif):
     print('R2:', round(r2, 3))
     print('NRMSE:', round(nrmse, 3))
     #print('NRMSE (unstandardized):', round(nrmse_unstd, 3))
-    print('Pearson correlation:', round(corr, 3))
+    #print('Pearson correlation:', round(corr, 3))
     #print('Pearson (unstandardized):', round(pearsonr(true, predicted)[0], 3))
     #print('Spearman rank corr:', round(spearman_rank_corr, 3))
 
@@ -158,6 +154,7 @@ def get_top_bound(point_lat):
 
 def get_left_bound(point_lon):
     return math.floor(point_lon * 10) / 10
+
 
 # Train CNN to predict total SIF of tile.
 # "model" should take in a (standardized) tile (with dimensions CxWxH), and output standardized SIF.
@@ -267,3 +264,4 @@ def train_single_model(model, dataloaders, dataset_sizes, criterion, optimizer, 
     # load best model weights
     model.load_state_dict(best_model_wts)
     return model, train_losses, val_losses, best_loss
+
