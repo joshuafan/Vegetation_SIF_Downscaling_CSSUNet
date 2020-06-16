@@ -1,3 +1,6 @@
+"""
+Visualizes TROPOMI SIF dataset
+"""
 from scipy.io import netcdf
 import cartopy.crs as ccrs
 import matplotlib.pyplot as plt
@@ -6,32 +9,40 @@ import numpy as np
 import os
 import xarray as xr
 
-FILE_PATH = './datasets/TROPOMI_SIF/TROPO-SIF_01deg_biweekly_Apr18-Jan20.nc'
+DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
+FILE_PATH = os.path.join(DATA_DIR, "TROPOMI_SIF/TROPO-SIF_01deg_biweekly_Apr18-Jan20.nc")
 START_DATE = '2018-08-01'
-END_DATE = '2018-08-15'
-PLOT_FOLDER = './datasets/SIF/visualizations/'
+END_DATE = '2018-08-16'
+PLOT_FOLDER = './exploratory_plots/TROPOMI'
+
+if not os.path.exists(PLOT_FOLDER):
+    os.makedirs(PLOT_FOLDER)
 
 MIN_SIF = 0.0
 MAX_SIF = 1.0
 
 dataset = xr.open_dataset(FILE_PATH)
-print("dcSIF:", dataset)
+print("====================================================")
+print("Dataset info:", dataset)
+print("====================================================")
+print("Times:", dataset.time)
+print("====================================================")
 
-# Plot the distribution of dcSIF (across all time/space)
-all_dcSIF = dataset.sif_dc.values.flatten()
-all_dcSIF = all_dcSIF[~np.isnan(all_dcSIF)]
-n, bins, patches = plt.hist(all_dcSIF, 100, facecolor='blue', alpha=0.5)
-plt.title('dcSIF values, Apr 2018 - Jan 2020 (over all days / locations, excluding NaN values)')
-plt.xlabel('dcSIF')
-plt.ylabel('Number of pixels (across all days)')
-
-plt.savefig(os.path.join(PLOT_FOLDER, 'all_SIF.png'))
-plt.close()
-
-# Select one date (but backfill missing data that's present in the next few days, up to 10 days later)
-data_array = dataset.sif_dc.sel(time=slice(START_DATE, END_DATE)).mean(dim='time')
+# Take average SIF between August 1-16, 2018
+data_array = dataset.sif_dc.sel(time=slice(START_DATE, END_DATE)).mean(dim='time', skipna=True)
 print("SIF array shape", data_array.shape)
 print("Array", data_array)
+
+# Plot the distribution of dcSIF (across all time/space)
+all_dcSIF = data_array.data.flatten()
+all_dcSIF = all_dcSIF[~np.isnan(all_dcSIF)]
+# all_dcSIF = all_dcSIF[all_dcSIF > 0]
+n, bins, patches = plt.hist(all_dcSIF, 100, facecolor='blue', alpha=0.5)
+plt.title('sif_dc values: August 1-16, 2018 (worldwide)')
+plt.xlabel('n')
+plt.ylabel('Number of pixels (across all days)')
+plt.savefig(os.path.join(PLOT_FOLDER, 'TROPOMI_sif_dc.png'))
+plt.close()
 
 # data_array = dataset.dcSIF.sel(time=START_DATE)
 # # bfill('time', 10)
@@ -41,14 +52,13 @@ print("Array", data_array)
 # print(data_array)
 
 plt.figure(figsize=(21,9))
-color_map = plt.get_cmap('Greens')
+color_map = plt.get_cmap('YlGn')
 ax = plt.axes(projection=ccrs.PlateCarree())
 ax.set_global()
-data_array.plot.pcolormesh(ax=ax, transform=ccrs.PlateCarree(), x='lon', y='lat', vmin=MIN_SIF,
-                                vmax=MAX_SIF, cmap=color_map)
+data_array.plot.pcolormesh(ax=ax, transform=ccrs.PlateCarree(), x='lon', y='lat', cmap=color_map, vmin=MIN_SIF, vmax=MAX_SIF)
 ax.coastlines()
-plt.title('dcSIF, average from ' + START_DATE + ' to ' + END_DATE)
-plt.savefig(os.path.join(PLOT_FOLDER, 'TROPOMI_SIF_' + START_DATE + '_to_' + END_DATE + '_global.png'))
+plt.title('sif_dc, average from ' + START_DATE + ' to ' + END_DATE)
+plt.savefig(os.path.join(PLOT_FOLDER, 'TROPOMI_sif_dc_' + START_DATE + '_to_' + END_DATE + '_global.png'))
 plt.close()
 
 # Example: get SIF at specific lat/long
