@@ -40,18 +40,18 @@ from embedding_to_sif_model import EmbeddingToSIFModel
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
 START_DATE = "2018-08-01" #"2018-07-16"
-DATASET_DIR = os.path.join(DATA_DIR, "dataset_2_" + START_DATE)
+DATASET_DIR = os.path.join(DATA_DIR, "dataset_" + START_DATE)
 INFO_FILE_TRAIN = os.path.join(DATASET_DIR, "tile_info_train.csv")
 INFO_FILE_VAL = os.path.join(DATASET_DIR, "tile_info_val.csv")
 BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
-SUBTILE_EMBEDDING_FILE_TRAIN = os.path.join(DATASET_DIR, "tile2vec_embeddings_train.csv")
-SUBTILE_EMBEDDING_FILE_VAL = os.path.join(DATASET_DIR, "tile2vec_embeddings_val.csv")
-EMBEDDING_FILE_SUFFIX = '_tile2vec_embeddings.npy'
+SUBTILE_EMBEDDING_FILE_TRAIN = os.path.join(DATASET_DIR, "avg_embeddings_train.csv")
+SUBTILE_EMBEDDING_FILE_VAL = os.path.join(DATASET_DIR, "avg_embeddings_val.csv")
+EMBEDDING_FILE_SUFFIX = '_avg_embeddings.npy'
 TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_august/TileNet.ckpt")
 
 # If EMBEDDING_TYPE is 'average', the embedding is just the average of each band.
 # If it is 'tile2vec', we use the Tile2Vec model 
-EMBEDDING_TYPE ='tile2vec' #tile2vec'  #average' # 'tile2vec'
+EMBEDDING_TYPE = 'average' #tile2vec'  #average' # 'tile2vec'
 # TRAINING_PLOT_FILE = 'exploratory_plots/tile2vec_subtile_sif_prediction.png'
 SUBTILE_DIM = 10
 Z_DIM = 256
@@ -69,14 +69,15 @@ def compute_subtile_embeddings_to_sif_dataset(tile2vec_model, dataloader, subtil
         input_tile_standardized = sample['tile']
         true_sif_non_standardized = sample['SIF']
         filenames = sample['tile_file']
-        subtiles = get_subtiles_list(input_tile_standardized, subtile_dim, device)
         for i in range(batch_size):
             #print('Random pixel', subtiles[i, 0, :, 5, 5])
+            subtiles = get_subtiles_list(input_tile_standardized[i], subtile_dim, device)
+            print('Subtiles shape', subtiles.shape)
             if EMBEDDING_TYPE == 'tile2vec':
                 with torch.set_grad_enabled(False):
-                    embeddings = tile2vec_model(subtiles[i])
+                    embeddings = tile2vec_model(subtiles)
             elif EMBEDDING_TYPE == 'average':
-                embeddings = torch.mean(subtiles[i], dim=(2,3))
+                embeddings = torch.mean(subtiles, dim=(2,3))
             else:
                 print('Unsupported embedding type', EMBEDDING_TYPE)
                 exit(1)
