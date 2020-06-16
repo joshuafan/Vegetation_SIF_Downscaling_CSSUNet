@@ -90,7 +90,7 @@ SUBTILE_DEGREES = RES[0] * SUBTILE_PIXELS
 # LON = -93.35
 #LAT = 38.25 #41.25
 #LON = -98.95
-LAT = 41.95
+LAT = 42.05
 LON = -93.95
 LAT_LON = 'lat_' + str(LAT) + '_lon_' + str(LON)
 

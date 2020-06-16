@@ -28,7 +28,7 @@ from embedding_to_sif_nonlinear_model import EmbeddingToSIFNonlinearModel
 
 
 # Taken from https://stackoverflow.com/questions/11159436/multiple-figures-in-a-single-window
-def plot_figures(output_file, figures, nrows = 1, ncols=1):
+def plot_figures(output_file, figures, nrows = 1, ncols=1, cmap=None):
     """Plot a dictionary of figures.
 
     Parameters
@@ -40,14 +40,14 @@ def plot_figures(output_file, figures, nrows = 1, ncols=1):
     #fig = plt.figure(figsize=(8, 20))
     fig, axeslist = plt.subplots(ncols=ncols, nrows=nrows, figsize=(20, 20))
     for ind,title in enumerate(figures):
-        axeslist.ravel()[ind].imshow(figures[title])  #, cmap=plt.gray())
+        axeslist.ravel()[ind].imshow(figures[title], vmin=0, vmax=1, cmap=cmap)  #, cmap=plt.gray())
         axeslist.ravel()[ind].set_title(title)
-        axeslist.ravel()[ind].set_axis_off()
+        #axeslist.ravel()[ind].set_axis_off()
     plt.tight_layout() # optional
     plt.savefig(output_file)
     plt.close()
 
-def plot_images(image_rows, image_filename_column, output_file):
+def plot_rgb_images(image_rows, image_filename_column, output_file):
     images = {}
     for idx, image_row in image_rows.iterrows():
         subtile = np.load(image_row[image_filename_column]).transpose((1, 2, 0))
@@ -59,6 +59,22 @@ def plot_images(image_rows, image_filename_column, output_file):
 
     plot_figures(output_file, images, nrows=math.ceil(len(images) / 5), ncols=5)
  
+
+def plot_band_images(image_rows, image_filename_column, output_file_prefix):
+    band_to_max = {4: 5000, 5: 3000, 6: 2000}
+    band_images = {}
+    for band in band_to_max:
+        band_images[band] = {}
+
+    for idx, image_row in image_rows.iterrows():
+        subtile = np.load(image_row[image_filename_column]).transpose((1, 2, 0))
+        title = 'Lat' + str(round(image_row['lat'], 6)) + ', Lon' + str(round(image_row['lon'], 6)) + ' (SIF = ' + str(round(image_row['SIF'], 3)) + ')'
+        for band, max_value in band_to_max.items():
+            band_images[band][title] = subtile[:, :, band] / max_value
+
+    for band, images in band_images.items():
+        plot_figures(output_file_prefix + '_band_' + str(band) + '.png', images, nrows=math.ceil(len(images) / 5), ncols=5, cmap=plt.get_cmap('YlGn'))
+
 
 # Note there's a lot of redundant code here
 def plot_cdl_layers(image_rows, image_filename_column, output_file):
@@ -95,18 +111,16 @@ def plot_cdl_layers(image_rows, image_filename_column, output_file):
     plt.savefig(output_file)
     plt.close()      
 
+
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-TRAIN_DATE = "2018-08-01" #"2018-07-16"
+TRAIN_DATE = "2018-08-01" 
 TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_" + TRAIN_DATE)
 BAND_STATISTICS_FILE = os.path.join(TRAIN_DATASET_DIR, "band_statistics_train.csv")
 TRAIN_TILE_DATASET = os.path.join(TRAIN_DATASET_DIR, "tile_info_train.csv")
 ALL_TILE_DATASET = os.path.join(TRAIN_DATASET_DIR, "reflectance_cover_to_sif.csv")
 OCO2_SUBTILE_DATASET = os.path.join(TRAIN_DATASET_DIR, "oco2_eval_subtiles.csv")
-
-#TILES_DIR = os.path.join(DATA_DIR, "tiles_2016-07-16")
 EVAL_DATE = "2016-08-01"
 TILES_DIR = os.path.join(DATA_DIR, "tiles_" + EVAL_DATE)
-OCO2_TILES_DIR = os.path.join(DATA_DIR, "tiles_" + TRAIN_DATE)
 
 #LAT = 41.15
 #LON = -89.35
@@ -126,15 +140,14 @@ LAT_LON = 'lat_' + str(LAT) + '_lon_' + str(LON)
 TILE_DEGREES = 0.1
 eps = TILE_DEGREES / 2
 IMAGE_FILE = os.path.join(TILES_DIR, "reflectance_" + LAT_LON + ".npy")
-OCO2_IMAGE_FILE = os.path.join(OCO2_TILES_DIR, "reflectance_" + LAT_LON + ".npy")
 
 CFIS_SIF_FILE = os.path.join(DATA_DIR, "CFIS/CFIS_201608a_300m_soundings.npy")
 TROPOMI_SIF_FILE = os.path.join(DATA_DIR, "TROPOMI_SIF/TROPO-SIF_01deg_biweekly_Apr18-Jan20.nc")
 TROPOMI_DATE_RANGE = slice("2018-08-01", "2018-08-16")
-EVAL_SUBTILE_DATASET = os.path.join(DATA_DIR, "dataset_" + EVAL_DATE + "/eval_subtiles.csv")
+CFIS_SUBTILE_DATASET = os.path.join(DATA_DIR, "dataset_" + EVAL_DATE + "/eval_subtiles.csv")
 RGB_BANDS = [3, 2, 1]
 CDL_BANDS = list(range(12, 42))
-SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/AUG_subtile_simple_cnn_16crop_2")
+SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/AUG_subtile_simple_cnn_reflectance_only")
 TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_recon_5/TileNet.ckpt") #finetuned_tile2vec.ckpt") #TileNet.ckpt")
 EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_embedding_to_sif") #finetuned_tile2vec_embedding_to_sif.ckpt") #tile2vec_embedding_to_sif")
 EMBEDDING_TYPE = 'tile2vec'
@@ -146,13 +159,16 @@ SAN_MODEL_FILE_111 = os.path.join(DATA_DIR, "models/SAN_feat111_3")
 
 INPUT_CHANNELS = 43
 
-BANDS =  list(range(0, 12)) + list(range(12, 27)) + [28] + [42] #list(range(0, 43)) #
+#BANDS =  list(range(0, 12)) + list(range(12, 27)) + [28] + [42] #list(range(0, 43)) #
+BANDS = list(range(0, 9)) + [42]
 INPUT_CHANNELS_SIMPLE = len(BANDS)
-REDUCED_CHANNELS = 15
+REDUCED_CHANNELS = 6 # 15
 SUBTILE_DIM = 10
 TILE_SIZE_DEGREES = 0.1
 INPUT_SIZE = 371
 OUTPUT_SIZE = int(INPUT_SIZE / SUBTILE_DIM)
+
+MIN_OCO2_SOUNDINGS = 5
 
 # Check if any CUDA devices are visible. If so, pick a default visible device.
 # If not, use CPU.
@@ -180,7 +196,7 @@ max_output = (MAX_SIF - sif_mean) / sif_std
 
 
 # Load subtile SIF model
-subtile_sif_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS_SIMPLE, reduced_channels=REDUCED_CHANNELS, output_dim=1, min_output=min_output, max_output=max_output).to(device)
+subtile_sif_model = simple_cnn.SimpleCNNSmall(input_channels=INPUT_CHANNELS_SIMPLE, reduced_channels=REDUCED_CHANNELS, output_dim=1, min_output=min_output, max_output=max_output).to(device)
 subtile_sif_model.load_state_dict(torch.load(SUBTILE_SIF_MODEL_FILE, map_location=device))
 subtile_sif_model.eval()
 
@@ -261,8 +277,9 @@ plt.close()
 # Load datasets
 #all_metadata = pd.read_csv(ALL_TILE_DATASET).dropna()
 train_metadata = pd.read_csv(TRAIN_TILE_DATASET).dropna()
-eval_metadata = pd.read_csv(EVAL_SUBTILE_DATASET).dropna()
+# eval_metadata = pd.read_csv(CFIS_SUBTILE_DATASET).dropna()
 oco2_metadata = pd.read_csv(OCO2_SUBTILE_DATASET).dropna()
+oco2_metadata = oco2_metadata.loc[oco2_metadata['num_soundings'] >= MIN_OCO2_SOUNDINGS]
 
 
 
@@ -296,13 +313,13 @@ for column in INPUT_COLUMNS + OUTPUT_COLUMN:
     #plot_histogram(np.array(all_metadata[column]), "histogram_all_" + column + ".png")
 
     print('-------------- Large tiles (train) -----------------')
-    plot_histogram(np.array(train_metadata[column]), "histogram_train_" + column + ".png")
+    plot_histogram(np.array(train_metadata[column]), "histogram_unstd_" + column + "_train.png")
 
-    print('-------------- CFIS sub-tiles ----------------------')
-    plot_histogram(np.array(eval_metadata[column]), "histogram_cfis_" + column + ".png")
+    # print('-------------- CFIS sub-tiles ----------------------')
+    # plot_histogram(np.array(eval_metadata[column]), "histogram_cfis_" + column + ".png")
 
     print('-------------- OCO-2 sub-tiles ----------------------')
-    plot_histogram(np.array(oco2_metadata[column]), "histogram_oco2_" + column + ".png")
+    plot_histogram(np.array(oco2_metadata[column]), "histogram_unstd_" + column + "_oco2.png")
 
 for crop_type in CROP_TYPES:
     print('========= SIF for crop type:', crop_type, '==========')
@@ -313,46 +330,52 @@ for crop_type in CROP_TYPES:
     #    plot_histogram(np.array(crop_type_sif_all['SIF']), "sif_distribution_all_" + column + ".png")
 
     print('-------------- Large tiles (train) -----------------')
-    crop_type_sif_train = train_metadata[train_metadata[crop_type] > 0.7]
+    crop_type_sif_train = train_metadata[train_metadata[crop_type] > 0.5]
     if len(crop_type_sif_train) >= 5:
         plot_histogram(np.array(crop_type_sif_train['SIF']), "sif_distribution_train_" + crop_type + ".png")
 
-    print('-------------- CFIS sub-tiles ----------------------')
-    crop_type_sif_cfis = eval_metadata[eval_metadata[crop_type] > 0.7]
-    if len(crop_type_sif_cfis) >= 5:
-        plot_histogram(np.array(crop_type_sif_cfis['SIF']), "sif_distribution_cfis_" + crop_type + ".png")
+    # print('-------------- CFIS sub-tiles ----------------------')
+    # crop_type_sif_cfis = eval_metadata[eval_metadata[crop_type] > 0.7]
+    # if len(crop_type_sif_cfis) >= 5:
+    #     plot_histogram(np.array(crop_type_sif_cfis['SIF']), "sif_distribution_cfis_" + crop_type + ".png")
 
     print('-------------- OCO2 sub-tiles ----------------------')
-    crop_type_sif_oco2 = oco2_metadata[oco2_metadata[crop_type] > 0.7]
+    crop_type_sif_oco2 = oco2_metadata[oco2_metadata[crop_type] > 0.5]
     if len(crop_type_sif_oco2) >= 5:
         plot_histogram(np.array(crop_type_sif_oco2['SIF']), "sif_distribution_oco2_" + crop_type + ".png")
 
 
 # Display tiles with largest/smallest TROPOMI SIFs
 highest_tropomi_sifs = train_metadata.nlargest(25, 'SIF')
-plot_images(highest_tropomi_sifs, 'tile_file', 'exploratory_plots/tropomi_sif_high_subtiles.png')
+plot_rgb_images(highest_tropomi_sifs, 'tile_file', 'exploratory_plots/tropomi_sif_high_subtiles.png')
+plot_band_images(highest_tropomi_sifs, 'tile_file', 'exploratory_plots/tropomi_sif_high_subtiles')
 lowest_tropomi_sifs = train_metadata.nsmallest(25, 'SIF')
-plot_images(lowest_tropomi_sifs, 'tile_file', 'exploratory_plots/tropomi_sif_low_subtiles.png')
+plot_rgb_images(lowest_tropomi_sifs, 'tile_file', 'exploratory_plots/tropomi_sif_low_subtiles.png')
+plot_band_images(lowest_tropomi_sifs, 'tile_file', 'exploratory_plots/tropomi_sif_low_subtiles')
 
-# Display tiles with largest/smallest CFIS SIFs
-highest_cfis_sifs = eval_metadata.nlargest(25, 'SIF')
-plot_images(highest_cfis_sifs, 'subtile_file', 'exploratory_plots/cfis_sif_high_subtiles.png')
-lowest_cfis_sifs = eval_metadata.nsmallest(25, 'SIF')
-plot_images(lowest_cfis_sifs, 'subtile_file', 'exploratory_plots/cfis_sif_low_subtiles.png')
-print('Most common regions in CFIS:', eval_metadata['tile_file'].value_counts())
+# # Display tiles with largest/smallest CFIS SIFs
+# highest_cfis_sifs = eval_metadata.nlargest(25, 'SIF')
+# plot_rgb_images(highest_cfis_sifs, 'subtile_file', 'exploratory_plots/cfis_sif_high_subtiles.png')
+# plot_rgb_images(highest_cfis_sifs, 'subtile_file', 'exploratory_plots/cfis_sif_high_subtiles.png')
+# lowest_cfis_sifs = eval_metadata.nsmallest(25, 'SIF')
+# plot_rgb_images(lowest_cfis_sifs, 'subtile_file', 'exploratory_plots/cfis_sif_low_subtiles.png')
+# plot_rgb_images(lowest_cfis_sifs, 'subtile_file', 'exploratory_plots/cfis_sif_low_subtiles')
+# print('Most common regions in CFIS:', eval_metadata['tile_file'].value_counts())
 
 # Display tiles with largest/smallest OCO-2 SIFs
 highest_oco2_sifs = oco2_metadata.nlargest(25, 'SIF')
-plot_images(highest_oco2_sifs, 'subtile_file', 'exploratory_plots/oco2_sif_high_subtiles.png')
+plot_rgb_images(highest_oco2_sifs, 'subtile_file', 'exploratory_plots/oco2_sif_high_subtiles.png')
+plot_band_images(highest_oco2_sifs, 'subtile_file', 'exploratory_plots/oco2_sif_high_subtiles')
 plot_cdl_layers(highest_oco2_sifs, 'subtile_file', 'exploratory_plots/oco2_sif_high_subtiles_cdl.png')
 lowest_oco2_sifs = oco2_metadata.nsmallest(25, 'SIF')
 print("Lowest OCO2 SIFs")
 pd.options.display.max_columns = None
 print(lowest_oco2_sifs)
-exit(1)
-plot_images(lowest_oco2_sifs, 'subtile_file', 'exploratory_plots/oco2_sif_low_subtiles.png')
+plot_rgb_images(lowest_oco2_sifs, 'subtile_file', 'exploratory_plots/oco2_sif_low_subtiles.png')
+plot_band_images(lowest_oco2_sifs, 'subtile_file', 'exploratory_plots/oco2_sif_low_subtiles')
 plot_cdl_layers(lowest_oco2_sifs, 'subtile_file', 'exploratory_plots/oco2_sif_low_subtiles_cdl.png')
 
+exit(1)
 
 sif_cmap = plt.get_cmap('YlGn')
 sif_cmap.set_bad(color='red')
@@ -595,21 +618,21 @@ print('TROPOMI SIF for this tile', tropomi_array.sel(lat=LAT, lon=LON, method='n
 print('============================================================')
 
 # Plot TROPOMI vs SIF (and linear regression)
-x = eval_metadata['SIF']  # cfis_points[:, 0]
-y = tropomi_sifs
-coef = np.polyfit(x, y, 1)
-print('Linear regression: x=CFIS, y=TROPOMI', coef)
-poly1d_fn = np.poly1d(coef) 
-plt.plot(x, y, 'bo', x, poly1d_fn(x), '--k')
-plt.xlabel('CFIS SIF (small tile, 2016)')
-plt.ylabel('TROPOMI SIF (surrounding large tile, 2018)')
-plt.title('TROPOMI vs CFIS SIF')
-plt.savefig('exploratory_plots/TROPOMI_vs_CFIS_SIF')
-plt.close()
+# x = eval_metadata['SIF']  # cfis_points[:, 0]
+# y = tropomi_sifs
+# coef = np.polyfit(x, y, 1)
+# print('Linear regression: x=CFIS, y=TROPOMI', coef)
+# poly1d_fn = np.poly1d(coef) 
+# plt.plot(x, y, 'bo', x, poly1d_fn(x), '--k')
+# plt.xlabel('CFIS SIF (small tile, 2016)')
+# plt.ylabel('TROPOMI SIF (surrounding large tile, 2018)')
+# plt.title('TROPOMI vs CFIS SIF')
+# plt.savefig('exploratory_plots/TROPOMI_vs_CFIS_SIF')
+# plt.close()
 
-# Calculate NRMSE and correlation
-nrmse = math.sqrt(mean_squared_error(y, x)) / sif_mean
-corr, _ = pearsonr(y, x)
-print('NRMSE', round(nrmse, 3))
-print('Correlation', round(corr, 3))
+# # Calculate NRMSE and correlation
+# nrmse = math.sqrt(mean_squared_error(y, x)) / sif_mean
+# corr, _ = pearsonr(y, x)
+# print('NRMSE', round(nrmse, 3))
+# print('Correlation', round(corr, 3))
 
