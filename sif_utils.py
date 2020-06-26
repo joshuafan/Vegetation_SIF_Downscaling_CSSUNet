@@ -13,6 +13,18 @@ from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_squared_error, r2_score
 
 
+# Returns the upper-left corner of the large grid area
+def get_large_grid_area_coordinates(lon, lat):
+    return (math.floor(lon), math.ceil(lat))
+
+def determine_split(large_grid_areas, row):
+    grid_area_coordinates = get_large_grid_area_coordinates(row['lon'], row['lat'])
+    if grid_area_coordinates in large_grid_areas:
+        return large_grid_areas[grid_area_coordinates]
+    else:
+        print('Row was outside the range', row)
+        exit(1)
+
 # Given a date string (e.g. "20150608"), returns the year, month, and day-of-year (e.g. June 8 is day #159 of the year)
 def parse_date_string(date_string):
     dt = datetime.strptime(date_string, '%Y-%m-%d')
@@ -29,16 +41,16 @@ def lat_long_to_index(lat, lon, dataset_top_bound, dataset_left_bound, resolutio
     return int(height_idx+eps), int(width_idx+eps)
 
 
-def plot_histogram(column, plot_filename, title=None):
+def plot_histogram(column, plot_filename, title=None, range=None):
     column = column.flatten()
     column = column[~np.isnan(column)]
     print(plot_filename)
-    print('Number of datapoints:', len(column))
-    print('Mean:', round(np.mean(column), 4))
-    print('Std:', round(np.std(column), 4))
-    print('Max:', round(np.max(column), 4))
-    print('Min:', round(np.min(column), 4))
-    n, bins, patches = plt.hist(column, 40, facecolor='blue', alpha=0.5)
+    # print('Number of datapoints:', len(column))
+    #print('Mean:', round(np.mean(column), 4))
+    #print('Std:', round(np.std(column), 4))
+    # print('Max:', round(np.max(column), 4))
+    # print('Min:', round(np.min(column), 4))
+    n, bins, patches = plt.hist(column, 40, facecolor='blue', alpha=0.5, range=range)
     if title is not None:
         plt.title(title)
     plt.savefig('exploratory_plots/' + plot_filename)
@@ -51,7 +63,7 @@ def print_stats(true, predicted, average_sif):
     if isinstance(predicted, list):
         predicted = np.array(predicted)
     predicted_to_true = LinearRegression().fit(predicted.reshape(-1, 1), true)
-    print('True vs predicted regression', predicted_to_true.coef_, 'intercept', predicted_to_true.intercept_)
+    print('True vs predicted regression: y = ' + str(round(predicted_to_true.coef_[0], 3)) + 'x + ' + str(round(predicted_to_true.intercept_, 3)))
     predicted_rescaled = predicted_to_true.predict(predicted.reshape(-1, 1))
     r2 = r2_score(true, predicted_rescaled)
     corr, _ = pearsonr(true, predicted_rescaled)
