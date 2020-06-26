@@ -23,13 +23,13 @@ from sif_utils import lat_long_to_index, plot_histogram
 
 
 # Date range of Landsat data
-DATE_RANGE = pd.date_range(start="2018-08-05", end="2018-08-18")
+DATE_RANGE = pd.date_range(start="2018-09-02", end="2018-09-15")
 START_DATE = str(DATE_RANGE.date[0])
 YEAR = "2018"
-MONTH = "08"
+MONTH = "09"
 
 # Date range of SIF data
-SIF_DATE_RANGE = pd.date_range(start="2018-08-05", end="2018-08-18")
+SIF_DATE_RANGE = pd.date_range(start="2018-09-02", end="2018-09-15")
 
 # Root directory of datasets
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
