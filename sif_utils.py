@@ -93,7 +93,7 @@ def get_subtiles_list(tile, subtile_dim, device, max_subtile_cloud_cover=None):
     for i in range(num_subtiles_along_height):
         for j in range(num_subtiles_along_width):
             subtile = tile[:, subtile_dim*i:subtile_dim*(i+1), subtile_dim*j:subtile_dim*(j+1)].to(device)
-            fraction_missing = 1 - torch.mean(subtile[-1, :, :])
+            fraction_missing = torch.mean(subtile[-1, :, :])
             #print("Missing", fraction_missing)
             if (max_subtile_cloud_cover is not None) and fraction_missing > max_subtile_cloud_cover:
                 skipped += 1
