@@ -7,17 +7,20 @@ class StandardizeTile(object):
     """
     Standardizes the given bands (listed in "bands_to_transform") so that each band has
     mean 0, standard deviation 1.
-    Note: do not standardize bands that are already binary masks
+    Note: do not standardize bands that are already binary masks.
+
+    The standardized values will be clipped into the range [min_input, max_input].
     """
-    def __init__(self, band_means, band_stds, bands_to_transform=list(range(0,12))):
+    def __init__(self, band_means, band_stds, bands_to_transform=list(range(0,12)), min_input, max_input):
         self.bands_to_transform = bands_to_transform 
         self.band_means = band_means[bands_to_transform, np.newaxis, np.newaxis]
         self.band_stds = band_stds[bands_to_transform, np.newaxis, np.newaxis]
+        self.min_input = min_input
+        self.max_input = max_input
 
     def __call__(self, tile):
         tile[self.bands_to_transform, :, :] = (tile[self.bands_to_transform, :, :] - self.band_means) / self.band_stds
-        tile[self.bands_to_transform, :, :] = np.clip(tile[self.bands_to_transform, :, :], a_min=-2, a_max=2)
-        tile[-1, :, :] = np.logical_not(tile[-1, :, :])
+        tile[self.bands_to_transform, :, :] = np.clip(tile[self.bands_to_transform, :, :], a_min=self.min_input, a_max=self.max_input)
         return tile
 
 

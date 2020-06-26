@@ -52,6 +52,8 @@ AUGMENT = True
 FROM_PRETRAINED = False
 MIN_SIF = 0
 MAX_SIF = 1.7
+MIN_INPUT = -3
+MAX_INPUT = 3
 MAX_SUBTILE_CLOUD_COVER = 0.5
 
 #BANDS = list(range(0, 9)) + [42] #  12)) + list(range(12, 27)) + [28] + [42] 
@@ -83,6 +85,7 @@ print("Augment:", AUGMENT)
 print("Gaussian noise (std deviation):", NOISE)
 print("Reduced channels:", REDUCED_CHANNELS)
 print("Subtile dim:", SUBTILE_DIM)
+print("Input features clipped to", MIN_INPUT, "to", MAX_INPUT, "standard deviations from mean")
 print("SIF range:", MIN_SIF, "to", MAX_SIF)
 print("==============================================================")
 
@@ -248,7 +251,7 @@ else:
 
 # Set up image transforms
 transform_list = []
-transform_list.append(tile_transforms.StandardizeTile(band_means, band_stds))
+transform_list.append(tile_transforms.StandardizeTile(band_means, band_stds, min_input=MIN_INPUT, max_input=MAX_INPUT))
 transform_list.append(tile_transforms.GaussianNoise(continuous_bands=list(range(0, 12)), standard_deviation=NOISE))
 if AUGMENT:
     transform_list.append(tile_transforms.RandomFlipAndRotate())
