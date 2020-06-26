@@ -11,8 +11,8 @@ import xarray as xr
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
 FILE_PATH = os.path.join(DATA_DIR, "TROPOMI_SIF/TROPO-SIF_01deg_biweekly_Apr18-Jan20.nc")
-START_DATE = '2018-08-01'
-END_DATE = '2018-08-16'
+START_DATE = '2018-07-08'
+END_DATE = '2018-09-15'
 PLOT_FOLDER = './exploratory_plots/TROPOMI'
 
 if not os.path.exists(PLOT_FOLDER):
@@ -29,7 +29,7 @@ print("Times:", dataset.time)
 print("====================================================")
 
 # Take average SIF between August 1-16, 2018
-data_array = dataset.sif_dc.sel(time=slice(START_DATE, END_DATE)).mean(dim='time', skipna=True)
+data_array = dataset.sif_dc.sel(time=slice(START_DATE, END_DATE)) #.mean(dim='time', skipna=True)
 print("SIF array shape", data_array.shape)
 print("Array", data_array)
 
@@ -38,7 +38,7 @@ all_dcSIF = data_array.data.flatten()
 all_dcSIF = all_dcSIF[~np.isnan(all_dcSIF)]
 # all_dcSIF = all_dcSIF[all_dcSIF > 0]
 n, bins, patches = plt.hist(all_dcSIF, 100, facecolor='blue', alpha=0.5)
-plt.title('sif_dc values: August 1-16, 2018 (worldwide)')
+plt.title('sif_dc values (worldwide, average from ' + START_DATE + ' to ' + END_DATE + ')')
 plt.xlabel('n')
 plt.ylabel('Number of pixels (across all days)')
 plt.savefig(os.path.join(PLOT_FOLDER, 'TROPOMI_sif_dc.png'))
@@ -50,7 +50,7 @@ plt.close()
 # data_array = data_array.fillna(0)
 # data_array = data_array.where(data_array >= 0, 0)
 # print(data_array)
-
+data_array = data_array.mean(dim='time', skipna=True)
 plt.figure(figsize=(21,9))
 color_map = plt.get_cmap('YlGn')
 ax = plt.axes(projection=ccrs.PlateCarree())
