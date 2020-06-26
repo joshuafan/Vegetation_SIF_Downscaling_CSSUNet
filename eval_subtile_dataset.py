@@ -19,21 +19,21 @@ class EvalSubtileDataset(Dataset):
             idx = idx.tolist()
 
         current_tile_info = self.eval_tile_info.iloc[idx]
-        subtile = np.load(current_tile_info.loc['subtile_file'])
+        subtile = np.load(current_tile_info.loc['tile_file'])
         if self.transform:
             subtile = self.transform(subtile)
         subtile = torch.tensor(subtile, dtype=torch.float)
         sample = {'lon': current_tile_info.loc['lon'],
                   'lat': current_tile_info.loc['lat'],
                   'subtile': subtile,
-                  'subtile_file': current_tile_info.loc['subtile_file'],
+                  'subtile_file': current_tile_info.loc['tile_file'],
                   'SIF': current_tile_info.loc['SIF']}
  
-        if self.load_large_tile:
-            large_tile = np.load(current_tile_info.loc['tile_file'])
-            if self.transform:
-                large_tile = self.transform(large_tile)
-            sample['large_tile'] = torch.tensor(large_tile, dtype=torch.float)
+        # if self.load_large_tile:
+        #     large_tile = np.load(current_tile_info.loc['tile_file'])
+        #     if self.transform:
+        #         large_tile = self.transform(large_tile)
+        #     sample['large_tile'] = torch.tensor(large_tile, dtype=torch.float)
  
         return sample
 
