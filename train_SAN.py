@@ -1,3 +1,5 @@
+# TODO - this can be consolidated with train_unet.py
+
 import os
 import pandas as pd
 import resnet

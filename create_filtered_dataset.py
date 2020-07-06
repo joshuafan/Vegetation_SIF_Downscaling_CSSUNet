@@ -9,7 +9,7 @@ import pandas as pd
 import pickle
 import random
 import sklearn.model_selection
-from sif_utils import plot_histogram, determine_split
+from sif_utils import plot_histogram, determine_split, determine_split_random
 import torch
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
@@ -22,12 +22,13 @@ UNFILTERED_OCO2_FILES = [os.path.join(dataset_dir, "oco2_eval_subtiles.csv") for
 # print("Unfiltered OCO2 files:", UNFILTERED_OCO2_FILES)
 
 # Create a folder for the processed dataset
-PROCESSED_DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset")
+# PROCESSED_DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset")
+PROCESSED_DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset_random")
 if not os.path.exists(PROCESSED_DATASET_DIR):
     os.makedirs(PROCESSED_DATASET_DIR)
 
 # Record the split of large grid areas between train/val/test
-TRAIN_VAL_TEST_SPLIT_FILE = os.path.join(PROCESSED_DATASET_DIR, "data_split.csv")
+TRAIN_VAL_TEST_SPLIT_FILE = os.path.join(PROCESSED_DATASET_DIR, "data_split_random.csv")
 
 # Resulting filtered csv files
 FILTERED_CSV_FILES = {"train": os.path.join(PROCESSED_DATASET_DIR, "tile_info_train.csv"),
@@ -50,8 +51,8 @@ STATISTICS_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref
 
 MAX_LANDSAT_CLOUD_COVER = 0.2
 MAX_TROPOMI_CLOUD_COVER = 0.2
-MIN_TROPOMI_NUM_SOUNDINGS = 5
-MIN_OCO2_NUM_SOUNDINGS = 3
+MIN_TROPOMI_NUM_SOUNDINGS = 4
+MIN_OCO2_NUM_SOUNDINGS = 4
 MIN_SIF = 0.2
 FRACTION_VAL = 0.2
 FRACTION_TEST = 0.2
@@ -65,7 +66,8 @@ for lon in LONS:
     for lat in LATS:
         random_number = random.random()
         if random_number < 1 - FRACTION_TEST - FRACTION_VAL:
-            split = 'train'
+            # split = 'train'
+            split = 'val'
         elif random_number < 1 - FRACTION_TEST:
             split = 'val'
         else:
@@ -126,20 +128,25 @@ print('OCO2 tiles after filtering low # of soundings:', len(oco2_metadata))
 oco2_metadata = oco2_metadata.loc[oco2_metadata['SIF'] >= MIN_SIF]
 print('OCO2 tiles after filtering low SIF:', len(oco2_metadata))
 
+# Train on TROPOMI, val/test on OCO-2
+# oco2_metadata['split'] = oco2_metadata.apply(lambda row: determine_split(large_grid_areas, row), axis=1)
+# split_metadata = {'train': tropomi_metadata,
+#                   'val': oco2_metadata[oco2_metadata['split'] == 'val'],
+#                   'test': oco2_metadata[oco2_metadata['split'] == 'test']}
 
 # Combine OCO2 and TROPOMI tiles into a single dataframe
 tile_metadata = pd.concat([tropomi_metadata, oco2_metadata])
 tile_metadata.reset_index(drop=True, inplace=True)
 
-
 # Shuffle rows to mix OCO2/TROPOMI together
 tile_metadata = tile_metadata.sample(frac=1).reset_index(drop=True)
-print('After all filtering:', tile_metadata['source'].value_counts())
+# print('After all filtering:', tile_metadata['source'].value_counts())
 print('TROPOMI by date', tropomi_metadata['date'].value_counts())
 print('OCO2 by date', oco2_metadata['date'].value_counts())
 
 # For each row, determine whether it's in a train, val, or test large grid region
 tile_metadata['split'] = tile_metadata.apply(lambda row: determine_split(large_grid_areas, row), axis=1)
+# tile_metadata['split'] = tile_metadata.apply(lambda row: determine_split_random(row, FRACTION_VAL, FRACTION_TEST), axis=1)
 
 split_metadata = {'train': tile_metadata[tile_metadata['split'] == 'train'],
                   'val': tile_metadata[tile_metadata['split'] == 'val'],
@@ -167,7 +174,7 @@ for split, metadata in split_metadata.items():
     # print("Band values ARRAY shape", selected_columns.shape)
     band_means = selected_columns.mean(axis=0)
     band_stds = selected_columns.std(axis=0)
-    print("Band means", band_means)
+    # print("Band means", band_means)
     # print("Band stds", band_stds)
 
     # Write band averages to file

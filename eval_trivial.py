@@ -30,19 +30,17 @@ from tile2vec.src.tilenet import make_tilenet
 
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-08-01") #"dataset_2018-07-16") #7-16") #07-16") #07-16")
-EVAL_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2016-08-01") #"dataset_2016-07-16") #07-16") #07-16") #2016-07-16")
+TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset") #"dataset_2018-07-16")
+EVAL_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2016-08-01") #"dataset_2016-07-16")
 EVAL_FILE = os.path.join(EVAL_DATASET_DIR, "eval_subtiles.csv") 
-# EVAL_FILE = os.path.join(TRAIN_DATASET_DIR, "tile_info_val.csv")
-#TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_13") #aug")
-#"subtile_sif_simple_cnn_11")
-TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/AUG_subtile_simple_cnn_16crop_gaussian_noise") #AUG_small_tile_simple")
+#TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_13")
+TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/AUG_subtile_simple_cnn_new_data_tiny")
 #TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/cfis_sif_aug")
 #RAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_aug") #cfis_sif")
 #TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/small_tile_simple") #large_tile_resnet18")  #test_large_tile_simple")  # small_tile_sif_prediction")
 BAND_STATISTICS_FILE = os.path.join(TRAIN_DATASET_DIR, "band_statistics_train.csv")
 METHOD = '4a_subtile_simple_cnn_small' # '2_large_tile_resnet' # '3_small_tile_simple' #'0_cfis_cheating' # #'3_small_tile_simple' # '2_large_tile_resnet18'
-MODEL_TYPE = 'simple_cnn'
+MODEL_TYPE = 'simple_cnn_small'
 TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_cfis_eval_subtile_' + METHOD 
 
 COLUMN_NAMES = ['true', 'predicted',
@@ -72,7 +70,7 @@ RESULTS_CSV_FILE = os.path.join(EVAL_DATASET_DIR, 'results_' + METHOD + '.csv')
 #BANDS = list(range(0, 43))
 BANDS =  list(range(0, 12)) + list(range(12, 27)) + [28] + [42]
 INPUT_CHANNELS = len(BANDS)
-REDUCED_CHANNELS = 10
+REDUCED_CHANNELS = 15
 RESIZE = False
 RESIZED_DIM = [371, 371]
 DISCRETE_BANDS = list(range(12, 43))
@@ -95,9 +93,9 @@ def eval_model(model, dataloader, dataset_size, criterion, device, sif_mean, sif
     # Iterate over data.
     for sample in dataloader:
         input_tile_standardized = sample['subtile'].to(device)
-        #print('=========================')
-        #print('Input band means')
-        #print(torch.mean(input_tile_standardized, dim=(2,3)))
+        print('=========================')
+        print('Input band means')
+        print(torch.mean(input_tile_standardized, dim=(2,3)))
         true_sif_non_standardized = sample['SIF'].to(device)
 
         # forward
@@ -167,7 +165,7 @@ transform = transforms.Compose(transform_list)
 dataset_size = len(eval_metadata)
 # dataset = ReflectanceCoverSIFDataset(eval_metadata, transform)
 dataset = EvalSubtileDataset(eval_metadata, transform=transform)
-dataloader = torch.utils.data.DataLoader(dataset, batch_size=4,
+dataloader = torch.utils.data.DataLoader(dataset, batch_size=1,
                                          shuffle=True, num_workers=4)
 
 # Load trained model from file

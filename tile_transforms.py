@@ -11,7 +11,7 @@ class StandardizeTile(object):
 
     The standardized values will be clipped into the range [min_input, max_input].
     """
-    def __init__(self, band_means, band_stds, bands_to_transform=list(range(0,12)), min_input, max_input):
+    def __init__(self, band_means, band_stds, min_input, max_input, bands_to_transform=list(range(0,12)),):
         self.bands_to_transform = bands_to_transform 
         self.band_means = band_means[bands_to_transform, np.newaxis, np.newaxis]
         self.band_stds = band_stds[bands_to_transform, np.newaxis, np.newaxis]
@@ -21,6 +21,7 @@ class StandardizeTile(object):
     def __call__(self, tile):
         tile[self.bands_to_transform, :, :] = (tile[self.bands_to_transform, :, :] - self.band_means) / self.band_stds
         tile[self.bands_to_transform, :, :] = np.clip(tile[self.bands_to_transform, :, :], a_min=self.min_input, a_max=self.max_input)
+        tile[-1, :, :] = np.logical_not(tile[-1, :, :])
         return tile
 
 

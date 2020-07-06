@@ -2,13 +2,10 @@
 Constructs validation datasets from CFIS data. 
 
 The main dataset (written to OUTPUT_CSV_FILE) contains
-(longitude, latitude, subtile file name, surrounding large tile file name, SIF).
+(longitude, latitude, date, subtile file name, band averages, SIF, num soundings, source).
 
-The "tile average" dataset (written to TILE_AVERAGE_CSV_FILE) contains
+The "large tile average" dataset (written to LARGE_TILE_AVERAGE_CSV_FILE) contains
 the band averages for the surrounding large tile.
-
-The "subtile average" dataset (written to SUBTILE_AVERAGE_CSV_FILE) contains
-the band averages for the subtile.
 """
 
 import csv
@@ -32,14 +29,14 @@ if not os.path.exists(DATASET_DIR):
     os.makedirs(DATASET_DIR)
 
 OUTPUT_CSV_FILE = os.path.join(DATASET_DIR, "eval_subtiles.csv")
-TILE_AVERAGE_CSV_FILE = os.path.join(DATASET_DIR, "eval_large_tile_averages.csv")
+LARGE_TILE_AVERAGE_CSV_FILE = os.path.join(DATASET_DIR, "eval_large_tile_averages.csv")
 CFIS_FILE = os.path.join(DATA_DIR, "CFIS/CFIS_201608a_300m_soundings.npy")
 TILE_SIZE_DEGREES = 0.1
 SUBTILE_SIZE_PIXELS = 10
 MAX_FRACTION_MISSING = 0.1  # If more than this fraction of reflectance pixels is missing, ignore the data point
 MIN_SIF = 0.2
 MIN_SOUNDINGS = 500
-column_names = ['lat', 'lon', 'date', 'tile_file', 'subtile_file', 'num_soundings',
+column_names = ['lat', 'lon', 'date', 'tile_file',
                     'ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
                     'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg', 
                     'grassland_pasture', 'corn', 'soybean', 'shrubland',
@@ -49,9 +46,9 @@ column_names = ['lat', 'lon', 'date', 'tile_file', 'subtile_file', 'num_sounding
                     'sorghum', 'developed_low_intensity', 'barren', 'durum_wheat',
                     'canola', 'sunflower', 'dry_beans', 'developed_med_intensity',
                     'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
-                    'lentils', 'missing_reflectance', 'SIF']
+                    'lentils', 'missing_reflectance', 'SIF', 'num_soundings', 'source']
 csv_rows = [column_names]
-tile_averages = [column_names]
+large_tile_averages = [column_names]
 
 # Each row is a datapoint. First column is the dc_sif. Second/third columns lon/lat of the grid center.
 validation_points = np.load(CFIS_FILE)
@@ -93,7 +90,7 @@ for i in range(validation_points.shape[0]):
     if num_soundings < MIN_SOUNDINGS:
         continue
 
-    #sif *= 1.52  # TROPOMI SIF is roughly 1.52 times CFIS SIF
+    sif *= 1.52  # TROPOMI SIF is roughly 1.52 times CFIS SIF
     point_lon = validation_points[i, 1]
     point_lat = validation_points[i, 2]
 
@@ -147,13 +144,13 @@ for i in range(validation_points.shape[0]):
     # Save subtile to file
     np.save(subtile_filename, subtile)
 
-    # We're constructing 3 datasets. "csv_rows" contains the filename of the surrounding large
-    # tile and the subtile. "tile_averages" contains the band averages of the surrounding large
-    # tile. "subtile_averages" contains the band averages of the subtile.
-    csv_rows.append([point_lat, point_lon, DATE, large_tile_filename, subtile_filename, num_soundings] +
-                    np.nanmean(subtile, axis=(1,2)).tolist() + [sif])
-    tile_averages.append([point_lat, point_lon, DATE, large_tile_filename, subtile_filename, num_soundings] +
-                         np.nanmean(large_tile, axis=(1,2)).tolist() + [sif])
+    # We're constructing 2 datasets. "csv_rows" contains the filename of the sub-tile, as well
+    # as the band averages. "large_tile_averages" contains the band averages of the surrounding large
+    # tile.
+    csv_rows.append([point_lat, point_lon, DATE, subtile_filename] +
+                    np.nanmean(subtile, axis=(1,2)).tolist() + [sif, num_soundings, 'CFIS'])
+    large_tile_averages.append([point_lat, point_lon, DATE, large_tile_filename] +
+                         np.nanmean(large_tile, axis=(1,2)).tolist() + [sif, num_soundings, 'CFIS'])
     sifs.append(sif)
 
 print('=====================================================')
@@ -170,8 +167,8 @@ with open(OUTPUT_CSV_FILE, "w") as output_csv_file:
     csv_writer = csv.writer(output_csv_file, delimiter=",", quoting=csv.QUOTE_MINIMAL)
     for row in csv_rows:
         csv_writer.writerow(row) 
-with open(TILE_AVERAGE_CSV_FILE, "w") as output_csv_file:
+with open(LARGE_TILE_AVERAGE_CSV_FILE, "w") as output_csv_file:
     csv_writer = csv.writer(output_csv_file, delimiter=",", quoting=csv.QUOTE_MINIMAL)
-    for row in tile_averages:
+    for row in large_tile_averages:
         csv_writer.writerow(row)
  

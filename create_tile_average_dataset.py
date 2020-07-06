@@ -13,11 +13,12 @@ from sif_utils import plot_histogram
 import torch
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-DATASET_DIRS = [os.path.join(DATA_DIR, "dataset_2018-07-08"),
-                os.path.join(DATA_DIR, "dataset_2018-07-22"),
-                os.path.join(DATA_DIR, "dataset_2018-08-05"),
-                os.path.join(DATA_DIR, "dataset_2018-08-19"),
-                os.path.join(DATA_DIR, "dataset_2018-09-02")] 
+# DATASET_DIRS = [os.path.join(DATA_DIR, "dataset_2018-07-08"),
+#                 os.path.join(DATA_DIR, "dataset_2018-07-22"),
+#                 os.path.join(DATA_DIR, "dataset_2018-08-05"),
+#                 os.path.join(DATA_DIR, "dataset_2018-08-19"),
+#                 os.path.join(DATA_DIR, "dataset_2018-09-02")] 
+DATASET_DIRS = [os.path.join(DATA_DIR, "dataset_2018-09-02")] 
 
 REFLECTANCE_BANDS = list(range(0, 9))
 CDL_BANDS = list(range(12, 42))

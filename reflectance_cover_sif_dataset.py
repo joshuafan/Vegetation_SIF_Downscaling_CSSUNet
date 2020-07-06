@@ -16,7 +16,7 @@ warnings.filterwarnings("ignore")
 class ReflectanceCoverSIFDataset(Dataset):
     """Dataset mapping a tile (with reflectance/cover bands) to total SIF"""
 
-    def __init__(self, tile_info, transform):
+    def __init__(self, tile_info, transform, tile_file_column='tile_file'):
         """
         Args:
             tile_info_file (string): Pandas dataframe containing metadata for each tile.
@@ -24,6 +24,7 @@ class ReflectanceCoverSIFDataset(Dataset):
         """
         self.tile_info = tile_info
         self.transform = transform
+        self.tile_file_column = tile_file_column
 
     def __len__(self):
         return len(self.tile_info)
@@ -34,12 +35,12 @@ class ReflectanceCoverSIFDataset(Dataset):
 
         current_tile_info = self.tile_info.iloc[idx]
         #year, month, day_of_year = sif_utils.parse_date_string(current_tile_info.loc['date'])
-        tile = np.load(current_tile_info.loc['tile_file']) 
+        tile = np.load(current_tile_info.loc[self.tile_file_column]) 
         #print('Tile shape', tile.shape)
-        #print('Band means before transform', np.mean(tile, axis=(1, 2)))
+        # print('Idx', idx, 'Band means before transform', np.mean(tile, axis=(1, 2)))
         if self.transform:
             tile = self.transform(tile)
-        #print('Band means after transform', np.mean(tile, axis=(1,2)))
+        # print('Idx', idx, 'Band means after transform', np.mean(tile, axis=(1,2)))
         #BANDS = list(range(0,12))
         #tile = tile[BANDS, :, :]
 
@@ -47,7 +48,7 @@ class ReflectanceCoverSIFDataset(Dataset):
  
         sample = {'lon': current_tile_info.loc['lon'],
                   'lat': current_tile_info.loc['lat'],
-                  'tile_file': current_tile_info.loc['tile_file'],
+                  'tile_file': current_tile_info.loc[self.tile_file_column],
                   'source': current_tile_info.loc['source'],
                   'date': current_tile_info.loc['date'],
                   #'year': year,
@@ -55,3 +56,5 @@ class ReflectanceCoverSIFDataset(Dataset):
                   'tile': tile,
                   'SIF': current_tile_info.loc["SIF"]}
         return sample
+
+

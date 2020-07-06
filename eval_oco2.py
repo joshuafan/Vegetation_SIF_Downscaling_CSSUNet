@@ -32,25 +32,32 @@ from tile2vec.src.tilenet import make_tilenet
 
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset")
+# DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset_tropomi_train")
+DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset_random")
 EVAL_FILE = os.path.join(DATASET_DIR, "tile_info_val.csv")
-TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/AUG_subtile_simple_cnn_new_data_repeat_oco2")
+# EVAL_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2016-08-01")
+# EVAL_FILE = os.path.join(EVAL_DATASET_DIR, "eval_subtiles.csv") 
+
+# TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/avg_embedding_to_sif")
+# TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/AUG_subtile_simple_cnn_new_data_tiny")
+TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/AUG_subtile_simple_cnn_random_v4")
+# TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/AUG_subtile_simple_cnn_tropomi_train")
+print('trained model file', os.path.basename(TRAINED_MODEL_FILE))
 
 #DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-08-01") #"dataset_2018-07-16") #7-16") #07-16") #07-16")
 #OCO2_EVAL_FILE = os.path.join(DATASET_DIR, "oco2_eval_subtiles.csv")
 #TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/AUG_subtile_simple_cnn_16crop_embedding")
 #TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/avg_embedding_to_sif")
 
-print('trained model file', os.path.basename(TRAINED_MODEL_FILE))
-
 BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
 METHOD = '4a_subtile_simple_cnn_new_data' # oco2_only'  #'3_small_tile_simple' # '2_large_tile_resnet18'
-MODEL_TYPE = 'simple_cnn_small'
-#METHOD = '4b_avg_embedding'  #'3_small_tile_simple' # '2_large_tile_resnet18'
-#MODEL_TYPE = 'avg_embedding'
+MODEL_TYPE = 'simple_cnn_small_v4'
+# MODEL_TYPE = 'simple_cnn_small_3'
+# METHOD = '4b_avg_embedding'
+# MODEL_TYPE = 'avg_embedding'
 TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_new_data_OCO2_' + METHOD 
 MODEL_SUBTILE_DIM = 10
-MAX_SUBTILE_CLOUD_COVER = 0.1
+MAX_SUBTILE_CLOUD_COVER = 0.2
 CROP_TYPE_START_IDX = 12
 COLUMN_NAMES = ['true', 'predicted',
                     'lon', 'lat', 'source', 'date',
@@ -78,20 +85,22 @@ RESULTS_CSV_FILE = os.path.join(DATASET_DIR, 'OCO2_results_' + METHOD + '.csv')
 # BANDS = list(range(0, 9)) + [42]
 BANDS =  list(range(0, 12)) + list(range(12, 27)) + [28] + [42]
 # BANDS = list(range(0, 12)) + [12, 13, 14, 16] + [42]
-#BANDS = list(range(0, 43))
+# BANDS = list(range(0, 43))
 DATES = ["2018-07-08", "2018-07-22", "2018-08-05", "2018-08-19", "2018-09-02"]
 SOURCES = ["TROPOMI", "OCO2"]
 
 INPUT_CHANNELS = len(BANDS)
-REDUCED_CHANNELS = 32
+REDUCED_CHANNELS = 15
 DISCRETE_BANDS = list(range(12, 43))
 COVER_INDICES = list(range(12, 42))
 RESIZE = False
 MIN_SIF = 0
 MAX_SIF = 1.7
+MIN_INPUT = -2
+MAX_INPUT = 2
 BATCH_SIZE = 1
 PURE_THRESHOLD = 0.6
-MIN_SOUNDINGS = 5
+# MIN_SOUNDINGS = 5
 
 HIDDEN_DIM = 64
 assert(BATCH_SIZE == 1)
@@ -114,12 +123,13 @@ def eval_model(model, dataloader, dataset_size, criterion, device, sif_mean, sif
 
             #print('Input tile shape', input_tile_standardized.shape)
             #print('=========================')
-            #print('Input band means')
-            #print(torch.mean(input_tile_standardized, dim=(2,3)))
+            # print('Input band means')
+            # print(torch.mean(input_tile_standardized, dim=(1, 2)))
 
             # Pass sub-tiles through network
             with torch.set_grad_enabled(False):
                 subtiles = get_subtiles_list(input_tile_standardized[BANDS, :, :], MODEL_SUBTILE_DIM, device, MAX_SUBTILE_CLOUD_COVER)
+                # print('subtiles shape', subtiles.shape)
                 if MODEL_TYPE == 'avg_embedding':
                     subtile_averages = torch.mean(subtiles, dim=(2, 3))
                     print('Subtile averages shape', subtile_averages.shape)
@@ -129,7 +139,7 @@ def eval_model(model, dataloader, dataset_size, criterion, device, sif_mean, sif
                 predicted_sif_standardized = torch.mean(predicted_subtile_sifs)
                 predicted_sif_non_standardized = torch.tensor(predicted_sif_standardized * sif_std + sif_mean, dtype=torch.float).to(device)
                 loss = criterion(predicted_sif_non_standardized, true_sif_non_standardized)
-                #print('Predicted', predicted_sif_non_standardized, 'True', true_sif_non_standardized)
+                print('Predicted', predicted_sif_non_standardized, 'True', true_sif_non_standardized)
 
             # statistics
             band_means = torch.mean(input_tile_standardized, dim=(1, 2))
@@ -187,7 +197,7 @@ else:
 # Set up image transforms
 transform_list = []
 # transform_list.append(tile_transforms.ShrinkTile())
-transform_list.append(tile_transforms.StandardizeTile(band_means, band_stds))
+transform_list.append(tile_transforms.StandardizeTile(band_means, band_stds, min_input=MIN_INPUT, max_input=MAX_INPUT))
 if RESIZE:
     transform_list.append(tile_transforms.ResizeTile(target_dim=RESIZED_DIM, discrete_bands=DISCRETE_BANDS))
 transform = transforms.Compose(transform_list)
@@ -206,6 +216,10 @@ elif MODEL_TYPE == 'simple_cnn':
     model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, reduced_channels=REDUCED_CHANNELS, output_dim=1, min_output=min_output, max_output=max_output).to(device)
 elif MODEL_TYPE == 'simple_cnn_small':
     model = simple_cnn.SimpleCNNSmall(input_channels=INPUT_CHANNELS, reduced_channels=REDUCED_CHANNELS, crop_type_start_idx=CROP_TYPE_START_IDX, output_dim=1, min_output=min_output, max_output=max_output).to(device)
+elif MODEL_TYPE == 'simple_cnn_small_3':
+    model = simple_cnn.SimpleCNNSmall3(input_channels=INPUT_CHANNELS, output_dim=1, min_output=min_output, max_output=max_output).to(device)
+elif MODEL_TYPE == 'simple_cnn_small_v4':
+    model = simple_cnn.SimpleCNNSmall4(input_channels=INPUT_CHANNELS, output_dim=1, min_output=min_output, max_output=max_output).to(device)
 elif MODEL_TYPE == 'avg_embedding':
     model = EmbeddingToSIFNonlinearModel(embedding_size=INPUT_CHANNELS, hidden_size=HIDDEN_DIM, min_output=min_output, max_output=max_output).to(device)
 

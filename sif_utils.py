@@ -2,6 +2,7 @@ import copy
 import math
 import numpy as np
 import os
+import random
 import time
 import torch
 import torch.nn as nn
@@ -13,10 +14,11 @@ from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_squared_error, r2_score
 
 
-# Returns the upper-left corner of the large grid area
+# Returns the upper-left corner of the large (1x1 degree) grid area
 def get_large_grid_area_coordinates(lon, lat):
     return (math.floor(lon), math.ceil(lat))
 
+# 
 def determine_split(large_grid_areas, row):
     grid_area_coordinates = get_large_grid_area_coordinates(row['lon'], row['lat'])
     if grid_area_coordinates in large_grid_areas:
@@ -24,6 +26,15 @@ def determine_split(large_grid_areas, row):
     else:
         print('Row was outside the range', row)
         exit(1)
+
+def determine_split_random(row, fraction_val, fraction_test):
+    random_number = random.random()
+    if random_number < 1 - fraction_test - fraction_val:
+        return 'train'
+    elif random_number < 1 - fraction_test:
+        return 'val'
+    else:
+        return 'test'
 
 # Given a date string (e.g. "20150608"), returns the year, month, and day-of-year (e.g. June 8 is day #159 of the year)
 def parse_date_string(date_string):
@@ -71,7 +82,7 @@ def print_stats(true, predicted, average_sif):
     nrmse_unstd = math.sqrt(mean_squared_error(true, predicted)) / average_sif
     spearman_rank_corr, _ = spearmanr(true, predicted_rescaled)
     print('R2:', round(r2, 3))
-    print('NRMSE:', round(nrmse, 3))
+    print('NRMSE:', round(nrmse_unstd, 3))
     #print('NRMSE (unstandardized):', round(nrmse_unstd, 3))
     #print('Pearson correlation:', round(corr, 3))
     #print('Pearson (unstandardized):', round(pearsonr(true, predicted)[0], 3))
@@ -93,8 +104,8 @@ def get_subtiles_list(tile, subtile_dim, device, max_subtile_cloud_cover=None):
     for i in range(num_subtiles_along_height):
         for j in range(num_subtiles_along_width):
             subtile = tile[:, subtile_dim*i:subtile_dim*(i+1), subtile_dim*j:subtile_dim*(j+1)].to(device)
-            fraction_missing = torch.mean(subtile[-1, :, :])
-            #print("Missing", fraction_missing)
+            fraction_missing = 1 - torch.mean(subtile[-1, :, :])
+            # print("Missing", fraction_missing)
             if (max_subtile_cloud_cover is not None) and fraction_missing > max_subtile_cloud_cover:
                 skipped += 1
                 continue

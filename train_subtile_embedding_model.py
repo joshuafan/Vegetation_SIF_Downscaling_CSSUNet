@@ -35,7 +35,7 @@ from embedding_to_sif_nonlinear_model import EmbeddingToSIFNonlinearModel
 
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-08-01") #07-16")
+DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset")
 # INFO_FILE_TRAIN = os.path.join(DATASET_DIR, "tile_info_train.csv")
 # INFO_FILE_VAL = os.path.join(DATASET_DIR, "tile_info_val.csv")
 BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
@@ -45,7 +45,7 @@ EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/avg_embedding_to_si
 # LOAD_EMBEDDINGS = False
 SUBTILE_EMBEDDING_DATASET_TRAIN = os.path.join(DATASET_DIR, "avg_embeddings_train.csv")
 SUBTILE_EMBEDDING_DATASET_VAL = os.path.join(DATASET_DIR, "avg_embeddings_val.csv")
-FROM_PRETRAINED = False #True #False #True #True  #True #False # True
+FROM_PRETRAINED = True #True #False #True #True  #True #False # True
 METHOD = '4b_avg_embedding' # '4c_tile2vec_fixed'
 TRAINING_PLOT_FILE = 'exploratory_plots/losses_aug_' + METHOD + '.png'
 PLOT_TITLE = 'Loss curves: ' + METHOD
@@ -57,7 +57,7 @@ NUM_EPOCHS = 150
 LEARNING_RATE = 1e-3 #1e-2 #1e-2:Wq
 WEIGHT_DECAY = 0 #  1e-6 #1e-6 # 1e-8 #0.01
 BATCH_SIZE = 64
-MIN_SIF = 0
+MIN_SIF = 0.2
 MAX_SIF = 1.7
 NUM_WORKERS = 4
 OPTIMIZER_TYPE = "Adam"
@@ -107,6 +107,7 @@ def train_embedding_to_sif_model(embedding_to_sif_model, dataloaders, dataset_si
                 embedding_to_sif_model.eval()
 
             running_loss = 0.0
+            batch_loss = 0.0
 
             # Iterate over data.
             j = 0
@@ -124,7 +125,6 @@ def train_embedding_to_sif_model(embedding_to_sif_model, dataloaders, dataset_si
                 # Forward pass: feed subtiles through embedding model and then the
                 # embedding -> SIF model
                 with torch.set_grad_enabled(phase == 'train'):
-                    optimizer.zero_grad()
 
                     for i in range(batch_size):
                         #print('Embedding', subtile_embeddings[i])
@@ -138,18 +138,22 @@ def train_embedding_to_sif_model(embedding_to_sif_model, dataloaders, dataset_si
                     #print('Shape of predicted total SIFs', predicted_sif_standardized.shape)
                     #print('Shape of true total SIFs', true_sif_standardized.shape)
                     loss = criterion(predicted_sif_standardized, true_sif_standardized)
+                    batch_loss += loss
 
                     # backward + optimize only if in training phase
-                    if phase == 'train':
-                        loss.backward()
+                    if phase == 'train' and j % BATCH_SIZE == 0:
+                        average_loss = batch_loss / BATCH_SIZE
+                        optimizer.zero_grad()
+                        average_loss.backward()
                         optimizer.step()
+                        batch_loss = 0.0
 
                     # statistics
                     predicted_sif_non_standardized = torch.tensor(predicted_sif_standardized * sif_std + sif_mean, dtype=torch.float).to(device)
                     non_standardized_loss = criterion(predicted_sif_non_standardized, true_sif_non_standardized)
                     running_loss += non_standardized_loss.item() * len(sample['SIF'])
                     j += 1
-                    if j % 100 == 0:
+                    if j % 5000 == 0:
                         print('========================')
                         print('***** Predicted', predicted_sif_non_standardized)
                         print('***** True', true_sif_non_standardized)
@@ -217,7 +221,7 @@ val_tile_rows = pd.read_csv(SUBTILE_EMBEDDING_DATASET_VAL) # [0:200]
 # Set up datasets and dataloaders
 embedding_datasets = {'train': SubtileEmbeddingDataset(train_tile_rows),
                       'val': SubtileEmbeddingDataset(val_tile_rows)}
-embedding_dataloaders = {x: torch.utils.data.DataLoader(embedding_datasets[x], batch_size=BATCH_SIZE,
+embedding_dataloaders = {x: torch.utils.data.DataLoader(embedding_datasets[x], batch_size=1,
                                                         shuffle=True, num_workers=NUM_WORKERS)
                   for x in ['train', 'val']}
 

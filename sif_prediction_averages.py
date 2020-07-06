@@ -20,7 +20,7 @@ DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
 # Train files
 # TRAIN_DATE = "2018-08-01" # "2018-07-16"
 # TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_" + TRAIN_DATE)
-PROCESSED_DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset")
+PROCESSED_DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset_random") #_tropomi_train")
 TILE_AVERAGE_TRAIN_FILE = os.path.join(PROCESSED_DATASET_DIR, "tile_info_train.csv")
 TILE_AVERAGE_VAL_FILE = os.path.join(PROCESSED_DATASET_DIR, "tile_info_val.csv")
 BAND_STATISTICS_FILE = os.path.join(PROCESSED_DATASET_DIR, "band_statistics_train.csv")
@@ -28,17 +28,14 @@ BAND_STATISTICS_FILE = os.path.join(PROCESSED_DATASET_DIR, "band_statistics_trai
 DATES = ["2018-07-08", "2018-07-22", "2018-08-05", "2018-08-19", "2018-09-02"]
 SOURCES = ["TROPOMI", "OCO2"]
 
-# OCO-2 eval file
-# OCO2_AVERAGE_FILE = os.path.join(TRAIN_DATASET_DIR, "oco2_eval_subtiles.csv")
-# print("OCO2 file", OCO2_AVERAGE_FILE)
-
 # CFIS eval files
 EVAL_DATE = "2016-08-01" #"2016-07-16"
 EVAL_DATASET_DIR = os.path.join(DATA_DIR, "dataset_" + EVAL_DATE)
 CFIS_AVERAGE_FILE = os.path.join(EVAL_DATASET_DIR, "eval_subtiles.csv")
 
 METHOD = "1a_Linear_Regression"
-#METHOD = "1d_MLP" #"1c_Gradient_Boosting_Regressor" # #"Gradient_Boosting_Regressor"
+# METHOD = "1c_Gradient_Boosting_Regressor"
+# METHOD = "1d_MLP"
 CFIS_TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_new_data_eval_subtile_' + METHOD
 OCO2_TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_new_data_OCO2_' + METHOD
 
@@ -49,6 +46,16 @@ MIN_SOUNDINGS = 3
 train_set = pd.read_csv(TILE_AVERAGE_TRAIN_FILE)
 val_set = pd.read_csv(TILE_AVERAGE_VAL_FILE)
 eval_cfis_set = pd.read_csv(CFIS_AVERAGE_FILE)
+
+# Filter
+train_oco2_metadata = train_set[train_set['source'] == 'OCO2'] 
+val_oco2_metadata = val_set[val_set['source'] == 'OCO2'] 
+
+# Add copies of OCO-2 tiles
+train_oco2_repeated = pd.concat([train_oco2_metadata]*4)
+# train_set = pd.concat([train_set, train_oco2_repeated])
+# val_oco2_repeated = pd.concat([val_oco2_metadata]*4)
+# val_set = pd.concat([val_set, val_oco2_repeated])
 
 # Split val set into TROPOMI and OCO2
 val_tropomi_set = val_set[val_set['source'] == 'TROPOMI'].copy()
@@ -81,6 +88,16 @@ INPUT_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
                     'canola', 'sunflower', 'dry_beans', 'developed_med_intensity',
                     'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
                     'lentils', 'missing_reflectance']
+
+
+# INPUT_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
+#                     'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg', 
+#                     'grassland_pasture', 'corn', 'soybean', 'shrubland',
+#                     'deciduous_forest', 'evergreen_forest', 'spring_wheat', 'developed_open_space',
+#                     'other_hay_non_alfalfa', 'winter_wheat', 'herbaceous_wetlands',
+#                     'woody_wetlands', 'open_water', 'alfalfa', 'fallow_idle_cropland',
+#                     'developed_low_intensity', 'missing_reflectance']
+
 COLUMNS_TO_STANDARDIZE = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
                     'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg']
 OUTPUT_COLUMN = ['SIF']
@@ -102,18 +119,20 @@ COVER_COLUMN_NAMES = ['grassland_pasture', 'corn', 'soybean', 'deciduous_forest'
 for column in COLUMNS_TO_STANDARDIZE:
     column_mean = train_set[column].mean()
     column_std = train_set[column].std()
-    train_set[column] = np.clip((train_set[column] - column_mean) / column_std, a_min=-3, a_max=3)
-    val_set[column] = np.clip((val_set[column] - column_mean) / column_std, a_min=-3, a_max=3)
-    val_tropomi_set[column] = np.clip((val_tropomi_set.loc[:, column] - column_mean) / column_std, a_min=-3, a_max=3)
-    val_oco2_set[column] = np.clip((val_oco2_set.loc[:, column] - column_mean) / column_std, a_min=-3, a_max=3)
-    eval_cfis_set[column] = np.clip((eval_cfis_set[column] - column_mean) / column_std, a_min=-3, a_max=3)
+    train_set[column] = np.clip((train_set[column] - column_mean) / column_std, a_min=-2, a_max=2)
+    val_set[column] = np.clip((val_set[column] - column_mean) / column_std, a_min=-2, a_max=2)
+    val_tropomi_set[column] = np.clip((val_tropomi_set.loc[:, column] - column_mean) / column_std, a_min=-2, a_max=2)
+    val_oco2_set[column] = np.clip((val_oco2_set.loc[:, column] - column_mean) / column_std, a_min=-2, a_max=2)
+    eval_cfis_set[column] = np.clip((eval_cfis_set[column] - column_mean) / column_std, a_min=-2, a_max=2)
+
     # Histograms of standardized columns
-    # plot_histogram(train_set[column].to_numpy(), "histogram_std_" + column + "_train.png")
-    # plot_histogram(val_tropomi_set[column].to_numpy(), "histogram_std_" + column + "_val_tropomi.png")
-    # plot_histogram(val_oco2_set[column].to_numpy(), "histogram_std_" + column + "_val_oco2.png")
+    plot_histogram(train_set[column].to_numpy(), "histogram_std_" + column + "_train.png")
+    plot_histogram(val_tropomi_set[column].to_numpy(), "histogram_std_" + column + "_val_tropomi.png")
+    plot_histogram(val_oco2_set[column].to_numpy(), "histogram_std_" + column + "_val_oco2.png")
 
     # train_set[column] = train_set[column] + np.random.normal(loc=0, scale=0.1, size=len(train_set[column]))
     # plot_histogram(eval_cfis_set[column].to_numpy(), "histogram_std_" + column + "_cfis.png")
+
 
 print('train_set', train_set[INPUT_COLUMNS].head())
 print('Val OCO2', val_oco2_set[INPUT_COLUMNS].head())
@@ -127,6 +146,8 @@ X_val_oco2 = val_oco2_set[INPUT_COLUMNS]
 Y_val_oco2 = val_oco2_set[OUTPUT_COLUMN].values.ravel()
 X_cfis = eval_cfis_set[INPUT_COLUMNS]
 Y_cfis = eval_cfis_set[OUTPUT_COLUMN].values.ravel()
+
+
 
 # Print percentage of each crop type
 print("************************************************************")
@@ -197,28 +218,15 @@ print_stats(Y_val_oco2, predictions_val_oco2, average_sif)
 print('========== CFIS Eval subtile stats ===========')
 print_stats(Y_cfis, predictions_cfis, average_sif)  #eval_cfis_set['SIF'].mean())  #average_sif)
 
-# nrmse_train = math.sqrt(mean_squared_error(predictions_train, Y_train)) / average_sif
-# nrmse_val = math.sqrt(mean_squared_error(predictions_val, Y_val)) / average_sif
-# print(METHOD + ": train NRMSE", round(nrmse_train, 3))
-# print(METHOD + ": val NRMSE", round(nrmse_val, 3))
-# corr_train, _ = pearsonr(Y_train, predictions_train)
-# corr_val, _ = pearsonr(Y_val, predictions_val)
-# print("Train corr:", round(corr_train, 3))
-# print("Val corr:", round(corr_val, 3))
-# r2_train = r2_score(Y_train, predictions_train)
-# r2_val = r2_score(Y_val, predictions_val)
-# print("Train R2:", round(r2_train, 3))
-# print("Val R2:", round(r2_val, 3))
-
 # Scatter plot of true vs predicted on TROPOMI val tiles
-plt.scatter(Y_val_tropomi, predictions_val_tropomi)
-plt.xlabel('True')
-plt.ylabel('Predicted')
-plt.xlim(left=0, right=1.5)
-plt.ylim(bottom=0, top=1.5)
-plt.title('TROPOMI val set: predicted vs true SIF (' + METHOD + ')')
-plt.savefig('exploratory_plots/true_vs_predicted_sif_val_tropomi_' + METHOD + '.png')
-plt.close()
+# plt.scatter(Y_val_tropomi, predictions_val_tropomi)
+# plt.xlabel('True')
+# plt.ylabel('Predicted')
+# plt.xlim(left=0, right=1.5)
+# plt.ylim(bottom=0, top=1.5)
+# plt.title('TROPOMI val set: predicted vs true SIF (' + METHOD + ')')
+# plt.savefig('exploratory_plots/true_vs_predicted_sif_val_tropomi_' + METHOD + '.png')
+# plt.close()
 
 # Scatter plot of true vs predicted on OCO2 val tiles
 plt.scatter(Y_val_oco2, predictions_val_oco2)
@@ -303,9 +311,9 @@ for idx, crop_type in enumerate(COVER_COLUMN_NAMES):
         Y_oco2_crop = Y_val_oco2[val_oco2_set[crop_type] > PURE_THRESHOLD]
         crop_regression = LinearRegression().fit(X_train_crop, Y_train_crop)
         predicted_oco2_crop = crop_regression.predict(X_oco2_crop)
-        print(' ----- Crop specific regression -----')
-        #print('Coefficients:', crop_regression.coef_)
-        print_stats(Y_oco2_crop, predicted_oco2_crop, average_sif)
+        # print(' ----- Crop specific regression -----')
+        # #print('Coefficients:', crop_regression.coef_)
+        # print_stats(Y_oco2_crop, predicted_oco2_crop, average_sif)
  
     # Plot true vs. predicted for that specific crop
     axeslist.ravel()[idx].scatter(true, predicted)
@@ -317,6 +325,7 @@ plt.tight_layout()
 fig.subplots_adjust(top=0.92)
 plt.savefig(OCO2_TRUE_VS_PREDICTED_PLOT + '_crop_types.png')
 plt.close()
+exit(0)
 
 # Print summary statistics for each source
 fig, axeslist = plt.subplots(ncols=len(SOURCES), nrows=1, figsize=(12, 6))
