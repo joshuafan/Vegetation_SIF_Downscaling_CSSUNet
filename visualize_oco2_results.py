@@ -8,6 +8,7 @@ import os
 import pandas as pd
 
 from sklearn.linear_model import Lasso, Ridge, LinearRegression
+from sklearn.neural_network import MLPRegressor
 import torch
 import torchvision.transforms as transforms
 import xarray as xr
@@ -21,6 +22,8 @@ import simple_cnn
 import tile_transforms
 import resnet
 from SAN import SAN
+from unet.unet_model import UNet
+
 import sys
 sys.path.append('../')
 from tile2vec.src.tilenet import make_tilenet
@@ -62,20 +65,19 @@ def plot_images(image_rows, image_filename_column, output_file):
  
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-DATE = "2018-08-01"
-DATASET_DIR = os.path.join(DATA_DIR, "dataset_" + DATE)
+DATE = "2018-07-08"
 OCO2_TILES_DIR = os.path.join(DATA_DIR, "tiles_" + DATE)
-TILE_AVERAGE_TRAIN_FILE = os.path.join(DATASET_DIR, "tile_info_train.csv")
+PROCESSED_DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset")
+TILE_AVERAGE_TRAIN_FILE = os.path.join(PROCESSED_DATASET_DIR, "tile_info_train.csv")
 #TILE_AVERAGE_VAL_FILE = os.path.join(DATASET_DIR, "tile_averages_val.csv")
-BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
-OCO2_RESULTS_FILE = os.path.join(DATASET_DIR, "OCO2_results_4a_subtile_simple_cnn.csv")
-OCO2_METADATA_FILE = os.path.join(DATASET_DIR, "oco2_eval_subtiles.csv")
-
+BAND_STATISTICS_FILE = os.path.join(PROCESSED_DATASET_DIR, "band_statistics_train.csv")
+OCO2_SUBTILE_CNN_RESULTS_FILE = os.path.join(PROCESSED_DATASET_DIR, "OCO2_results_4a_subtile_simple_cnn_new_data.csv")
+OCO2_UNET_RESULTS_FILE = os.path.join(PROCESSED_DATASET_DIR, "OCO2_results_7_unet.csv")
 TROPOMI_SIF_FILE = os.path.join(DATA_DIR, "TROPOMI_SIF/TROPO-SIF_01deg_biweekly_Apr18-Jan20.nc")
-TROPOMI_DATE_RANGE = slice("2018-08-01", "2018-08-16")
+TROPOMI_DATE_RANGE = slice("2018-07-08", "2018-07-21")
 
 RES = (0.00026949458523585647, 0.00026949458523585647)
-SUBTILE_PIXELS = 60
+SUBTILE_PIXELS = 100
 SUBTILE_DEGREES = RES[0] * SUBTILE_PIXELS
 
 #LAT = 41.15
@@ -90,20 +92,28 @@ SUBTILE_DEGREES = RES[0] * SUBTILE_PIXELS
 # LON = -93.35
 #LAT = 38.25 #41.25
 #LON = -98.95
-LAT = 42.05
-LON = -93.95
+# LAT = 39.85
+# LON = -96.35
+# LAT = 39.95
+# LON = -96.35
+LAT = 47.55
+LON = -101.35
 LAT_LON = 'lat_' + str(LAT) + '_lon_' + str(LON)
+TILE_DESCRIPTION = LAT_LON + '_' + DATE
 
 TILE_DEGREES = 0.1
 eps = TILE_DEGREES / 2
 OCO2_IMAGE_FILE = os.path.join(OCO2_TILES_DIR, "reflectance_" + LAT_LON + ".npy")
 
-SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/AUG_subtile_simple_cnn_16crop_2")
+SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/AUG_subtile_simple_cnn_v4_2")
+UNET_MODEL_FILE = os.path.join(DATA_DIR, "models/unet")
 
 RGB_BANDS = [3, 2, 1]
 CDL_BANDS = list(range(12, 42))
-BANDS =  list(range(0, 12)) + list(range(12, 27)) + [28] + [42] #list(range(0, 43)) #
+BANDS = list(range(0, 12)) + list(range(12, 27)) + [28] + [42]  #
 INPUT_CHANNELS = len(BANDS)
+UNET_BANDS =  list(range(0, 12)) + list(range(12, 27)) + [28] + [42] #list(range(0, 43)) #
+INPUT_CHANNELS_UNET = len(UNET_BANDS)
 REDUCED_CHANNELS = 15 
 SUBTILE_DIM = 10
 TILE_SIZE_DEGREES = 0.1
@@ -128,43 +138,51 @@ sif_mean = train_means[-1]
 band_stds = train_stds[:-1]
 sif_std = train_stds[-1]
 
+MIN_INPUT = -2
+MAX_INPUT = 2
 MIN_SIF = 0.2
 MAX_SIF = 1.7
 min_output = (MIN_SIF - sif_mean) / sif_std
 max_output = (MAX_SIF - sif_mean) / sif_std
 
 # Load subtile SIF model
-subtile_sif_model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, reduced_channels=REDUCED_CHANNELS, output_dim=1, min_output=min_output, max_output=max_output).to(device)
+subtile_sif_model = simple_cnn.SimpleCNNSmall4(input_channels=INPUT_CHANNELS, output_dim=1, min_output=min_output, max_output=max_output).to(device)
 subtile_sif_model.load_state_dict(torch.load(SUBTILE_SIF_MODEL_FILE, map_location=device))
 subtile_sif_model.eval()
 
+unet_model = UNet(n_channels=INPUT_CHANNELS_UNET, n_classes=1, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)
+unet_model.load_state_dict(torch.load(UNET_MODEL_FILE, map_location=device))
+unet_model.eval()
 
 # Read OCO-2 results
-oco2_results = pd.read_csv(OCO2_RESULTS_FILE)
+oco2_subtile_cnn_results = pd.read_csv(OCO2_SUBTILE_CNN_RESULTS_FILE)
+oco2_subtile_cnn_results = oco2_subtile_cnn_results[(oco2_subtile_cnn_results['source'] == 'OCO2') & (oco2_subtile_cnn_results['date'] == DATE)]
+oco2_unet_results = pd.read_csv(OCO2_UNET_RESULTS_FILE)
+oco2_unet_results = oco2_unet_results[(oco2_unet_results['source'] == 'OCO2') & (oco2_unet_results['date'] == DATE)]
 
 bin_size = 0.2
 bin_start = 0.2
 while bin_start < 1.2:
     bin_end = round(bin_start + bin_size, 1)
-    bin_points = oco2_results[(oco2_results['true'] > bin_start) & (oco2_results['true'] < bin_end)]
+    bin_points = oco2_subtile_cnn_results[(oco2_subtile_cnn_results['true'] > bin_start) & (oco2_subtile_cnn_results['true'] < bin_end)]
     print(len(bin_points), 'points with true SIF between', bin_start, 'and', bin_end)
-    plot_histogram(bin_points['predicted'].to_numpy() - 1.69 * bin_points['true'].to_numpy(), 'oco2_sif_errors_' + str(bin_start) + '_to_' + str(bin_end) + '.png',
+    plot_histogram(bin_points['predicted'].to_numpy() - bin_points['true'].to_numpy(), 'oco2_sif_errors_' + str(bin_start) + '_to_' + str(bin_end) + '.png',
                    title='Predicted - True SIF (OCO-2 sub-tiles where true SIF between ' + str(bin_start) + ' and ' + str(bin_end) + ')')
     bin_start = bin_end
 
-oco2_region_points = oco2_results.loc[(oco2_results['lon'] >= LON-eps) & (oco2_results['lon'] <= LON+eps) & (oco2_results['lat'] >= LAT-eps) & (oco2_results['lat'] <= LAT+eps)]
-print("Number of OCO-2 region points:", len(oco2_region_points))
+oco2_subtile_cnn_region_points = oco2_subtile_cnn_results.loc[(oco2_subtile_cnn_results['lon'] >= LON-eps) & (oco2_subtile_cnn_results['lon'] <= LON+eps) & (oco2_subtile_cnn_results['lat'] >= LAT-eps) & (oco2_subtile_cnn_results['lat'] <= LAT+eps)]
+print("OCO-2 region points (sub-tile CNN):", oco2_subtile_cnn_region_points.head())
+oco2_unet_region_points = oco2_unet_results.loc[(oco2_unet_results['lon'] >= LON-eps) & (oco2_unet_results['lon'] <= LON+eps) & (oco2_unet_results['lat'] >= LAT-eps) & (oco2_unet_results['lat'] <= LAT+eps)]
+print("OCO-2 region points (U-Net):", oco2_unet_region_points.head())
 
 # Set up image transforms
 transform_list = []
-transform_list.append(tile_transforms.StandardizeTile(band_means, band_stds))
+transform_list.append(tile_transforms.StandardizeTile(band_means, band_stds, min_input=MIN_INPUT, max_input=MAX_INPUT))
 transform = transforms.Compose(transform_list)
 
 # Read an input tile
 tile = np.load(OCO2_IMAGE_FILE)
 input_tile_non_standardized = torch.tensor(tile, dtype=torch.float).to(device)
-subtiles_non_standardized = get_subtiles_list(input_tile_non_standardized, SUBTILE_DIM, device, max_subtile_cloud_cover=None)
-subtile_averages = torch.mean(subtiles_non_standardized, dim=(2,3))
 
 # Visualize the input tile
 array = tile.transpose((1, 2, 0))
@@ -189,7 +207,7 @@ plt.close()
 
 
 # Load "band average" dataset
-train_set = pd.read_csv(TILE_AVERAGE_TRAIN_FILE).dropna()
+train_set = pd.read_csv(TILE_AVERAGE_TRAIN_FILE)
 INPUT_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
                     'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg', 
                     'grassland_pasture', 'corn', 'soybean', 'shrubland',
@@ -200,34 +218,51 @@ INPUT_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
                     'canola', 'sunflower', 'dry_beans', 'developed_med_intensity',
                     'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
                     'lentils', 'missing_reflectance']
-
+COLUMNS_TO_STANDARDIZE = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
+                    'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg']
 OUTPUT_COLUMN = ['SIF']
 sif_cmap = plt.get_cmap('YlGn')
 sif_cmap.set_bad(color='red')
 
-# Train linear regression to predict SIF given band averages
-X_train = train_set[INPUT_COLUMNS]
-Y_train = train_set[OUTPUT_COLUMN].values.ravel()
-linear_regression = LinearRegression().fit(X_train, Y_train)
-predicted_sifs_linear = linear_regression.predict(subtile_averages.cpu().numpy()).reshape((37, 37))
-print('Predicted sifs linear', predicted_sifs_linear)
+# Standardize data
+for column in COLUMNS_TO_STANDARDIZE:
+    column_mean = train_set[column].mean()
+    column_std = train_set[column].std()
+    train_set[column] = np.clip((train_set[column] - column_mean) / column_std, a_min=MIN_INPUT, a_max=MAX_INPUT)
 
 # Standardize input tile
 input_tile_standardized = torch.tensor(transform(tile), dtype=torch.float).to(device)
 print('Input tile dim', input_tile_standardized.shape)
 print('Random pixel', input_tile_standardized[:, 8, 8])
+subtiles_standardized = get_subtiles_list(input_tile_standardized, SUBTILE_DIM, device, max_subtile_cloud_cover=None)  # (batch x num subtiles x bands x subtile_dim x subtile_dim)
+subtile_averages = torch.mean(subtiles_standardized, dim=(2,3))
+
+# Train linear regression and MLP to predict SIF given (standardized) band averages
+X_train = train_set[INPUT_COLUMNS]
+Y_train = train_set[OUTPUT_COLUMN].values.ravel()
+linear_regression = LinearRegression().fit(X_train, Y_train)
+predicted_sifs_linear = linear_regression.predict(subtile_averages.cpu().numpy()).reshape((37, 37))
+print('Predicted sifs linear', predicted_sifs_linear)
+mlp_regression = MLPRegressor(hidden_layer_sizes=(100, 100)).fit(X_train, Y_train)
+predicted_sifs_mlp = mlp_regression.predict(subtile_averages.cpu().numpy()).reshape((37, 37))
 
 # Obtain simple CNN model's subtile SIF predictions
-subtiles_standardized = get_subtiles_list(input_tile_standardized[BANDS], SUBTILE_DIM, device, max_subtile_cloud_cover=None)  # (batch x num subtiles x bands x subtile_dim x subtile_dim)
 print('Subtile shape', subtiles_standardized.shape)
 with torch.set_grad_enabled(False):
-    predicted_sifs_simple_cnn_standardized = subtile_sif_model(subtiles_standardized).detach().numpy()
+    predicted_sifs_simple_cnn_standardized = subtile_sif_model(subtiles_standardized[:, BANDS]).detach().numpy()
 print('Predicted SIFs standardized', predicted_sifs_simple_cnn_standardized.shape)
 predicted_sifs_simple_cnn_non_standardized = (predicted_sifs_simple_cnn_standardized * sif_std + sif_mean).reshape((37, 37))
 
+# Obtain U-Net model predictions
+unet_input = input_tile_standardized[UNET_BANDS].unsqueeze(0)  # Should be [1 x bands x 371 x 371]
+print('UNet input shape', unet_input.shape)
+predicted_sifs_unet_standardized = unet_model(unet_input).detach().numpy()
+print('UNet prediction shape', predicted_sifs_unet_standardized.shape)
+predicted_sifs_unet_non_standardized = (predicted_sifs_unet_standardized * sif_std + sif_mean).reshape((371, 371))
+
 # Construct collection of patches
 patches = []
-for index, row in oco2_region_points.iterrows():
+for index, row in oco2_subtile_cnn_region_points.iterrows():
     # vertices = [[row['lon_0'], row['lat_0']],
     #             [row['lon_1'], row['lat_1']],
     #             [row['lon_2'], row['lat_2']],
@@ -244,29 +279,41 @@ for index, row in oco2_region_points.iterrows():
 
 true_patches = PatchCollection(patches, alpha=1, cmap="YlGn")
 true_patches.set_clim(0.2, 1.7)
-true_patches.set_array(oco2_region_points['true'])
+true_patches.set_array(oco2_subtile_cnn_region_points['true'])
 
-predicted_patches = PatchCollection(patches, alpha=1, cmap="YlGn")
-predicted_patches.set_clim(0.2, 1.7)
-predicted_patches.set_array(oco2_region_points['predicted'])
+subtile_cnn_predicted_patches = PatchCollection(patches, alpha=1, cmap="YlGn")
+subtile_cnn_predicted_patches.set_clim(0.2, 1.7)
+subtile_cnn_predicted_patches.set_array(oco2_subtile_cnn_region_points['predicted'])
+
+unet_predicted_patches = PatchCollection(patches, alpha=1, cmap="YlGn")
+unet_predicted_patches.set_clim(0.2, 1.7)
+unet_predicted_patches.set_array(oco2_unet_region_points['predicted'])
 
 # Construct linear patches (sorry, redundant code)
-oco2_averages = oco2_region_points[INPUT_COLUMNS].to_numpy()
-CONTINUOUS_BANDS = range(0, 12)
-oco2_averages[:, CONTINUOUS_BANDS] = oco2_averages[:, CONTINUOUS_BANDS] * band_stds[CONTINUOUS_BANDS] + band_means[CONTINUOUS_BANDS]
+oco2_averages = oco2_subtile_cnn_region_points[INPUT_COLUMNS].to_numpy()
 oco2_predicted_sifs_linear = linear_regression.predict(oco2_averages)
 linear_predicted_patches = PatchCollection(patches, alpha=1, cmap="YlGn")
 linear_predicted_patches.set_clim(0.2, 1.7)
 linear_predicted_patches.set_array(oco2_predicted_sifs_linear)
 
+# Construct MLP patches
+oco2_predicted_sifs_mlp = mlp_regression.predict(oco2_averages)
+mlp_predicted_patches = PatchCollection(patches, alpha=1, cmap="YlGn")
+mlp_predicted_patches.set_clim(0.2, 1.7)
+mlp_predicted_patches.set_array(oco2_predicted_sifs_linear)
+
 # Plot different method's predictions
-fig, axeslist = plt.subplots(ncols=3, nrows=2, figsize=(18, 10))
+fig, axeslist = plt.subplots(ncols=5, nrows=2, figsize=(25, 10))
 axeslist[0 ,0].imshow(rgb_tile)
 axeslist[0, 0].set_title('RGB Bands')
-axeslist[0, 1].imshow(predicted_sifs_simple_cnn_non_standardized, cmap=sif_cmap, vmin=0.2, vmax=1.7)
-axeslist[0, 1].set_title('Subtile CNN: predicted SIF')
-axeslist[0, 2].imshow(predicted_sifs_linear, cmap=sif_cmap, vmin=0.2, vmax=1.7)
-axeslist[0, 2].set_title('Linear Regression: predicted SIF')
+axeslist[0, 1].imshow(predicted_sifs_linear, cmap=sif_cmap, vmin=0.2, vmax=1.7)
+axeslist[0, 1].set_title('Linear Regression: predicted SIF')
+axeslist[0, 2].imshow(predicted_sifs_mlp, cmap=sif_cmap, vmin=0.2, vmax=1.7)
+axeslist[0, 2].set_title('MLP: predicted SIF')
+axeslist[0, 3].imshow(predicted_sifs_simple_cnn_non_standardized, cmap=sif_cmap, vmin=0.2, vmax=1.7)
+axeslist[0, 3].set_title('Subtile CNN: predicted SIF')
+axeslist[0, 4].imshow(predicted_sifs_unet_non_standardized, cmap=sif_cmap, vmin=0.2, vmax=1.7)
+axeslist[0, 4].set_title('Unet: predicted SIF')
 
 
 axeslist[1, 0].add_collection(true_patches)
@@ -274,18 +321,29 @@ axeslist[1, 0].set_xlim(LON-eps, LON+eps)
 axeslist[1, 0].set_ylim(LAT-eps, LAT+eps)
 axeslist[1, 0].set_title('True OCO2 SIF')
 
-axeslist[1, 1].add_collection(predicted_patches)
+axeslist[1, 1].add_collection(linear_predicted_patches)
 axeslist[1, 1].set_xlim(LON-eps, LON+eps)
 axeslist[1, 1].set_ylim(LAT-eps, LAT+eps)
-axeslist[1, 1].set_title('Predicted OCO2 SIF (subtile CNN)')
+axeslist[1, 1].set_title('Predicted OCO2 SIF (linear regression)')
 
-axeslist[1, 2].add_collection(linear_predicted_patches)
+axeslist[1, 2].add_collection(mlp_predicted_patches)
 axeslist[1, 2].set_xlim(LON-eps, LON+eps)
 axeslist[1, 2].set_ylim(LAT-eps, LAT+eps)
-axeslist[1, 2].set_title('Predicted OCO2 SIF (linear regression)')
+axeslist[1, 2].set_title('Predicted OCO2 SIF (MLP)')
+
+axeslist[1, 3].add_collection(subtile_cnn_predicted_patches)
+axeslist[1, 3].set_xlim(LON-eps, LON+eps)
+axeslist[1, 3].set_ylim(LAT-eps, LAT+eps)
+axeslist[1, 3].set_title('Predicted OCO2 SIF (subtile CNN)')
+
+axeslist[1, 4].add_collection(unet_predicted_patches)
+axeslist[1, 4].set_xlim(LON-eps, LON+eps)
+axeslist[1, 4].set_ylim(LAT-eps, LAT+eps)
+axeslist[1, 4].set_title('Predicted OCO2 SIF (U-Net)')
+
 
 fig.colorbar(true_patches, ax=axeslist.ravel().tolist())
-plt.savefig('exploratory_plots/oco2_' + LAT_LON +'_compare_predictions.png')
+plt.savefig('exploratory_plots/oco2_' + TILE_DESCRIPTION +'_compare_predictions.png')
 plt.close()
 
 
@@ -298,9 +356,9 @@ predicted_sifs_simple_cnn_non_standardized = np.clip(predicted_sifs_simple_cnn_n
 print('===================== Comparing stats ======================')
 print('CNN predictions for this tile (grid): mean', round(np.mean(predicted_sifs_simple_cnn_non_standardized), 3), 'std', round(np.std(predicted_sifs_simple_cnn_non_standardized), 3)) #'min', np.min(predicted_sifs_simple_cnn_non_standardized), 'max', np.max(predicted_sifs_simple_cnn_non_standardized))
 print('Linear predictions for this tile (grid): mean', round(np.mean(predicted_sifs_linear), 3), 'std', round(np.std(predicted_sifs_linear), 3)) #, 'min', np.min(predicted_sifs_linear), 'max', np.max(predicted_sifs_linear))
-print('Ground-truth OCO-2 SIF for this tile: mean', round(np.mean(oco2_results['true']), 3), 'std', round(np.std(oco2_results['true']), 3)) # 'min', np.min(predicted_sifs_tile2vec_fixed_non_standardized), 'max', np.max(predicted_sifs_tile2vec_fixed_non_standardized))
-print('Predicted OCO-2 SIF for this tile (CNN): mean', round(np.mean(oco2_results['predicted']), 3), 'std', round(np.std(oco2_results['predicted']), 3)) # 'min', np.min(predicted_sifs_tile2vec_fixed_non_standardized), 'max', np.max(predicted_sifs_tile2vec_fixed_non_standardized))
-print('Predicted OCO-2 SIF for this tile (CNN): mean', round(np.mean(oco2_predicted_sifs_linear), 3), 'std', round(np.std(oco2_predicted_sifs_linear), 3)) # 'min', np.min(predicted_sifs_tile2vec_fixed_non_standardized), 'max', np.max(predicted_sifs_tile2vec_fixed_non_standardized))
+print('Ground-truth OCO-2 SIF for this tile: mean', round(np.mean(oco2_subtile_cnn_results['true']), 3), 'std', round(np.std(oco2_subtile_cnn_results['true']), 3)) # 'min', np.min(predicted_sifs_tile2vec_fixed_non_standardized), 'max', np.max(predicted_sifs_tile2vec_fixed_non_standardized))
+print('Predicted OCO-2 SIF for this tile (CNN): mean', round(np.mean(oco2_subtile_cnn_results['predicted']), 3), 'std', round(np.std(oco2_subtile_cnn_results['predicted']), 3)) # 'min', np.min(predicted_sifs_tile2vec_fixed_non_standardized), 'max', np.max(predicted_sifs_tile2vec_fixed_non_standardized))
+print('Predicted OCO-2 SIF for this tile (U-Net): mean', round(np.mean(oco2_unet_results['predicted']), 3), 'std', round(np.std(oco2_unet_results['true']), 3)) # 'min', np.min(predicted_sifs_tile2vec_fixed_non_standardized), 'max', np.max(predicted_sifs_tile2vec_fixed_non_standardized))
 print('TROPOMI SIF for this tile', tropomi_array.sel(lat=LAT, lon=LON, method='nearest'))
 print('============================================================')
 
