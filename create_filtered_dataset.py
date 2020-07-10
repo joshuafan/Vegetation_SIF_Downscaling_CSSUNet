@@ -54,9 +54,10 @@ MAX_TROPOMI_CLOUD_COVER = 0.2
 MIN_TROPOMI_NUM_SOUNDINGS = 5
 MIN_OCO2_NUM_SOUNDINGS = 5
 MIN_SIF = 0.2
-FRACTION_VAL = 0.5
-FRACTION_TEST = 0.25
+FRACTION_VAL = 0.4
+FRACTION_TEST = 0.2
 OCO2_SCALING_FACTOR = 1.69
+
 
 # Divide the region into 1x1 degree large grid areas. Split them between train/val/test
 # LONS = list(range(-108, -82))  # These lat/lons are the UPPER LEFT corner of the large grid areas
