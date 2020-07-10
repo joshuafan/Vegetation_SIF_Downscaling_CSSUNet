@@ -5,7 +5,7 @@ except ImportError:
 
 import torch
 import torch.nn as nn
-
+import torch.nn.functional as F
 
 __all__ =['ResNet', 'resnet18', 'resnet34', 'resnet50', 'resnet101',
 'resnet152', 'resnext50_32x4d', 'resnext101_32x8d',
@@ -122,10 +122,19 @@ class Bottleneck(nn.Module):
 
 class ResNet(nn.Module):
 
-    def __init__(self, block, layers, input_channels, output_dim=1, reduced_channels=30, zero_init_residual=False,
+    def __init__(self, block, layers, input_channels, reduced_channels, min_output, max_output, output_dim=1, zero_init_residual=False,
                  groups=1, width_per_group=64, replace_stride_with_dilation=None,
                  norm_layer=None):
         super(ResNet, self).__init__()
+
+
+        if min_output is not None and max_output is not None:
+            self.restrict_output = True
+            self.mean_output = (min_output + max_output) / 2
+            self.scale_factor = (max_output - min_output) / 2
+        else:
+            self.restrict_output = Fals
+
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
         self._norm_layer = norm_layer
@@ -220,6 +229,8 @@ class ResNet(nn.Module):
         #print('after avgpool', x.shape)
         x = torch.flatten(x, 1)
         x = self.fc(x)
+        if self.restrict_output:
+            x = (F.tanh(x) * self.scale_factor) + self.mean_output
 
         return x
 
@@ -227,8 +238,8 @@ class ResNet(nn.Module):
         return self._forward_impl(x)
 
 
-def _resnet(arch, block, layers, input_channels, pretrained, progress, output_dim, **kwargs):
-    model = ResNet(block, layers, input_channels, output_dim=output_dim, **kwargs)
+def _resnet(arch, block, layers, input_channels, reduced_channels, min_output, max_output, pretrained, progress, output_dim, **kwargs):
+    model = ResNet(block, layers, input_channels, reduced_channels, output_dim=output_dim, min_output=min_output, max_output=max_output, **kwargs)
     if pretrained:
         state_dict = load_state_dict_from_url(model_urls[arch],
                                               progress=progress)
@@ -236,14 +247,14 @@ def _resnet(arch, block, layers, input_channels, pretrained, progress, output_di
     return model
 
 
-def resnet18(input_channels, pretrained=False, progress=True, output_dim=1, **kwargs):
+def resnet18(input_channels, reduced_channels, min_output, max_output, pretrained=False, progress=True, output_dim=1, **kwargs):
     r"""ResNet-18 model from
     `"Deep Residual Learning for Image Recognition" <https://arxiv.org/pdf/1512.03385.pdf>`_
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
         progress (bool): If True, displays a progress bar of the download to stderr
     """
-    return _resnet('resnet18', BasicBlock, [2, 2, 2, 2], input_channels, pretrained, progress,
+    return _resnet('resnet18', BasicBlock, [2, 2, 2, 2], input_channels, reduced_channels, min_output, max_output, pretrained, progress,
                    output_dim=output_dim, **kwargs)
 
 

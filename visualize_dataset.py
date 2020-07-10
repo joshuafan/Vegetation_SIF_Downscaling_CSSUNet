@@ -7,6 +7,9 @@ import os
 import pandas as pd
 
 from sklearn.linear_model import Lasso, Ridge, LinearRegression
+from sklearn.experimental import enable_hist_gradient_boosting
+
+from sklearn.ensemble import GradientBoostingRegressor, HistGradientBoostingRegressor
 from sklearn.neural_network import MLPRegressor
 import torch
 import torchvision.transforms as transforms
@@ -15,7 +18,7 @@ from sklearn.metrics import mean_squared_error, r2_score
 from scipy.stats import pearsonr
 from numpy import poly1d
 
-from sif_utils import lat_long_to_index, plot_histogram, get_subtiles_list
+from sif_utils import lat_long_to_index, plot_histogram, get_subtiles_list, plot_tile
 import cdl_utils
 import simple_cnn
 import tile_transforms
@@ -160,7 +163,7 @@ CFIS_DATE_RANGE = pd.date_range(start="2016-08-01", end="2016-08-16")
 
 RGB_BANDS = [3, 2, 1]
 CDL_BANDS = list(range(12, 42))
-SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/AUG_subtile_simple_cnn_v4_2")
+SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/AUG_subtile_simple_cnn_v5")
 TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_recon_5/TileNet.ckpt") #finetuned_tile2vec.ckpt") #TileNet.ckpt")
 EMBEDDING_TO_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_embedding_to_sif") #finetuned_tile2vec_embedding_to_sif.ckpt") #tile2vec_embedding_to_sif")
 EMBEDDING_TYPE = 'tile2vec'
@@ -174,7 +177,8 @@ UNET_MODEL_FILE = os.path.join(DATA_DIR, "models/unet")
 
 INPUT_CHANNELS = 43
 CROP_TYPE_START_IDX = 12
-BANDS = list(range(0, 12)) + list(range(12, 27)) + [28] + [42] # list(range(0, 43))
+# BANDS = list(range(0, 12)) + list(range(12, 27)) + [28] + [42] #
+BANDS = list(range(0, 43))
 INPUT_CHANNELS_SIMPLE = len(BANDS)
 UNET_BANDS = list(range(0, 12)) + list(range(12, 27)) + [28] + [42]
 INPUT_CHANNELS_UNET = len(UNET_BANDS)
@@ -205,7 +209,7 @@ sif_mean = train_means[-1]
 band_stds = train_stds[:-1]
 sif_std = train_stds[-1]
 
-MIN_SIF = 0.2
+MIN_SIF = 0
 MAX_SIF = 1.7
 min_output = (MIN_SIF - sif_mean) / sif_std
 max_output = (MAX_SIF - sif_mean) / sif_std
@@ -213,7 +217,7 @@ max_output = (MAX_SIF - sif_mean) / sif_std
 
 # Load subtile SIF model
 # subtile_sif_model = simple_cnn.SimpleCNNSmall3(input_channels=INPUT_CHANNELS_SIMPLE, reduced_channels=REDUCED_CHANNELS, crop_type_start_idx=CROP_TYPE_START_IDX, output_dim=1, min_output=min_output, max_output=max_output).to(device)
-subtile_sif_model = simple_cnn.SimpleCNNSmall3(input_channels=INPUT_CHANNELS_SIMPLE, output_dim=1, min_output=min_output, max_output=max_output).to(device)
+subtile_sif_model = simple_cnn.SimpleCNNSmall5(input_channels=INPUT_CHANNELS_SIMPLE, output_dim=1, min_output=min_output, max_output=max_output).to(device)
 subtile_sif_model.load_state_dict(torch.load(SUBTILE_SIF_MODEL_FILE, map_location=device))
 subtile_sif_model.eval()
 
@@ -318,12 +322,17 @@ band_mins = train_metadata.min(axis=0)
 for column in COLUMNS_TO_STANDARDIZE:
     column_mean = train_metadata[column].mean()
     column_std = train_metadata[column].std()
-    train_metadata[column] = np.clip((train_metadata[column] - column_mean) / column_std, a_min=MIN_INPUT, a_max=MAX_INPUT)
-    val_metadata[column] = np.clip((val_metadata[column] - column_mean) / column_std, a_min=MIN_INPUT, a_max=MAX_INPUT)
+    # train_metadata[column] = np.clip((train_metadata[column] - column_mean) / column_std, a_min=MIN_INPUT, a_max=MAX_INPUT)
+    # val_metadata[column] = np.clip((val_metadata[column] - column_mean) / column_std, a_min=MIN_INPUT, a_max=MAX_INPUT)
+    train_metadata[column] = (train_metadata[column] - column_mean) / column_std
+    train_tropomi_metadata[column] = (train_tropomi_metadata[column] - column_mean) / column_std
+    train_oco2_metadata[column] = (train_oco2_metadata[column] - column_mean) / column_std
+    val_metadata[column] = (val_metadata[column] - column_mean) / column_std
 
     # Histograms of standardized columns
     plot_histogram(train_metadata[column].to_numpy(), "histogram_std_" + column + "_train.png")
-
+    plot_histogram(train_tropomi_metadata[column].to_numpy(), "histogram_std_" + column + "_train_tropomi.png")
+    plot_histogram(train_oco2_metadata[column].to_numpy(), "histogram_std_" + column + "_train_oco2.png")
 
 # # Print band means/stds across all dates, for both TROPOMI and OCO-2
 # print('============== ALL DATES - TROPOMI Summary stats =====================')
@@ -391,53 +400,55 @@ transform = transforms.Compose(transform_list)
 # Get selected tile
 tile_dir = os.path.join(DATA_DIR, "tiles_" + SELECTED_DATE)
 image_file = os.path.join(tile_dir, "reflectance_" + LAT_LON + ".npy")
-selected_tile = np.load(image_file)
-input_tile_non_standardized = torch.tensor(selected_tile, dtype=torch.float).unsqueeze(0).to(device)
-
-# Visualize the input tile
-array = selected_tile.transpose((1, 2, 0))
-selected_rgb_tile = array[:, :, RGB_BANDS] / 1000
-print('Array shape', array.shape)
-plt.imshow(selected_rgb_tile)
-plt.savefig("exploratory_plots/" + SELECTED_TILE_DESCRIPTION + "_rgb.png")
-plt.close()
+tile_numpy = np.load(image_file)
+tile_numpy_standardized = transform(tile_numpy)
+input_tile_non_standardized = torch.tensor(tile_numpy, dtype=torch.float).to(device)
+input_tile_standardized = torch.tensor(tile_numpy_standardized, dtype=torch.float).to(device)
 
 # Loop through each date
-# for date in DATES:
-#     # Read an input tile
-#     tile_dir = os.path.join(DATA_DIR, "tiles_" + date)
-#     image_file = os.path.join(tile_dir, "reflectance_" + LAT_LON + ".npy")
-#     tile = np.load(image_file)
-#     input_tile_non_standardized = torch.tensor(tile, dtype=torch.float).unsqueeze(0).to(device)
-#     subtiles_non_standardized = get_subtiles_list(input_tile_non_standardized[0], SUBTILE_DIM, device, max_subtile_cloud_cover=None)
-#     subtile_averages = torch.mean(subtiles_non_standardized, dim=(2,3))
+for date in DATES:
+    # Read an input tile
+    tile_dir = os.path.join(DATA_DIR, "tiles_" + date)
+    image_file = os.path.join(tile_dir, "reflectance_" + LAT_LON + ".npy")
+    date_tile = np.load(image_file)
+    date_tile_standardized = transform(date_tile)
 
-#     # String to identify the tile (lat, lon, date)
-#     tile_description = LAT_LON + '_' + date
+    # String to identify the tile (lat, lon, date)
+    tile_description = LAT_LON + '_' + date
 
-#     # Visualize the input tile
-#     array = tile.transpose((1, 2, 0))
-#     rgb_tile = array[:, :, RGB_BANDS] / 1000
-#     print('Array shape', array.shape)
-#     plt.imshow(rgb_tile)
-#     plt.savefig("exploratory_plots/" + tile_description + "_rgb.png")
-#     plt.close()
+    # Plot tile
+    plot_tile(date_tile_standardized, tile_description)
 
-#     # Visualize CDL
-#     cdl_utils.plot_cdl_layers(tile[CDL_BANDS, :, :], "exploratory_plots/" + tile_description + "_cdl.png")
+    # Plot shrunk tile
+    shrink_transform = transforms.Compose([tile_transforms.ShrinkTile()])
+    shrunk_tile = shrink_transform(date_tile_standardized)
+    plot_tile(shrunk_tile, tile_description + '_shrunk')
 
-#     fig, axeslist = plt.subplots(ncols=6, nrows=8, figsize=(24, 24))
-#     for band in range(0, 43):
-#         layer = array[:, :, band]
-#         axeslist.ravel()[band].imshow(layer, cmap='Greens', vmin=band_mins[INPUT_COLUMNS[band]], vmax=band_maxs[INPUT_COLUMNS[band]])
-#         axeslist.ravel()[band].set_title('Band ' + str(band))
-#         axeslist.ravel()[band].set_axis_off()
-#     plt.tight_layout() # optional
-#     plt.savefig('exploratory_plots/' + tile_description + '_all_bands.png')
-#     plt.close()
+    # # Visualize the input tile
+    # array = tile.transpose((1, 2, 0))
+    # rgb_tile = array[:, :, RGB_BANDS] / 1000
+    # print('Array shape', array.shape)
+    # plt.imshow(rgb_tile)
+    # plt.savefig("exploratory_plots/" + tile_description + "_rgb.png")
+    # plt.close()
+
+    # # Visualize CDL
+    # cdl_utils.plot_cdl_layers(tile[CDL_BANDS, :, :], "exploratory_plots/" + tile_description + "_cdl.png")
+
+    # fig, axeslist = plt.subplots(ncols=6, nrows=8, figsize=(24, 24))
+    # for band in range(0, 43):
+    #     layer = array[:, :, band]
+    #     axeslist.ravel()[band].imshow(layer, cmap='Greens', vmin=band_mins[INPUT_COLUMNS[band]], vmax=band_maxs[INPUT_COLUMNS[band]])
+    #     axeslist.ravel()[band].set_title('Band ' + str(band))
+    #     axeslist.ravel()[band].set_axis_off()
+    # plt.tight_layout() # optional
+    # plt.savefig('exploratory_plots/' + tile_description + '_all_bands.png')
+    # plt.close()
 
 
-
+# Compute RGB tile again
+array = tile_numpy_standardized.transpose((1, 2, 0))
+selected_rgb_tile = (array[:, :, RGB_BANDS] + 2) / 4
 
 
 
@@ -505,23 +516,21 @@ plot_cdl_layers(lowest_oco2_sifs, 'tile_file', 'exploratory_plots/oco2_sif_low_s
 #plt.savefig("exploratory_plots/" + LAT_LON + "_subtile_sif_map_linear.png")
 #plt.close()
 
-# Standardize input tile
-input_tile_standardized = torch.tensor(transform(selected_tile), dtype=torch.float).to(device)
-subtiles_standardized = get_subtiles_list(input_tile_standardized, SUBTILE_DIM, device, max_subtile_cloud_cover=None)
+# Get subtiles and subtile averages
+subtiles_standardized = get_subtiles_list(input_tile_standardized, SUBTILE_DIM, device, max_subtile_cloud_cover=None)  # (batch x num subtiles x bands x subtile_dim x subtile_dim)
 subtile_averages = torch.mean(subtiles_standardized, dim=(2,3))
-print('Input tile dim', input_tile_standardized.shape)
-print('Random pixel', input_tile_standardized[:, 8, 8])
 
 # Train linear regression to predict SIF given band averages
 X_train = train_metadata[INPUT_COLUMNS]
 Y_train = train_metadata[OUTPUT_COLUMN].values.ravel()
 linear_regression = LinearRegression().fit(X_train, Y_train)
 predicted_sifs_linear = linear_regression.predict(subtile_averages.cpu().numpy()).reshape((37, 37))
-mlp_regression = MLPRegressor(hidden_layer_sizes=(100, 100)).fit(X_train, Y_train)
-predicted_sifs_mlp = mlp_regression.predict(subtile_averages.cpu().numpy()).reshape((37, 37))
+gradient_boosting_regressor = HistGradientBoostingRegressor(max_iter=1000).fit(X_train, Y_train)
+predicted_sifs_gb = gradient_boosting_regressor.predict(subtile_averages.cpu().numpy()).reshape((37, 37))
 
 # Obtain simple CNN model's subtile SIF predictions
-subtiles_standardized = get_subtiles_list(input_tile_standardized, SUBTILE_DIM, device, max_subtile_cloud_cover=None)  # (batch x num subtiles x bands x subtile_dim x subtile_dim)
+print('Input tile dim', input_tile_standardized.shape)
+print('Random pixel', input_tile_standardized[:, 8, 8])
 print('Subtile shape', subtiles_standardized.shape)
 with torch.set_grad_enabled(False):
     predicted_sifs_simple_cnn_standardized = subtile_sif_model(subtiles_standardized[:, BANDS, :, :]).detach().numpy()
@@ -705,8 +714,8 @@ axeslist[0 ,0].imshow(selected_rgb_tile)
 axeslist[0, 0].set_title('RGB Bands')
 axeslist[0, 1].imshow(predicted_sifs_linear, cmap=sif_cmap, vmin=0.2, vmax=1.7)
 axeslist[0, 1].set_title('Linear Regression: predicted SIF')
-axeslist[0, 2].imshow(predicted_sifs_mlp, cmap=sif_cmap, vmin=0.2, vmax=1.7)
-axeslist[0, 2].set_title('Average ANN: predicted SIF')
+axeslist[0, 2].imshow(predicted_sifs_gb, cmap=sif_cmap, vmin=0.2, vmax=1.7)
+axeslist[0, 2].set_title('Gradient Boosting Regressor: predicted SIF')
 axeslist[1, 0].imshow(cfis_tile, cmap=sif_cmap, vmin=0.2, vmax=1.7)
 axeslist[1, 0].set_title('Ground-truth CFIS SIF')
 axeslist[1, 1].imshow(predicted_sifs_simple_cnn_non_standardized, cmap=sif_cmap, vmin=0.2, vmax=1.7)

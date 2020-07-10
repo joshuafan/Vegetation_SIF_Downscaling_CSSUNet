@@ -32,7 +32,7 @@ CDL_COLORS = ["white",
 
 
 
-def plot_cdl_layers(cover_bands, filename):
+def plot_cdl_layers(cover_bands, filename, title=''):
     assert(len(cover_bands.shape) == 3)
     cover_tile = np.zeros((cover_bands.shape[1], cover_bands.shape[2]))
     for i in range(cover_bands.shape[0]):
@@ -58,6 +58,7 @@ def plot_cdl_layers(cover_bands, filename):
     #cb = plt.colorbar()
     #cb.set_ticks(loc)
     #cb.set_ticklabels(CDL_COLORS)
+    plt.title('Crop types: ' + title)
     plt.savefig(filename)
     plt.close()
 

@@ -9,7 +9,8 @@ from sklearn.linear_model import Lasso, Ridge, LinearRegression
 from sklearn.tree import DecisionTreeRegressor
 from sklearn.neural_network import MLPRegressor
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
-from sklearn.ensemble import GradientBoostingRegressor
+from sklearn.experimental import enable_hist_gradient_boosting
+from sklearn.ensemble import GradientBoostingRegressor, HistGradientBoostingRegressor
 from sklearn.metrics import mean_squared_error, r2_score
 import math
 import matplotlib.pyplot as plt
@@ -20,9 +21,11 @@ DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
 # Train files
 # TRAIN_DATE = "2018-08-01" # "2018-07-16"
 # TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_" + TRAIN_DATE)
-PROCESSED_DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset_random") #_tropomi_train")
+PROCESSED_DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset") #_tropomi_train")
 TILE_AVERAGE_TRAIN_FILE = os.path.join(PROCESSED_DATASET_DIR, "tile_info_train.csv")
 TILE_AVERAGE_VAL_FILE = os.path.join(PROCESSED_DATASET_DIR, "tile_info_val.csv")
+TILE_AVERAGE_TEST_FILE = os.path.join(PROCESSED_DATASET_DIR, "tile_info_test.csv")
+
 BAND_STATISTICS_FILE = os.path.join(PROCESSED_DATASET_DIR, "band_statistics_train.csv")
 
 DATES = ["2018-07-08", "2018-07-22", "2018-08-05", "2018-08-19", "2018-09-02"]
@@ -33,14 +36,17 @@ EVAL_DATE = "2016-08-01" #"2016-07-16"
 EVAL_DATASET_DIR = os.path.join(DATA_DIR, "dataset_" + EVAL_DATE)
 CFIS_AVERAGE_FILE = os.path.join(EVAL_DATASET_DIR, "eval_subtiles.csv")
 
-METHOD = "1a_Linear_Regression"
-# METHOD = "1c_Gradient_Boosting_Regressor"
+# METHOD = "1b_Ridge_Regression"
+METHOD =  "1c_Gradient_Boosting_Regressor"
 # METHOD = "1d_MLP"
 CFIS_TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_new_data_eval_subtile_' + METHOD
 OCO2_TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_new_data_OCO2_' + METHOD
 
 PURE_THRESHOLD = 0.6
 MIN_SOUNDINGS = 3
+MIN_INPUT = -2
+MAX_INPUT = 2
+NUM_RUNS = 3
 
 # Read datasets
 train_set = pd.read_csv(TILE_AVERAGE_TRAIN_FILE)
@@ -119,11 +125,16 @@ COVER_COLUMN_NAMES = ['grassland_pasture', 'corn', 'soybean', 'deciduous_forest'
 for column in COLUMNS_TO_STANDARDIZE:
     column_mean = train_set[column].mean()
     column_std = train_set[column].std()
-    train_set[column] = np.clip((train_set[column] - column_mean) / column_std, a_min=-2, a_max=2)
-    val_set[column] = np.clip((val_set[column] - column_mean) / column_std, a_min=-2, a_max=2)
-    val_tropomi_set[column] = np.clip((val_tropomi_set.loc[:, column] - column_mean) / column_std, a_min=-2, a_max=2)
-    val_oco2_set[column] = np.clip((val_oco2_set.loc[:, column] - column_mean) / column_std, a_min=-2, a_max=2)
-    eval_cfis_set[column] = np.clip((eval_cfis_set[column] - column_mean) / column_std, a_min=-2, a_max=2)
+    train_set[column] = np.clip((train_set[column] - column_mean) / column_std, a_min=MIN_INPUT, a_max=MAX_INPUT)
+    val_set[column] = np.clip((val_set[column] - column_mean) / column_std, a_min=MIN_INPUT, a_max=MAX_INPUT)
+    val_tropomi_set[column] = np.clip((val_tropomi_set.loc[:, column] - column_mean) / column_std, a_min=MIN_INPUT, a_max=MAX_INPUT)
+    val_oco2_set[column] = np.clip((val_oco2_set.loc[:, column] - column_mean) / column_std, a_min=MIN_INPUT, a_max=MAX_INPUT)
+    eval_cfis_set[column] = np.clip((eval_cfis_set[column] - column_mean) / column_std, a_min=MIN_INPUT, a_max=MAX_INPUT)
+    # train_set[column] = (train_set[column] - column_mean) / column_std
+    # val_set[column] = (val_set[column] - column_mean) / column_std
+    # val_tropomi_set[column] = (val_tropomi_set.loc[:, column] - column_mean) / column_std
+    # val_oco2_set[column] = (val_oco2_set.loc[:, column] - column_mean) / column_std
+    # eval_cfis_set[column] = (eval_cfis_set[column] - column_mean) / column_std
 
     # Histograms of standardized columns
     plot_histogram(train_set[column].to_numpy(), "histogram_std_" + column + "_train.png")
@@ -147,8 +158,6 @@ Y_val_oco2 = val_oco2_set[OUTPUT_COLUMN].values.ravel()
 X_cfis = eval_cfis_set[INPUT_COLUMNS]
 Y_cfis = eval_cfis_set[OUTPUT_COLUMN].values.ravel()
 
-
-
 # Print percentage of each crop type
 print("************************************************************")
 print('FEATURE AVERAGES')
@@ -160,26 +169,84 @@ for column_name in INPUT_COLUMNS:
     print('CFIS:', round(np.mean(X_cfis[column_name]), 3))
 print("************************************************************")
 
-# Fit model on band averages
+
+train_val_set = pd.concat([train_set, val_set])
+X_train_val = train_val_set[INPUT_COLUMNS]
+Y_train_val = train_val_set[OUTPUT_COLUMN].values.ravel()
+
+# Fit models on band averages (with various hyperparam settings)
+regression_models = dict()
 if METHOD == "1a_Linear_Regression":
     regression_model = LinearRegression().fit(X_train, Y_train)
 elif METHOD == "1b_Ridge_Regression":
-    regression_model = Ridge().fit(X_train, Y_train)
+    alphas = [0, 0.001, 0.01, 0.1, 1, 10, 100]
+    for alpha in alphas:
+        models = []
+        for run in range(NUM_RUNS):
+            regression_model = Ridge(alpha=alpha).fit(X_train, Y_train)
+            models.append(regression_model)
+        param_string = 'alpha=' + str(alpha)
+        regression_models[param_string] = models
 elif METHOD == "1c_Gradient_Boosting_Regressor":
-    regression_model = GradientBoostingRegressor().fit(X_train, Y_train)
+    max_iter_values = [1000] #
+    max_depth_values = [None]
+    # n_estimator_values = [700, 1000]
+    # learning_rates = [0.01, 0.1, 0.5]
+    # max_depths = [1, 10]
+    for max_iter in max_iter_values:
+        for max_depth in max_depth_values:
+            models = []
+            for run in range(NUM_RUNS):
+                regression_model = HistGradientBoostingRegressor(max_iter=max_iter, max_depth=max_depth, learning_rate=0.1).fit(X_train, Y_train).fit(X_train, Y_train)
+                models.append(regression_model)
+            param_string = 'max_iter=' + str(max_iter) + ', max_depth=' + str(max_depth)
+            print(param_string)
+            regression_models[param_string] = models
 elif METHOD == "1d_MLP":
-    regression_model = MLPRegressor(hidden_layer_sizes=(100, 100)).fit(X_train, Y_train)
+    hidden_layer_sizes = [(100, 100)] #[(20,), (100,), (20, 20), (100, 100), (100, 100, 100)]
+    learning_rate_inits = [1e-3] #[1e-2, 1e-3, 1e-4] 
+    for hidden_layer_size in hidden_layer_sizes:
+        for learning_rate_init in learning_rate_inits:
+            models = []
+            for run in range(NUM_RUNS):
+                regression_model = MLPRegressor(hidden_layer_sizes=hidden_layer_size, learning_rate_init=learning_rate_init).fit(X_train, Y_train)
+                models.append(regression_model)
+            param_string = 'hidden_layer_sizes=' + str(hidden_layer_size) + ', learning_rate_init=' + str(learning_rate_init)
+            print(param_string)
+            regression_models[param_string] = models
 else:
     print("Unsupported method")
     exit(1)
 
 # print('Coefficients', regression_model.coef_)
+best_loss = float('inf')
+best_params = 'N/A'
 
-predictions_train = regression_model.predict(X_train)
-predictions_val = regression_model.predict(X_val)
-predictions_val_tropomi = regression_model.predict(X_val_tropomi)
-predictions_val_oco2 = regression_model.predict(X_val_oco2)
-predictions_cfis = regression_model.predict(X_cfis)
+# Loop through all hyperparameter settings we trained models for
+for params, models in regression_models.items():
+    losses_val = []
+
+    # Loop through models trained on this hyperparameter setting, and take
+    # the average loss over all runs
+    for model in models:
+        predictions_val = model.predict(X_val)
+        loss_val = math.sqrt(mean_squared_error(Y_val, predictions_val)) / average_sif
+        losses_val.append(loss_val)
+    average_loss_val = sum(losses_val) / len(losses_val)
+    print(params + ': avg val loss', round(average_loss_val, 4))
+    if average_loss_val < best_loss:
+        best_loss = average_loss_val
+        best_params = params
+        best_model = model
+
+print('Best params:', best_params)
+# print(best_model.coef_)
+
+predictions_train = best_model.predict(X_train)
+predictions_val = best_model.predict(X_val)
+predictions_val_tropomi = best_model.predict(X_val_tropomi)
+predictions_val_oco2 = best_model.predict(X_val_oco2)
+predictions_cfis = best_model.predict(X_cfis)
 
 #scale_factor = np.mean(linear_predictions_cfis) / np.mean(Y_cfis)
 #print('Scale factor', scale_factor)
@@ -229,24 +296,34 @@ print_stats(Y_cfis, predictions_cfis, average_sif)  #eval_cfis_set['SIF'].mean()
 # plt.close()
 
 # Scatter plot of true vs predicted on OCO2 val tiles
-plt.scatter(Y_val_oco2, predictions_val_oco2)
-plt.xlabel('True')
-plt.ylabel('Predicted')
-plt.xlim(left=0, right=1.5)
-plt.ylim(bottom=0, top=1.5)
-plt.title('OCO2 val set: predicted vs true SIF (' + METHOD + ')')
-plt.savefig('exploratory_plots/true_vs_predicted_sif_val_oco2_' + METHOD + '.png')
-plt.close()
-
-# # Scatter plot of true vs. predicted on CFIS (all crops combined)
-# plt.scatter(Y_cfis, predictions_cfis)
+# plt.scatter(Y_val_oco2, predictions_val_oco2)
 # plt.xlabel('True')
 # plt.ylabel('Predicted')
 # plt.xlim(left=0, right=1.5)
 # plt.ylim(bottom=0, top=1.5)
-# plt.title('CFIS subtile set: predicted vs true SIF (' + METHOD + ')')
-# plt.savefig('exploratory_plots/true_vs_predicted_sif_eval_subtile_' + METHOD + '.png')
+# plt.title('OCO2 val set: predicted vs true SIF (' + METHOD + ')')
+# plt.savefig('exploratory_plots/true_vs_predicted_sif_val_oco2_' + METHOD + '.png')
 # plt.close()
+
+# Scatter plot of true vs predicted, entire val set
+plt.scatter(Y_val, predictions_val)
+plt.xlabel('True')
+plt.ylabel('Predicted')
+plt.xlim(left=0, right=1.5)
+plt.ylim(bottom=0, top=1.5)
+plt.title('Val set (combined): predicted vs true SIF (' + METHOD + ')')
+plt.savefig(OCO2_TRUE_VS_PREDICTED_PLOT + '.png')
+plt.close()
+
+# Scatter plot of true vs. predicted on CFIS (all crops combined)
+plt.scatter(Y_cfis, predictions_cfis)
+plt.xlabel('True')
+plt.ylabel('Predicted')
+plt.xlim(left=0, right=1.5)
+plt.ylim(bottom=0, top=1.5)
+plt.title('CFIS subtile set: predicted vs true SIF (' + METHOD + ')')
+plt.savefig('exploratory_plots/true_vs_predicted_sif_cfis_eval_subtile_' + METHOD + '.png')
+plt.close()
 
 # # Plot true vs. predicted for each crop on CFIS (for each crop)
 # fig, axeslist = plt.subplots(ncols=3, nrows=10, figsize=(15, 50))
@@ -325,7 +402,6 @@ plt.tight_layout()
 fig.subplots_adjust(top=0.92)
 plt.savefig(OCO2_TRUE_VS_PREDICTED_PLOT + '_crop_types.png')
 plt.close()
-exit(0)
 
 # Print summary statistics for each source
 fig, axeslist = plt.subplots(ncols=len(SOURCES), nrows=1, figsize=(12, 6))

@@ -114,7 +114,7 @@ class SimpleCNNSmall(nn.Module):
         return x
 
 class SimpleCNNSmall2(nn.Module):
-    def __init__(self, input_channels, output_dim, crop_type_start_idx, crop_type_embedding_dim=15, reduced_channels=20, min_output=None, max_output=None):
+    def __init__(self, input_channels, output_dim, crop_type_start_idx, crop_type_embedding_dim=10, reduced_channels=20, min_output=None, max_output=None):
         super(SimpleCNNSmall2, self).__init__()
 
         # Create list of crop type indices and non-crop indices
@@ -303,7 +303,7 @@ class SimpleCNNSmall5(nn.Module):
 
 class PixelNN(nn.Module):
     def __init__(self, input_channels, output_dim, min_output=None, max_output=None):
-        super(SimpleCNNSmall5, self).__init__()
+        super(PixelNN, self).__init__()
         self.conv1 = nn.Conv2d(input_channels, 256, kernel_size=1, stride=1, padding=0)
         self.conv2 = nn.Conv2d(256, 256, kernel_size=1, stride=1, padding=0)
         self.conv3 = nn.Conv2d(256, 1, kernel_size=1, stride=1, padding=0)

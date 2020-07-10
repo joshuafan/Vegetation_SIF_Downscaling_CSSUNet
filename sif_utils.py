@@ -8,10 +8,46 @@ import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
 from datetime import datetime
+import cdl_utils
 
 from scipy.stats import pearsonr, spearmanr
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_squared_error, r2_score
+
+# Plots all bands of the tile, and RGB/CDL bands. Tile is assumed to have shape (CxHxW)
+def plot_tile(tile, tile_description, title='', rgb_bands=[3, 2, 1], cdl_bands=range(12, 42)):
+    print('tile shape', tile.shape)
+
+    # Plot each band in its own plot
+    fig, axeslist = plt.subplots(ncols=6, nrows=8, figsize=(24, 24))
+    fig.suptitle('All bands: ' + title)
+
+    for band in range(0, 43):
+        layer = tile[band, :, :]
+        if band >= 12:
+            # Binary masks (crop type or missing reflectance) range from 0 to 1
+            axeslist.ravel()[band].imshow(layer, cmap='Greens', vmin=0, vmax=1)
+        else:
+            # Other channels range from -2 to 2
+            axeslist.ravel()[band].imshow(layer, cmap='Greens', vmin=-2, vmax=2)
+
+        axeslist.ravel()[band].set_title('Band ' + str(band))
+        axeslist.ravel()[band].set_axis_off()
+    plt.tight_layout() # optional
+    fig.subplots_adjust(top=0.94)
+    plt.savefig('exploratory_plots/' + tile_description + '_all_bands.png')
+    plt.close()
+
+    # Visualize the RGB bands
+    array = tile.transpose((1, 2, 0))
+    rgb_tile = (array[:, :, rgb_bands] + 2) / 4
+    plt.imshow(rgb_tile)
+    plt.title('RGB bands: ' + title)
+    plt.savefig("exploratory_plots/" + tile_description + "_rgb.png")
+    plt.close()
+
+    # Visualize CDL
+    cdl_utils.plot_cdl_layers(tile[cdl_bands, :, :], "exploratory_plots/" + tile_description + "_cdl.png", title)
 
 
 # Returns the upper-left corner of the large (1x1 degree) grid area
@@ -94,7 +130,7 @@ def print_stats(true, predicted, average_sif):
 # shape (SUBTILE x C x subtile_dim x subtile_dim).
 # NOTE: some sub-tiles will be removed if its fraction covered by clouds
 # exceeds "max_subtile_cloud_cover"
-def get_subtiles_list(tile, subtile_dim, device, max_subtile_cloud_cover=None):
+def get_subtiles_list(tile, subtile_dim, max_subtile_cloud_cover=None):
     bands, height, width = tile.shape
     num_subtiles_along_height = int(height / subtile_dim)
     num_subtiles_along_width = int(width / subtile_dim)
@@ -103,14 +139,14 @@ def get_subtiles_list(tile, subtile_dim, device, max_subtile_cloud_cover=None):
     skipped = 0
     for i in range(num_subtiles_along_height):
         for j in range(num_subtiles_along_width):
-            subtile = tile[:, subtile_dim*i:subtile_dim*(i+1), subtile_dim*j:subtile_dim*(j+1)].to(device)
+            subtile = tile[:, subtile_dim*i:subtile_dim*(i+1), subtile_dim*j:subtile_dim*(j+1)]
             fraction_missing = 1 - torch.mean(subtile[-1, :, :])
             # print("Missing", fraction_missing)
             if (max_subtile_cloud_cover is not None) and fraction_missing > max_subtile_cloud_cover:
                 skipped += 1
                 continue
             subtiles.append(subtile)
-    subtiles = torch.stack(subtiles)
+    subtiles = np.stack(subtiles)
     #print('Subtile tensor shape', subtiles.shape, 'num skipped:', skipped)
     return subtiles
 
@@ -212,11 +248,11 @@ def train_single_model(model, dataloaders, dataset_sizes, criterion, optimizer, 
             for sample in dataloaders[phase]: 
                 # Standardized input tile, (batch x C x W x H)
                 input_tile_standardized = sample['tile'].to(device)
-                #print(input_tile_standardized.shape)
-                #print('=========================')
-                #print('Input tile - random pixel', input_tile_standardized[0, :, 200, 370])
-                #print('Input band means')
-                #print(torch.mean(input_tile_standardized[0], dim=(1,2)))
+                # print('=========================')
+                # print(input_tile_standardized.shape)
+                # print('Input tile - random pixel', input_tile_standardized[0, :, 8, 8])
+                # print('Input band means')
+                # print(torch.mean(input_tile_standardized[0], dim=(1,2)))
 
                 # Real SIF value (non-standardized)
                 true_sif_non_standardized = sample['SIF'].to(device)
@@ -252,8 +288,8 @@ def train_single_model(model, dataloaders, dataset_sizes, criterion, optimizer, 
                     if j % 100 == 1:
                         print('========================')
                         #print('Subtile SIF pred:', subtile_pred)
-                        print('> Predicted', predicted_sif_non_standardized)
-                        print('> True', true_sif_non_standardized)
+                        print('> Predicted', predicted_sif_non_standardized[0:20])
+                        print('> True', true_sif_non_standardized[0:20])
                         print('> batch loss', (math.sqrt(non_standardized_loss.item()) / sif_mean).item())
                     running_loss += non_standardized_loss.item() * len(sample['SIF'])
 

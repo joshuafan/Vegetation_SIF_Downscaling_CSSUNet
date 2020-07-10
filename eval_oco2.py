@@ -33,15 +33,15 @@ from tile2vec.src.tilenet import make_tilenet
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
 # DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset_tropomi_train")
-DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset_random")
+DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset")
 EVAL_FILE = os.path.join(DATASET_DIR, "tile_info_val.csv")
 # EVAL_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2016-08-01")
 # EVAL_FILE = os.path.join(EVAL_DATASET_DIR, "eval_subtiles.csv") 
 
 # TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/avg_embedding_to_sif")
 # TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/AUG_subtile_simple_cnn_new_data_tiny")
-TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/AUG_subtile_simple_cnn_random_v4")
-# TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/AUG_subtile_simple_cnn_tropomi_train")
+TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/AUG_subtile_simple_cnn_v5")
+# TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/AUG_pretrained_simple_cnn_small_v2")
 print('trained model file', os.path.basename(TRAINED_MODEL_FILE))
 
 #DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-08-01") #"dataset_2018-07-16") #7-16") #07-16") #07-16")
@@ -50,8 +50,10 @@ print('trained model file', os.path.basename(TRAINED_MODEL_FILE))
 #TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/avg_embedding_to_sif")
 
 BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
-METHOD = '4a_subtile_simple_cnn_new_data' # oco2_only'  #'3_small_tile_simple' # '2_large_tile_resnet18'
-MODEL_TYPE = 'simple_cnn_small_v4'
+METHOD = '4a_subtile_simple_cnn_small_v5' #'4a_subtile_simple_cnn_small_v2_pretrained'
+MODEL_TYPE = 'simple_cnn_small_v5'
+# METHOD = '4a_subtile_simple_cnn_small_v5' # oco2_only'  #'3_small_tile_simple' # '2_large_tile_resnet18'
+# MODEL_TYPE = 'simple_cnn_small_v5'
 # MODEL_TYPE = 'simple_cnn_small_3'
 # METHOD = '4b_avg_embedding'
 # MODEL_TYPE = 'avg_embedding'
@@ -59,7 +61,7 @@ TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_new_data_OCO2_
 MODEL_SUBTILE_DIM = 10
 MAX_SUBTILE_CLOUD_COVER = 0.2
 CROP_TYPE_START_IDX = 12
-COLUMN_NAMES = ['true', 'predicted',
+COLUMN_NAMES = ['true', 'predicted', 'tile_file',
                     'lon', 'lat', 'source', 'date',
                     'ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
                     'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg', 
@@ -83,9 +85,9 @@ CROP_TYPES = ['grassland_pasture', 'corn', 'soybean', 'deciduous_forest']
 RESULTS_CSV_FILE = os.path.join(DATASET_DIR, 'OCO2_results_' + METHOD + '.csv')
 
 # BANDS = list(range(0, 9)) + [42]
-BANDS =  list(range(0, 12)) + list(range(12, 27)) + [28] + [42]
+# BANDS =  list(range(0, 12)) + list(range(12, 27)) + [28] + [42]
 # BANDS = list(range(0, 12)) + [12, 13, 14, 16] + [42]
-# BANDS = list(range(0, 43))
+BANDS = list(range(0, 43))
 DATES = ["2018-07-08", "2018-07-22", "2018-08-05", "2018-08-19", "2018-09-02"]
 SOURCES = ["TROPOMI", "OCO2"]
 
@@ -102,7 +104,6 @@ BATCH_SIZE = 1
 PURE_THRESHOLD = 0.6
 # MIN_SOUNDINGS = 5
 
-HIDDEN_DIM = 64
 assert(BATCH_SIZE == 1)
 
 
@@ -143,8 +144,8 @@ def eval_model(model, dataloader, dataset_size, criterion, device, sif_mean, sif
 
             # statistics
             band_means = torch.mean(input_tile_standardized, dim=(1, 2))
-            row = [true_sif_non_standardized.item(), predicted_sif_non_standardized.item(), sample['lon'][i].item(),
-                   sample['lat'][i].item(),  sample['source'][i], sample['date'][i]] + band_means.cpu().tolist()
+            row = [true_sif_non_standardized.item(), predicted_sif_non_standardized.item(), sample['tile_file'][i], sample['lon'][i].item(), 
+                   sample['lat'][i].item(), sample['source'][i], sample['date'][i]] + band_means.cpu().tolist()
             results.append(row)
             # results[j, 0] = true_sif_non_standardized.item()
             # results[j, 1] = predicted_sif_non_standardized.item()
@@ -169,7 +170,9 @@ print("Device", device)
 
 # Read train/val tile metadata
 eval_metadata = pd.read_csv(EVAL_FILE)
+# eval_metadata = eval_metadata.loc[eval_metadata['source'] == 'OCO2']
 print("Eval samples:", len(eval_metadata))
+
 # eval_metadata = eval_metadata.loc[eval_metadata['num_soundings'] >= MIN_SOUNDINGS]
 # eval_metadata = eval_metadata.loc[eval_metadata['SIF'] >= 0.2]
 # print("Eval samples with more than", MIN_SOUNDINGS, "soundings:", len(eval_metadata))
@@ -216,10 +219,14 @@ elif MODEL_TYPE == 'simple_cnn':
     model = simple_cnn.SimpleCNN(input_channels=INPUT_CHANNELS, reduced_channels=REDUCED_CHANNELS, output_dim=1, min_output=min_output, max_output=max_output).to(device)
 elif MODEL_TYPE == 'simple_cnn_small':
     model = simple_cnn.SimpleCNNSmall(input_channels=INPUT_CHANNELS, reduced_channels=REDUCED_CHANNELS, crop_type_start_idx=CROP_TYPE_START_IDX, output_dim=1, min_output=min_output, max_output=max_output).to(device)
+elif MODEL_TYPE == 'simple_cnn_small_v2':
+    model = simple_cnn.SimpleCNNSmall2(input_channels=INPUT_CHANNELS, reduced_channels=REDUCED_CHANNELS, crop_type_start_idx=CROP_TYPE_START_IDX, output_dim=1, min_output=min_output, max_output=max_output).to(device)
 elif MODEL_TYPE == 'simple_cnn_small_3':
     model = simple_cnn.SimpleCNNSmall3(input_channels=INPUT_CHANNELS, output_dim=1, min_output=min_output, max_output=max_output).to(device)
 elif MODEL_TYPE == 'simple_cnn_small_v4':
     model = simple_cnn.SimpleCNNSmall4(input_channels=INPUT_CHANNELS, output_dim=1, min_output=min_output, max_output=max_output).to(device)
+elif MODEL_TYPE == 'simple_cnn_small_v5':
+    model = simple_cnn.SimpleCNNSmall5(input_channels=INPUT_CHANNELS, output_dim=1, min_output=min_output, max_output=max_output).to(device)
 elif MODEL_TYPE == 'avg_embedding':
     model = EmbeddingToSIFNonlinearModel(embedding_size=INPUT_CHANNELS, hidden_size=HIDDEN_DIM, min_output=min_output, max_output=max_output).to(device)
 
@@ -234,11 +241,11 @@ model.load_state_dict(torch.load(TRAINED_MODEL_FILE, map_location=device))
 criterion = nn.MSELoss(reduction='mean')
 
 # Evaluate the model
-results = eval_model(model, dataloader, dataset_size, criterion, device, sif_mean, sif_std)
-results_df = pd.DataFrame(results, columns=COLUMN_NAMES)
-print("Result example", results_df.head())
-results_df.to_csv(RESULTS_CSV_FILE)
-# results_df = pd.read_csv(RESULTS_CSV_FILE)
+# results = eval_model(model, dataloader, dataset_size, criterion, device, sif_mean, sif_std)
+# results_df = pd.DataFrame(results, columns=COLUMN_NAMES)
+# print("Result example", results_df.head())
+# results_df.to_csv(RESULTS_CSV_FILE)
+results_df = pd.read_csv(RESULTS_CSV_FILE)
 
 true = results_df['true'].tolist()
 predicted = results_df['predicted'].tolist()

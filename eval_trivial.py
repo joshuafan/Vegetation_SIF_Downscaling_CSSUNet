@@ -33,14 +33,14 @@ DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
 TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset") #"dataset_2018-07-16")
 EVAL_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2016-08-01") #"dataset_2016-07-16")
 EVAL_FILE = os.path.join(EVAL_DATASET_DIR, "eval_subtiles.csv") 
-#TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_13")
-TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/AUG_subtile_simple_cnn_new_data_tiny")
+TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/AUG_subtile_simple_cnn_v5")
+# TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/small_tile_simple_v2")
 #TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/cfis_sif_aug")
 #RAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/subtile_sif_simple_cnn_aug") #cfis_sif")
 #TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/small_tile_simple") #large_tile_resnet18")  #test_large_tile_simple")  # small_tile_sif_prediction")
 BAND_STATISTICS_FILE = os.path.join(TRAIN_DATASET_DIR, "band_statistics_train.csv")
-METHOD = '4a_subtile_simple_cnn_small' # '2_large_tile_resnet' # '3_small_tile_simple' #'0_cfis_cheating' # #'3_small_tile_simple' # '2_large_tile_resnet18'
-MODEL_TYPE = 'simple_cnn_small'
+METHOD = '4a_subtile_simple_cnn_new_data' # '2_large_tile_resnet' # '3_small_tile_simple' #'0_cfis_cheating' # #'3_small_tile_simple' # '2_large_tile_resnet18'
+MODEL_TYPE = 'simple_cnn_small_v5'
 TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_cfis_eval_subtile_' + METHOD 
 
 COLUMN_NAMES = ['true', 'predicted',
@@ -67,8 +67,8 @@ CROP_TYPES = ['grassland_pasture', 'corn', 'soybean', 'deciduous_forest']
 
 RESULTS_CSV_FILE = os.path.join(EVAL_DATASET_DIR, 'results_' + METHOD + '.csv')
 
-#BANDS = list(range(0, 43))
-BANDS =  list(range(0, 12)) + list(range(12, 27)) + [28] + [42]
+BANDS = list(range(0, 43))
+# BANDS =  list(range(0, 12)) + list(range(12, 27)) + [28] + [42]
 INPUT_CHANNELS = len(BANDS)
 REDUCED_CHANNELS = 15
 RESIZE = False
@@ -76,10 +76,11 @@ RESIZED_DIM = [371, 371]
 DISCRETE_BANDS = list(range(12, 43))
 COVER_INDICES = list(range(12, 42))
 PURE_THRESHOLD = 0.7
-
-MIN_SIF = 0.2
+CROP_TYPE_START_IDX = 12
+MIN_SIF = 0
 MAX_SIF = 1.7
-
+MIN_INPUT = -2
+MAX_INPUT = 2
 
 def eval_model(model, dataloader, dataset_size, criterion, device, sif_mean, sif_std):
     model.eval()   # Set model to evaluate mode
@@ -88,14 +89,16 @@ def eval_model(model, dataloader, dataset_size, criterion, device, sif_mean, sif
     sif_mean = torch.tensor(sif_mean).to(device)
     sif_std = torch.tensor(sif_std).to(device)
     results = np.zeros((dataset_size, len(COLUMN_NAMES)))
+    file_names = []
     j = 0
 
     # Iterate over data.
     for sample in dataloader:
-        input_tile_standardized = sample['subtile'].to(device)
-        print('=========================')
-        print('Input band means')
-        print(torch.mean(input_tile_standardized, dim=(2,3)))
+        input_tile_standardized = sample['tile'].to(device)
+        # print('=========================')
+        # print('Input band means')
+        # print(torch.mean(input_tile_standardized, dim=(2,3)))
+        print('Tile shape', input_tile_standardized.shape)
         true_sif_non_standardized = sample['SIF'].to(device)
 
         # forward
@@ -113,11 +116,12 @@ def eval_model(model, dataloader, dataset_size, criterion, device, sif_mean, sif
         results[j:j+batch_size, 2] = sample['lon']
         results[j:j+batch_size, 3] = sample['lat']
         results[j:j+batch_size, 4:] = band_means.cpu().numpy()
+        file_names.extend(sample['tile_file'])
         j += batch_size
         #if j > 50:
         #    break
  
-    return results
+    return results, file_names
 
 
 # Check if any CUDA devices are visible. If so, pick a default visible device.
@@ -156,21 +160,23 @@ else:
 # Set up image transforms
 transform_list = []
 # transform_list.append(tile_transforms.ShrinkTile())
-transform_list.append(tile_transforms.StandardizeTile(band_means, band_stds))
+transform_list.append(tile_transforms.StandardizeTile(band_means, band_stds, min_input=MIN_INPUT, max_input=MAX_INPUT))
 if RESIZE:
     transform_list.append(tile_transforms.ResizeTile(target_dim=RESIZED_DIM, discrete_bands=DISCRETE_BANDS))
 transform = transforms.Compose(transform_list)
 
 # Set up Dataset and Dataloader
 dataset_size = len(eval_metadata)
-# dataset = ReflectanceCoverSIFDataset(eval_metadata, transform)
-dataset = EvalSubtileDataset(eval_metadata, transform=transform)
+dataset = ReflectanceCoverSIFDataset(eval_metadata, transform)
+# dataset = EvalSubtileDataset(eval_metadata, transform=transform)
 dataloader = torch.utils.data.DataLoader(dataset, batch_size=1,
                                          shuffle=True, num_workers=4)
 
 # Load trained model from file
-if MODEL_TYPE == 'simple_cnn':
-    model = simple_cnn.SimpleCNNSmall(input_channels=INPUT_CHANNELS, reduced_channels=REDUCED_CHANNELS, output_dim=1, min_output=min_output, max_output=max_output).to(device)  
+if MODEL_TYPE == 'simple_cnn_small_v2':
+    model = simple_cnn.SimpleCNNSmall2(input_channels=INPUT_CHANNELS, reduced_channels=REDUCED_CHANNELS, output_dim=1, crop_type_start_idx=CROP_TYPE_START_IDX, min_output=min_output, max_output=max_output).to(device)  
+elif MODEL_TYPE == 'simple_cnn_small_v5':
+    model = simple_cnn.SimpleCNNSmall5(input_channels=INPUT_CHANNELS, output_dim=1, min_output=min_output, max_output=max_output).to(device)  
 elif MODEL_TYPE == 'resnet18':
     model = resnet.resnet18(input_channels=INPUT_CHANNELS).to(device)
 else:
@@ -183,9 +189,10 @@ model.load_state_dict(torch.load(TRAINED_MODEL_FILE, map_location=device))
 criterion = nn.MSELoss(reduction='mean')
 
 # Evaluate the model
-results_numpy = eval_model(model, dataloader, dataset_size, criterion, device, sif_mean, sif_std)
+results_numpy, file_names = eval_model(model, dataloader, dataset_size, criterion, device, sif_mean, sif_std)
 
 results_df = pd.DataFrame(results_numpy, columns=COLUMN_NAMES)
+results_df['tile_file'] = file_names
 results_df.to_csv(RESULTS_CSV_FILE)
 
 true = results_df['true'].tolist()

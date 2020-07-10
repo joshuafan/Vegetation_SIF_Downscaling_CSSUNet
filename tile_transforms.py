@@ -60,6 +60,39 @@ class RandomFlipAndRotate(object):
         return tile
 
 
+
+class RandomFlipAndRotateSubtiles(object):
+    def __call__(self, subtiles):
+        # Generate random 0/1 integer for each sub-tile. 1 means that it should be
+        # horizontally flipped.
+        horizontal_flips = np.random.choice(2, size=subtiles.shape[0])
+        vertical_flips = np.random.choice(2, size=subtiles.shape[0])
+
+        # For each sub-tile, generate an integer from [0, 1, 2, 3]. This
+        # represents how many times that sub-tile should be rotated.
+        rotations = np.random.choice(4, size=subtiles.shape[0])
+
+        # print('=================================')
+        # print('subtile shape', subtiles.shape)
+        # print('10th sub-tile: horizontal', horizontal_flips[10], 'vertical', vertical_flips[10],
+        #       'rotations', rotations[10])
+        # print('Before transformation:', subtiles[10, 0, :, :])
+        # print('Upper left pixel:', subtiles[10, :, 0, 0])
+
+        # Randomly horizontal flip
+        subtiles[horizontal_flips == 1] = np.flip(subtiles[horizontal_flips == 1], axis=3).copy()
+ 
+        # Randomly vertical flip
+        subtiles[vertical_flips == 1] = np.flip(subtiles[vertical_flips == 1], axis=2).copy()
+
+        for i in [1, 2, 3]:
+            subtiles[rotations == i] = np.rot90(subtiles[rotations == i], k=i, axes=(2, 3)).copy()
+ 
+        # print('After transformation:', subtiles[10, 0, :, :])
+        # print('Upper left pixel:', subtiles[10, :, 0, 0])
+        return subtiles  
+
+
 class ResizeTile(object):
     def __init__(self, target_dim=[371,371], discrete_bands=list(range(12, 43))):
         self.target_dim = target_dim

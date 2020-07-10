@@ -45,11 +45,14 @@ INFO_FILE_VAL = os.path.join(DATASET_DIR, "tile_info_val.csv")
 BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
 # SUBTILE_EMBEDDING_FILE_TRAIN = os.path.join(DATASET_DIR, "avg_embeddings_train.csv")
 # SUBTILE_EMBEDDING_FILE_VAL = os.path.join(DATASET_DIR, "avg_embeddings_val.csv")
-SUBTILE_EMBEDDING_FILE_TRAIN = os.path.join(DATASET_DIR, "standardized_tiles_train.csv")
-SUBTILE_EMBEDDING_FILE_VAL = os.path.join(DATASET_DIR, "standardized_tiles_val.csv")
+# SUBTILE_EMBEDDING_FILE_TRAIN = os.path.join(DATASET_DIR, "standardized_tiles_train.csv")
+# SUBTILE_EMBEDDING_FILE_VAL = os.path.join(DATASET_DIR, "standardized_tiles_val.csv")
+SUBTILE_EMBEDDING_FILE_TRAIN = os.path.join(DATASET_DIR, "resized_tiles_train.csv")
+SUBTILE_EMBEDDING_FILE_VAL = os.path.join(DATASET_DIR, "resized_tiles_val.csv")
 EMBEDDING_FILE_SUFFIX = '_avg_embeddings.npy'
 STANDARDIZED_TILE_FILE_SUFFIX = '_standardized.npy'
 STANDARDIZED_SUBTILES_FILE_SUFFIX = '_standardized_subtiles.npy'
+RESIZED_TILE_FILE_SUFFIX = '_resized_tile.npy'
 
 TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_august/TileNet.ckpt")
 
@@ -117,6 +120,25 @@ def compute_standardized_tiles_to_sif_dataset(dataloader, subtile_dim, device):
             print(tile_rows[-1])
     return tile_rows
 
+
+# For each tile returned by the dataloader, compute the standardized tile, and standardized
+# sub-tiles. Save them to .npy files.
+def compute_resized_tile_dataset(dataloader, device):
+    tile_rows = [['lon', 'lat', 'resized_tile_file', 'source', 'date', 'SIF']]
+    for sample in dataloader:
+        batch_size = len(sample['SIF'])
+        input_tiles_standardized = sample['tile']
+        true_sifs_non_standardized = sample['SIF']
+        filenames = sample['tile_file']
+        for i in range(batch_size):
+            resized_tile_filename = filenames[i] + RESIZED_TILE_FILE_SUFFIX
+            np.save(resized_tile_filename, input_tiles_standardized[i])
+            tile_rows.append([sample['lon'][i].item(), sample['lat'][i].item(), resized_tile_filename,
+                              sample['source'][i], sample['date'][i],
+                              true_sifs_non_standardized[i].item()])
+            print(tile_rows[-1])
+    return tile_rows
+
 if 'CUDA_VISIBLE_DEVICES' in os.environ:
     print('CUDA_VISIBLE_DEVICES:', os.environ['CUDA_VISIBLE_DEVICES'])
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -140,6 +162,8 @@ sif_std = train_stds[-1]
 # Set up image transforms
 transform_list = []
 transform_list.append(tile_transforms.StandardizeTile(band_means, band_stds, min_input=MIN_INPUT, max_input=MAX_INPUT))
+transform_list.append(tile_transforms.ShrinkTile())
+
 transform = transforms.Compose(transform_list)
 
 # Set up Datasets and Dataloaders
@@ -159,8 +183,10 @@ print('loaded tile2vec')
 # Obtain embeddings for all subtiles
 # train_tile_rows = compute_subtile_embeddings_to_sif_dataset(tile2vec_model, dataloaders['train'], SUBTILE_DIM, device) 
 # val_tile_rows = compute_subtile_embeddings_to_sif_dataset(tile2vec_model, dataloaders['val'], SUBTILE_DIM, device)
-train_tile_rows = compute_standardized_tiles_to_sif_dataset(dataloaders['train'], SUBTILE_DIM, device) 
-val_tile_rows = compute_standardized_tiles_to_sif_dataset(dataloaders['val'], SUBTILE_DIM, device)
+# train_tile_rows = compute_standardized_tiles_to_sif_dataset(dataloaders['train'], SUBTILE_DIM, device) 
+# val_tile_rows = compute_standardized_tiles_to_sif_dataset(dataloaders['val'], SUBTILE_DIM, device)
+train_tile_rows = compute_resized_tile_dataset(dataloaders['train'], device) 
+val_tile_rows = compute_resized_tile_dataset(dataloaders['val'], device)
    
 # Write subtile embeddings to file
 with open(SUBTILE_EMBEDDING_FILE_TRAIN, "w") as output_csv_file:
