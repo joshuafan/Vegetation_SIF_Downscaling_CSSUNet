@@ -1,7 +1,10 @@
 import torch
 import torch.nn as nn
-from .utils import load_state_dict_from_url
 
+try:
+    from torch.hub import load_state_dict_from_url
+except ImportError:
+    from torch.utils.model_zoo import load_url as load_state_dict_from_url
 
 __all__ = ['ResNet', 'resnet18', 'resnet34', 'resnet50', 'resnet101',
            'resnet152', 'resnext50_32x4d', 'resnext101_32x8d',
@@ -39,7 +42,7 @@ class BasicBlock(nn.Module):
                  base_width=64, dilation=1, norm_layer=None):
         super(BasicBlock, self).__init__()
         if norm_layer is None:
-            norm_layer = nn.BatchNorm2d
+            norm_layer = nn.BatchNorm2d #nn.InstanceNorm2d
         if groups != 1 or base_width != 64:
             raise ValueError('BasicBlock only supports groups=1 and base_width=64')
         if dilation > 1:
@@ -123,14 +126,34 @@ class Bottleneck(nn.Module):
 
 class ResNet(nn.Module):
 
-    def __init__(self, block, layers, num_classes=1000, zero_init_residual=False,
+    def __init__(self, input_channels,
+                 block, layers, crop_type_start_idx=12, num_classes=1, 
+                 min_output=None, max_output=None, zero_init_residual=False,
                  groups=1, width_per_group=64, replace_stride_with_dilation=None,
                  norm_layer=None):
         super(ResNet, self).__init__()
         if norm_layer is None:
-            norm_layer = nn.BatchNorm2d
+            norm_layer = nn.BatchNorm2d # nn.InstanceNorm2d
         self._norm_layer = norm_layer
 
+        # Restrict output to a certain range
+        if min_output is not None and max_output is not None:
+            self.restrict_output = True
+            self.mean_output = (min_output + max_output) / 2
+            self.scale_factor = (max_output - min_output) / 2
+        else:
+            self.restrict_output = False
+
+        # Create list of crop type indices and non-crop indices
+        #self.non_crop_type_bands = list(range(0, crop_type_start_idx)) + [input_channels - 1]  # Last channel is the "missing reflectance" mask and is not a crop type
+        #self.crop_type_bands = list(range(crop_type_start_idx, input_channels - 1))
+
+        # Embedding for each crop type's pixels
+        #self.crop_type_embedding = nn.Conv2d(len(self.crop_type_bands), crop_type_embedding_dim, kernel_size=1, stride=1)
+
+        # Number of channels after embedding crop type
+        #channels_after_embedding = input_channels - len(self.crop_type_bands) + crop_type_embedding_dim  # Number of features after embedding crop type
+ 
         self.inplanes = 64
         self.dilation = 1
         if replace_stride_with_dilation is None:
@@ -142,7 +165,13 @@ class ResNet(nn.Module):
                              "or a 3-element tuple, got {}".format(replace_stride_with_dilation))
         self.groups = groups
         self.base_width = width_per_group
-        self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3,
+        #self.dimensionality_reduction = conv1x1(channels_after_embedding, reduced_channels)
+        # # self.dimensionality_reduction = conv1x1(input_channels, reduced_channels)
+        #self.bn0 = norm_layer(reduced_channels)
+        # self.conv1 = nn.Conv2d(reduced_channels, self.inplanes, kernel_size=7, stride=2, padding=3,
+        #                        bias=False)
+
+        self.conv1 = nn.Conv2d(input_channels, self.inplanes, kernel_size=7, stride=2, padding=3,
                                bias=False)
         self.bn1 = norm_layer(self.inplanes)
         self.relu = nn.ReLU(inplace=True)
@@ -156,6 +185,7 @@ class ResNet(nn.Module):
                                        dilate=replace_stride_with_dilation[2])
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.fc = nn.Linear(512 * block.expansion, num_classes)
+        self.tanh = nn.Tanh()
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -167,12 +197,12 @@ class ResNet(nn.Module):
         # Zero-initialize the last BN in each residual branch,
         # so that the residual branch starts with zeros, and each residual block behaves like an identity.
         # This improves the model by 0.2~0.3% according to https://arxiv.org/abs/1706.02677
-        if zero_init_residual:
-            for m in self.modules():
-                if isinstance(m, Bottleneck):
-                    nn.init.constant_(m.bn3.weight, 0)
-                elif isinstance(m, BasicBlock):
-                    nn.init.constant_(m.bn2.weight, 0)
+        # if zero_init_residual:
+        #     for m in self.modules():
+        #         if isinstance(m, Bottleneck):
+        #             nn.init.constant_(m.bn3.weight, 0)
+        #         elif isinstance(m, BasicBlock):
+        #             nn.init.constant_(m.bn2.weight, 0)
 
     def _make_layer(self, block, planes, blocks, stride=1, dilate=False):
         norm_layer = self._norm_layer
@@ -200,28 +230,52 @@ class ResNet(nn.Module):
 
     def _forward_impl(self, x):
         # See note [TorchScript super()]
+        # print('Input dim', x.shape)
+        # crop_masks = x[:, self.crop_type_bands, :, :]
+        # crop_embeddings = self.crop_type_embedding(crop_masks)
+        # print('crop embeddings', crop_embeddings.shape)
+
+        # Concatenate crop type embedding with other pixel features
+        #x = torch.cat([x[:, self.non_crop_type_bands, :, :], crop_embeddings], dim=1)
+        # print('Combined crop type and other features', x.shape)
+
+        # Embed each pixel. Each pixel's vector should contain semantic information about
+        # the crop type + reflectance + other features
+        # x = self.dimensionality_reduction(x)
+        # x = self.bn0(x)
+        # x = self.relu(x)
+
         x = self.conv1(x)
+        # print('After conv1', x.shape)
         x = self.bn1(x)
         x = self.relu(x)
         x = self.maxpool(x)
+        # print('After maxpool', x.shape)
 
         x = self.layer1(x)
+        # print('After layer 1', x.shape)
         x = self.layer2(x)
+        # print('After layer 2', x.shape)
         x = self.layer3(x)
+        # print('After layer 3', x.shape)
         x = self.layer4(x)
+        # print('After layer 4', x.shape)
 
         x = self.avgpool(x)
+        # print('After avg pool', x.shape)
         x = torch.flatten(x, 1)
         x = self.fc(x)
-
+        # print('After fc', x.shape)
+        if self.restrict_output:
+            x = (self.tanh(x) * self.scale_factor) + self.mean_output
         return x
 
     def forward(self, x):
         return self._forward_impl(x)
 
 
-def _resnet(arch, block, layers, pretrained, progress, **kwargs):
-    model = ResNet(block, layers, **kwargs)
+def _resnet(input_channels, arch, block, layers, pretrained, progress, **kwargs):
+    model = ResNet(input_channels, block, layers, **kwargs)
     if pretrained:
         state_dict = load_state_dict_from_url(model_urls[arch],
                                               progress=progress)
@@ -229,14 +283,14 @@ def _resnet(arch, block, layers, pretrained, progress, **kwargs):
     return model
 
 
-def resnet18(pretrained=False, progress=True, **kwargs):
+def resnet18(input_channels, pretrained=False, progress=True, **kwargs):
     r"""ResNet-18 model from
     `"Deep Residual Learning for Image Recognition" <https://arxiv.org/pdf/1512.03385.pdf>`_
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
         progress (bool): If True, displays a progress bar of the download to stderr
     """
-    return _resnet('resnet18', BasicBlock, [2, 2, 2, 2], pretrained, progress,
+    return _resnet(input_channels, 'resnet18', BasicBlock, [2, 2, 2, 2], pretrained, progress,
                    **kwargs)
 
 

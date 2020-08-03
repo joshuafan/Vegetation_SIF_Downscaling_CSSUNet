@@ -13,9 +13,12 @@ from sif_utils import plot_histogram, determine_split, determine_split_random
 import torch
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-DATES = ["2018-07-08", "2018-07-22", "2018-08-05", "2018-08-19", "2018-09-02"]
+DATES = ["2018-04-29", "2018-05-13", "2018-05-27", "2018-06-10", "2018-06-24", 
+         "2018-07-08", "2018-07-22", "2018-08-05", "2018-08-19", "2018-09-02",
+         "2018-09-16"]
+
 DATASET_DIRS = [os.path.join(DATA_DIR, "dataset_" + date) for date in DATES]
-UNFILTERED_TROPOMI_FILES = [os.path.join(dataset_dir, "tile_averages.csv") for dataset_dir in DATASET_DIRS]
+UNFILTERED_TROPOMI_FILES = [os.path.join(dataset_dir, "reflectance_cover_to_sif.csv") for dataset_dir in DATASET_DIRS]
 UNFILTERED_OCO2_FILES = [os.path.join(dataset_dir, "oco2_eval_subtiles.csv") for dataset_dir in DATASET_DIRS]
 # print("Dataset dirs", DATASET_DIRS)
 # print("Unfiltered Tropomi files:", UNFILTERED_TROPOMI_FILES)
@@ -23,7 +26,7 @@ UNFILTERED_OCO2_FILES = [os.path.join(dataset_dir, "oco2_eval_subtiles.csv") for
 
 # Create a folder for the processed dataset
 # PROCESSED_DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset")
-PROCESSED_DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset_random")
+PROCESSED_DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset_all_2")
 if not os.path.exists(PROCESSED_DATASET_DIR):
     os.makedirs(PROCESSED_DATASET_DIR)
 
@@ -48,14 +51,24 @@ STATISTICS_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref
                     'canola', 'sunflower', 'dry_beans', 'developed_med_intensity',
                     'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
                     'lentils', 'missing_reflectance', 'SIF']
+CDL_COLUMNS = ['grassland_pasture', 'corn', 'soybean', 'shrubland',
+                    'deciduous_forest', 'evergreen_forest', 'spring_wheat', 'developed_open_space',
+                    'other_hay_non_alfalfa', 'winter_wheat', 'herbaceous_wetlands',
+                    'woody_wetlands', 'open_water', 'alfalfa', 'fallow_idle_cropland',
+                    'sorghum', 'developed_low_intensity', 'barren', 'durum_wheat',
+                    'canola', 'sunflower', 'dry_beans', 'developed_med_intensity',
+                    'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
+                    'lentils']
 
-MAX_LANDSAT_CLOUD_COVER = 0.2
+MIN_CDL_COVERAGE = 0.8
+MAX_LANDSAT_CLOUD_COVER = 0.1
 MAX_TROPOMI_CLOUD_COVER = 0.2
 MIN_TROPOMI_NUM_SOUNDINGS = 5
 MIN_OCO2_NUM_SOUNDINGS = 5
 MIN_SIF = 0.2
-FRACTION_VAL = 0.4
-FRACTION_TEST = 0.2
+TROPOMI_FRACTION_VAL = 0.1
+OCO2_FRACTION_VAL = 0.4
+OCO2_FRACTION_TEST = 0.5
 OCO2_SCALING_FACTOR = 1.69
 
 
@@ -86,15 +99,24 @@ for info_file in UNFILTERED_TROPOMI_FILES:
     tropomi_frame['source'] = 'TROPOMI'
     tropomi_frames.append(tropomi_frame)
 tropomi_metadata = pd.concat(tropomi_frames)
+tropomi_metadata.reset_index(drop=True, inplace=True)
+
 print("TROPOMI average SIF", tropomi_metadata['SIF'].mean())
 print('TROPOMI tiles before filter', len(tropomi_metadata))
+
+# Remove tiles with little CDL coverage (for the crops we're interested in)
+tropomi_cdl_coverage = tropomi_metadata[CDL_COLUMNS].sum(axis=1)
+print(tropomi_cdl_coverage.head())
+plot_histogram(tropomi_cdl_coverage.to_numpy(), "tropomi_cdl_coverage.png")
+tropomi_metadata = tropomi_metadata.loc[tropomi_cdl_coverage >= MIN_CDL_COVERAGE]
+print('TROPOMI tiles after filtering missing CDL:', len(tropomi_metadata))
 
 # Restrict to only tiles where Landsat (reflectance) cloud cover is low
 tropomi_metadata = tropomi_metadata.loc[tropomi_metadata['missing_reflectance'] <= MAX_LANDSAT_CLOUD_COVER]
 print('TROPOMI tiles after filtering missing reflectance:', len(tropomi_metadata))
 
 # Restrict to only tiles where TROPOMI (SIF) cloud cover is low
-tropomi_metadata = tropomi_metadata.loc[tropomi_metadata['cloud_fraction'] <= MAX_TROPOMI_CLOUD_COVER]
+tropomi_metadata = tropomi_metadata.loc[tropomi_metadata['tropomi_cloud_fraction'] <= MAX_TROPOMI_CLOUD_COVER]
 print('TROPOMI tiles after filtering cloudy TROPOMI SIF:', len(tropomi_metadata))  
 
 # Restrict to only tiles where TROPOMI has enough soundings
@@ -105,6 +127,12 @@ print('TROPOMI tiles after filtering low # of soundings:', len(tropomi_metadata)
 tropomi_metadata = tropomi_metadata.loc[tropomi_metadata['SIF'] >= MIN_SIF]
 print('TROPOMI tiles after filtering low SIF:', len(tropomi_metadata))
 
+# Split TROPOMI datapoints into train, val
+tropomi_val_start_idx = int((1 - TROPOMI_FRACTION_VAL) * len(tropomi_metadata))
+tropomi_train_metadata, tropomi_val_metadata = np.split(tropomi_metadata.sample(frac=1), [tropomi_val_start_idx])
+print('===========================================')
+print('TROPOMI train samples:', len(tropomi_train_metadata))
+print('TROPOMI val samples:', len(tropomi_val_metadata))
 
 # Read OCO-2 files
 oco2_frames = []
@@ -114,8 +142,15 @@ for info_file in UNFILTERED_OCO2_FILES:
     oco2_frame['SIF'] *= OCO2_SCALING_FACTOR  # OCO-2 SIF needs to be scaled to match TROPOMI
     oco2_frames.append(oco2_frame)
 oco2_metadata = pd.concat(oco2_frames)
+print('=============================================================')
 print("OCO2 average SIF", oco2_metadata['SIF'].mean())
 print("OCO2 tiles before filter", len(oco2_metadata))
+
+# Remove tiles with little CDL coverage (for the crops we're interested in)
+oco2_cdl_coverage = oco2_metadata[CDL_COLUMNS].sum(axis=1)
+plot_histogram(oco2_cdl_coverage.to_numpy(), "oco2_cdl_coverage.png")
+oco2_metadata = oco2_metadata.loc[oco2_cdl_coverage >= MIN_CDL_COVERAGE]
+print('OCO2 tiles after filtering missing CDL:', len(oco2_metadata))
 
 # Restrict to only tiles where Landsat (reflectance) cloud cover is low
 oco2_metadata = oco2_metadata.loc[oco2_metadata['missing_reflectance'] <= MAX_LANDSAT_CLOUD_COVER]
@@ -133,18 +168,23 @@ print('OCO2 tiles after filtering low SIF:', len(oco2_metadata))
 oco2_metadata = oco2_metadata.sample(frac=1).reset_index(drop=True)
 
 # Split OCO-2 datapoints into train, val, test
-val_start_idx = int((1 - FRACTION_VAL - FRACTION_TEST) * len(oco2_metadata))
-test_start_idx = int((1 - FRACTION_TEST) * len(oco2_metadata))
-oco2_train_metadata, oco2_val_metadata, oco2_test_metadata = np.split(oco2_metadata.sample(frac=1), [val_start_idx, test_start_idx])
+oco2_val_start_idx = int((1 - OCO2_FRACTION_VAL - OCO2_FRACTION_TEST) * len(oco2_metadata))
+oco2_test_start_idx = int((1 - OCO2_FRACTION_TEST) * len(oco2_metadata))
+oco2_train_metadata, oco2_val_metadata, oco2_test_metadata = np.split(oco2_metadata.sample(frac=1), [oco2_val_start_idx, oco2_test_start_idx])
+print('===========================================')
 print('OCO2 train samples:', len(oco2_train_metadata))
 print('OCO2 val samples:', len(oco2_val_metadata))
 print('OCO2 test samples:', len(oco2_test_metadata))
 
-# Combine OCO-2 and TROPOMI train points
-train_metadata = pd.concat([tropomi_metadata, oco2_train_metadata])
+# Combine OCO-2 and TROPOMI train/val points
+train_metadata = pd.concat([tropomi_train_metadata, oco2_train_metadata])
 train_metadata.reset_index(drop=True, inplace=True)
+train_metadata = train_metadata.sample(frac=1).reset_index(drop=True)
+val_metadata = pd.concat([tropomi_val_metadata, oco2_val_metadata])
+val_metadata.reset_index(drop=True, inplace=True)
+val_metadata = val_metadata.sample(frac=1).reset_index(drop=True)
 split_metadata = {'train': train_metadata,
-                  'val': oco2_val_metadata,
+                  'val': val_metadata,
                   'test': oco2_test_metadata}
 
 
@@ -184,7 +224,6 @@ for split, metadata in split_metadata.items():
     pure_soybean = metadata.loc[(metadata['soybean'] > 0.6) & (metadata['source'] == 'OCO2')]
     pure_deciduous_forest = metadata.loc[(metadata['deciduous_forest'] > 0.6) & (metadata['source'] == 'OCO2')]
     print('===================== Split', split, '=====================')
-    print('Total number of rows', len(metadata))
     print("OCO2 pure grassland/pasture", len(pure_grassland_pasture))
     print("OCO2 pure corn", len(pure_corn))
     print("OCO2 pure soybean", len(pure_soybean))

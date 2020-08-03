@@ -39,7 +39,7 @@ from embedding_to_sif_model import EmbeddingToSIFModel
 
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset")
+DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset_all_2")
 INFO_FILE_TRAIN = os.path.join(DATASET_DIR, "tile_info_train.csv")
 INFO_FILE_VAL = os.path.join(DATASET_DIR, "tile_info_val.csv")
 BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
@@ -60,13 +60,12 @@ TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_august/TileNet.ckp
 # If it is 'tile2vec', we use the Tile2Vec model 
 EMBEDDING_TYPE = 'average' #tile2vec'  #average' # 'tile2vec'
 # TRAINING_PLOT_FILE = 'exploratory_plots/tile2vec_subtile_sif_prediction.png'
-SUBTILE_DIM = 10
+SUBTILE_DIM = 100
 Z_DIM = 256
 INPUT_CHANNELS = 43
-
-MIN_INPUT = -2
-MAX_INPUT = 2
-MAX_SUBTILE_CLOUD_COVER = 0.2
+NUM_WORKERS = 8
+MIN_INPUT = -3
+MAX_INPUT = 3
 
 
 # For each tile returned by the dataloader, obtain a list of embeddings for each subtile. Save
@@ -82,7 +81,7 @@ def compute_subtile_embeddings_to_sif_dataset(tile2vec_model, dataloader, subtil
         filenames = sample['tile_file']
         for i in range(batch_size):
             #print('Random pixel', subtiles[i, 0, :, 5, 5])
-            subtiles = get_subtiles_list(input_tile_standardized[i], subtile_dim, device, max_subtile_cloud_cover=MAX_SUBTILE_CLOUD_COVER)
+            subtiles = get_subtiles_list(input_tile_standardized[i], subtile_dim) #, device) #, max_subtile_cloud_cover=MAX_SUBTILE_CLOUD_COVER)
             print('Subtiles shape', subtiles.shape)
             if EMBEDDING_TYPE == 'tile2vec':
                 with torch.set_grad_enabled(False):
@@ -111,9 +110,9 @@ def compute_standardized_tiles_to_sif_dataset(dataloader, subtile_dim, device):
         for i in range(batch_size):
             standardized_tile_filename = filenames[i] + STANDARDIZED_TILE_FILE_SUFFIX
             np.save(standardized_tile_filename, input_tiles_standardized[i])
-            subtiles = get_subtiles_list(input_tiles_standardized[i], subtile_dim, device, max_subtile_cloud_cover=MAX_SUBTILE_CLOUD_COVER)
+            subtiles = get_subtiles_list(input_tiles_standardized[i], subtile_dim) #, device, max_subtile_cloud_cover=MAX_SUBTILE_CLOUD_COVER)
             subtiles_filename = filenames[i] + STANDARDIZED_SUBTILES_FILE_SUFFIX
-            np.save(subtiles_filename, subtiles.cpu().numpy())
+            np.save(subtiles_filename, subtiles)
             tile_rows.append([sample['lon'][i].item(), sample['lat'][i].item(), standardized_tile_filename,
                               subtiles_filename, sample['source'][i], sample['date'][i],
                               true_sifs_non_standardized[i].item()])
@@ -128,6 +127,11 @@ def compute_resized_tile_dataset(dataloader, device):
     for sample in dataloader:
         batch_size = len(sample['SIF'])
         input_tiles_standardized = sample['tile']
+        if np.isnan(input_tiles_standardized).any():
+            print('Nan found :(')
+            print(sample['tile_file'])
+            exit(0)
+        assert(input_tiles_standardized.shape[2] == SUBTILE_DIM)
         true_sifs_non_standardized = sample['SIF']
         filenames = sample['tile_file']
         for i in range(batch_size):
@@ -162,7 +166,7 @@ sif_std = train_stds[-1]
 # Set up image transforms
 transform_list = []
 transform_list.append(tile_transforms.StandardizeTile(band_means, band_stds, min_input=MIN_INPUT, max_input=MAX_INPUT))
-transform_list.append(tile_transforms.ShrinkTile())
+transform_list.append(tile_transforms.ShrinkTile(target_dim=SUBTILE_DIM))
 
 transform = transforms.Compose(transform_list)
 
@@ -171,7 +175,7 @@ datasets = {'train': ReflectanceCoverSIFDataset(train_metadata, transform),
             'val': ReflectanceCoverSIFDataset(val_metadata, transform)}
 
 dataloaders = {x: torch.utils.data.DataLoader(datasets[x], batch_size=1,
-                                                  shuffle=True, num_workers=1)
+                                                  shuffle=True, num_workers=NUM_WORKERS)
                    for x in ['train', 'val']}
 
 # Load pre-trained Tile2Vec embedding model

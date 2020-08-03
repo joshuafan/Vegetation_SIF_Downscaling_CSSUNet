@@ -13,7 +13,8 @@ from sif_utils import plot_histogram, lat_long_to_index
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
 #OCO2_FILE = os.path.join(DATA_DIR, "OCO2/oco2_20180801_20180816_1800m.nc")
 #OCO2_FILE = os.path.join(DATA_DIR, "OCO2/oco2_20180801_20180816_3km.nc")
-OCO2_FILE = os.path.join(DATA_DIR, "OCO2/oco2_20180708_20180915_14day_3km.nc")
+# OCO2_FILE = os.path.join(DATA_DIR, "OCO2/oco2_20180708_20180915_14day_3km.nc")
+OCO2_FILE = os.path.join(DATA_DIR, "OCO2/oco2_20180429_20180916_3km.nc")
 #DATE = "2018-08-01" #"2016-07-16"
 # TILES_DIR = os.path.join(DATA_DIR, "tiles_" + DATE)
 # DATASET_DIR = os.path.join(DATA_DIR, "dataset_" + DATE)
@@ -52,8 +53,8 @@ PURE_THRESHOLD = 0.5
 MIN_SIF = 0.2
 MIN_NUM_SOUNDINGS = 5
 INPUT_CHANNELS = 43
-CDL_BANDS = list(range(12, 42))
-MIN_CDL_COVERAGE = 0.5
+REFLECTANCE_BANDS = list(range(0, 9))
+MISSING_REFLECTANCE_IDX = -1
 
 pure_corn_points = 0
 pure_soy_points = 0
@@ -81,19 +82,13 @@ num_soundings_dist = num_soundings_dist[num_soundings_dist > 0]
 plot_histogram(num_soundings_dist, "oco2_num_soundings.png", title="OCO2 num soundings")
 
 
-
-points_no_reflectance = 0  # Number of points outside bounds of reflectance dataset
-points_missing_reflectance = 0  # Number of points with missing reflectance data (due to cloud cover)
-points_with_reflectance = 0  # Number of points with reflectance data
-
 # Loop through all OCO-2 data points
 # Loop through all time ranges
 datapoints = 0
-for time_idx in range(len(times)):
+for time_idx in range(5, len(times)):
     date_time = times[time_idx]
     DATE = np.datetime_as_string(date_time, unit='D')
     print('Date', DATE)
-
     TILES_DIR = os.path.join(DATA_DIR, "tiles_" + DATE)
     DATASET_DIR = os.path.join(DATA_DIR, "dataset_" + DATE)  
     OCO2_SUBTILES_DIR = os.path.join(DATA_DIR, "oco2_subtiles_" + DATE)
@@ -118,13 +113,6 @@ for time_idx in range(len(times)):
             if math.isnan(sif):
                 continue
 
-            # If SIF is low, we don't care about this point / it's likely to be noisy, so ignore it
-            # if sif < MIN_SIF:
-            #     continue
-            
-            # if num_soundings_point < MIN_NUM_SOUNDINGS:
-            #     continue
-            
             # sifs_to_average = []
             # sif_lat_idx_low = max(0, lat_idx - 1)
             # sif_lat_idx_high = min(sifs.shape[0], lat_idx + 2) # Exclusive (high lat index)
@@ -146,9 +134,9 @@ for time_idx in range(len(times)):
             max_lon = lon + SUBTILE_DEGREES / 2
             min_lat = lat - SUBTILE_DEGREES / 2
             max_lat = lat + SUBTILE_DEGREES / 2
-            print('====================================')
-            print("Lon: min", min_lon, "max:", max_lon)
-            print("Lat: min", min_lat, "max:", max_lat)
+            # print('====================================')
+            # print("Lon: min", min_lon, "max:", max_lon)
+            # print("Lat: min", min_lat, "max:", max_lat)
 
             # Figure out which reflectance files to open. For each edge of the bounding box,
             # find the left/top bound of the surrounding reflectance large tile.
@@ -160,10 +148,11 @@ for time_idx in range(len(times)):
             num_tiles_lat = round((max_lat_tile_top - min_lat_tile_top) * 10) + 1
             file_left_lons = np.linspace(min_lon_tile_left, max_lon_tile_left, num_tiles_lon, endpoint=True)
             file_top_lats = np.linspace(min_lat_tile_top, max_lat_tile_top, num_tiles_lat, endpoint=True)[::-1]  # Go through lats from top to bottom, because indices are numbered from top to bottom
-            print("File left lons", file_left_lons)
-            print("File top lats", file_top_lats)
+            # print("File left lons", file_left_lons)
+            # print("File top lats", file_top_lats)
 
-            # Because a sub-tile could span multiple files, patch all of the files together
+            # Because a sub-tile could span multiple files, patch together all of the files that 
+            # contain any portion of the sub-tile
             columns = []
             for file_left_lon in file_left_lons:
                 rows = []
@@ -173,13 +162,13 @@ for time_idx in range(len(times)):
                     file_center_lat = round(file_top_lat - 0.05, 2)
                     large_tile_filename = TILES_DIR + "/reflectance_lat_" + str(file_center_lat) + "_lon_" + str(file_center_lon) + ".npy"
                     if not os.path.exists(large_tile_filename):
-                        print('Needed data file', large_tile_filename, 'does not exist!')
+                        # print('Needed data file', large_tile_filename, 'does not exist!')
                         # For now, consider the data for this section as missing
                         missing_tile = np.zeros((INPUT_CHANNELS, LARGE_TILE_PIXELS, LARGE_TILE_PIXELS))
                         missing_tile[-1, :, :] = 1
                         rows.append(missing_tile)
                     else:
-                        print('Large tile filename', large_tile_filename)
+                        # print('Large tile filename', large_tile_filename)
                         large_tile = np.load(large_tile_filename)
                         rows.append(large_tile)
 
@@ -187,13 +176,13 @@ for time_idx in range(len(times)):
                 columns.append(column)
             
             combined_large_tiles = np.concatenate(columns, axis=2)
-            print('All large tiles shape', combined_large_tiles.shape)
+            # print('All large tiles shape', combined_large_tiles.shape)
 
             # Find indices of bounding box within this combined large tile 
             top_idx, left_idx = lat_long_to_index(max_lat, min_lon, max_lat_tile_top, min_lon_tile_left, RES)
             bottom_idx = top_idx + SUBTILE_PIXELS
             right_idx = left_idx + SUBTILE_PIXELS
-            print('From combined large tile: Top', top_idx, 'Botom', bottom_idx, 'Left', left_idx, 'Right', right_idx)
+            # print('From combined large tile: Top', top_idx, 'Bottom', bottom_idx, 'Left', left_idx, 'Right', right_idx)
 
             # If the selected region (box) goes outside the range of the cover or reflectance dataset, that's a bug!
             if top_idx < 0 or left_idx < 0:
@@ -205,40 +194,39 @@ for time_idx in range(len(times)):
 
             subtile = combined_large_tiles[:, top_idx:bottom_idx, left_idx:right_idx]
 
-            # Calculate band averages across this sub-tile
-            band_averages = np.mean(subtile, axis=(1, 2))
-            print("Band averages", band_averages)
-            fraction_missing_reflectance = band_averages[-1]
+            # Compute averages of each band (over non-cloudy pixels)
+            # Reshape tile into a list of pixels (pixels x channels)
+            pixels = np.moveaxis(subtile, 0, -1)
+            pixels = pixels.reshape((-1, pixels.shape[2]))
 
-            # If there's too much missing reflectance data, skip this point
-            # if fraction_missing_reflectance > MAX_FRACTION_MISSING_OVERALL:
-            #     missing_points += 1
-            #     print('Too much missing')
-            #     continue
+            # Compute averages of each feature (band) over all pixels
+            tile_averages = np.mean(pixels, axis=0)
 
-            # If too much CDL data is missing, skip this point
-            cdl_coverage = np.sum(band_averages[CDL_BANDS])
-            if cdl_coverage < MIN_CDL_COVERAGE:
-                print('CDL coverage too low:', cdl_coverage)
+            # NOTE: Exclude missing (cloudy) pixels for reflectance band averages
+            pixels_with_data = pixels[pixels[:, MISSING_REFLECTANCE_IDX] == 0]
+
+            # Remove tiles where no pixels have data (it's completely covered by clouds)
+            if pixels_with_data.shape[0] == 0:
                 continue
 
-            if band_averages[13] > PURE_THRESHOLD:
-                pure_corn_points += 1
-                print('Pure corn')
-            if band_averages[14] > PURE_THRESHOLD:
-                pure_soy_points += 1
-                print('Pure soy')
-
+            # Compute average of the reflectance, over the non-cloudy pixels
+            reflectance_averages = np.mean(pixels_with_data[:, REFLECTANCE_BANDS], axis=0)
+            tile_averages[REFLECTANCE_BANDS] = reflectance_averages
+                
+            # Remove tiles with any NaNs
+            if np.isnan(tile_averages).any():
+                print('tile contained nan:', tile_filename)
+                continue
 
             # Save the sub-tiles array to file
             subtile_filename = OCO2_SUBTILES_DIR + "/lat_" + str(lat) + "_lon_" + str(lon) + ".npy"
             np.save(subtile_filename, subtile)
 
+            # Record lon/lat/SIF and all the metadata about this sub-tile in a csv row
             point_lons.append(lon)
             point_lats.append(lat)
             point_sifs.append(sif)
-
-            dataset_rows.append([lon, lat, DATE, subtile_filename] + band_averages.tolist() + 
+            dataset_rows.append([lon, lat, DATE, subtile_filename] + tile_averages.tolist() + 
                                 [sif, num_soundings_point])
             
 
@@ -248,11 +236,6 @@ for time_idx in range(len(times)):
         for row in dataset_rows:
             csv_writer.writerow(row) 
 
-
-
-print('Missing points', missing_points)
-print('Pure corn points', pure_corn_points)
-print('Pure soy points', pure_soy_points)
 
 point_sifs = np.array(point_sifs)
 print('SIFs', np.min(point_sifs), np.max(point_sifs))

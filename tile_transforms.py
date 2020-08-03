@@ -39,6 +39,20 @@ class GaussianNoise(object):
         return tile
 
 
+class GaussianNoiseSubtiles(object):
+    def __init__(self, continuous_bands, standard_deviation=0.1):
+        self.continuous_bands = continuous_bands
+        self.standard_deviation = standard_deviation
+
+    def __call__(self, subtiles):
+        #print('Before noise', tile[self.continuous_bands, 0:3, 0:3])
+        continuous_bands_shape = subtiles[:, self.continuous_bands, :, :].shape
+        noise = np.random.normal(loc=0, scale=self.standard_deviation, size=continuous_bands_shape)
+        subtiles[:, self.continuous_bands, :, :] = subtiles[:, self.continuous_bands, :, :] + noise
+        #print('After noise', tile[self.continuous_bands, 0:3, 0:3])
+        return subtiles
+
+
 class RandomFlipAndRotate(object):
     """
     Code taken from Tile2Vec.
@@ -145,12 +159,10 @@ class ShrinkTile(object):
         for i in range(self.target_dim):
             for j in range(self.target_dim):
                 # Find which pixels in original tile correspond to this pixel
-                top = int((i / self.target_dim) * original_height)
-                bottom = int(((i+1) / self.target_dim) * original_height)
-                left = int((j / self.target_dim) * original_width)
-                right = int(((j+1) / self.target_dim) * original_width)
-                #print('Top', top, 'Bottom', bottom)
-                #print('Left', left, 'Right', right)
+                top = round((i / self.target_dim) * original_height)
+                bottom = round(((i+1) / self.target_dim) * original_height)
+                left = round((j / self.target_dim) * original_width)
+                right = round(((j+1) / self.target_dim) * original_width)
 
                 # Area of original tile mapping to this pixel
                 original_pixels = tile[:, top:bottom, left:right]
@@ -191,6 +203,7 @@ class ShrinkTile(object):
                 # Set missing mask to 1 if majority of pixels were missing
                 if pixels_without_reflectance > pixels_with_reflectance:
                     resized_tile[self.missing_band, i, j] = 1
+
         #print('Random pixel', resized_tile[:, 2, 6])
         #print('Random pixel', resized_tile[:, 3, 8])
         return resized_tile

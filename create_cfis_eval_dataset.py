@@ -30,13 +30,15 @@ if not os.path.exists(DATASET_DIR):
 
 OUTPUT_CSV_FILE = os.path.join(DATASET_DIR, "eval_subtiles.csv")
 LARGE_TILE_AVERAGE_CSV_FILE = os.path.join(DATASET_DIR, "eval_large_tile_averages.csv")
-CFIS_FILE = os.path.join(DATA_DIR, "CFIS/CFIS_201608a_300m_soundings.npy")
+CFIS_FILE = os.path.join(DATA_DIR, "CFIS/CFIS_201608a_300m.npy")
 TILE_SIZE_DEGREES = 0.1
 SUBTILE_SIZE_PIXELS = 10
 MAX_FRACTION_MISSING = 0.1  # If more than this fraction of reflectance pixels is missing, ignore the data point
 MIN_SIF = 0.2
-MIN_SOUNDINGS = 500
-column_names = ['lat', 'lon', 'date', 'tile_file',
+MIN_SOUNDINGS = 200
+RES = (0.00026949458523585647, 0.00026949458523585647)
+
+column_names = ['lat', 'lon', 'date', 'tile_file', 'large_tile_file',
                     'ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
                     'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg', 
                     'grassland_pasture', 'corn', 'soybean', 'shrubland',
@@ -55,20 +57,24 @@ validation_points = np.load(CFIS_FILE)
 print("Validation points shape", validation_points.shape)
 
 plot_histogram(validation_points[:, 0], "sif_distribution_cfis_all.png", title="CFIS SIF distribution (longitude: -108 to -82, latitude: 38 to 48.7)")
-plot_histogram(validation_points[:, 3], "cfis_soundings.png")
+plot_histogram(validation_points[:, 3], "cfis_soundings.png", title="number of soundings", range=(0, 2000))
 print('Total points', validation_points.shape[0])
 print('More than 100 soundings', validation_points[validation_points[:, 3] >= 100].shape[0])
 print('More than 200 soundings', validation_points[validation_points[:, 3] >= 200].shape[0])
 print('More than 500 soundings', validation_points[validation_points[:, 3] >= 500].shape[0])
+print('More than 700 soundings', validation_points[validation_points[:, 3] >= 700].shape[0])
+print('More than 1000 soundings', validation_points[validation_points[:, 3] >= 1000].shape[0])
 
 # Scatterplot of CFIS points
 green_cmap = plt.get_cmap('Greens')
+plt.figure(figsize=(50, 50))
 plt.scatter(validation_points[:, 1], validation_points[:, 2], c=validation_points[:, 0], cmap=green_cmap)
 plt.xlabel('Longitude')
 plt.ylabel('Latitude')
 plt.title('All CFIS points')
 plt.savefig('exploratory_plots/cfis_points_all.png')
 plt.close()
+
 #print('Longitude extremes', np.max(validation_points[:,1]), np.min(validation_points[validation_points[:, 1] > -110, 1]))
 #print('Latitude extremes', np.max(validation_points[:,2]), np.min(validation_points[validation_points[:, 2] > 38.2, 2]))
 
@@ -97,6 +103,7 @@ for i in range(validation_points.shape[0]):
     # Compute the box of 0.1 degrees surrounding this point
     top_bound = get_top_bound(point_lat)
     left_bound = get_left_bound(point_lon)
+
     # Find the 0.1-degree large tile this point is in
     large_tile_center_lat = round(top_bound - (TILE_SIZE_DEGREES / 2), 2)
     large_tile_center_lon = round(left_bound + (TILE_SIZE_DEGREES / 2), 2)
@@ -109,12 +116,9 @@ for i in range(validation_points.shape[0]):
 
     print('(GOOD) Needed data file', large_tile_filename, 'DOES exist')
     large_tile = np.load(large_tile_filename)
-    print("large tile shape", large_tile.shape)
-    res = (TILE_SIZE_DEGREES / large_tile.shape[1], TILE_SIZE_DEGREES / large_tile.shape[2])
-    print("Resolution:", res)
 
     # Find the point's index in large tile
-    point_lat_idx, point_lon_idx = lat_long_to_index(point_lat, point_lon, top_bound, left_bound, res)
+    point_lat_idx, point_lon_idx = lat_long_to_index(point_lat, point_lon, top_bound, left_bound, RES)
     eps = int(SUBTILE_SIZE_PIXELS / 2)
 
     # Check if ENTIRE subtile is inside bounds. If not, ignore.
@@ -130,9 +134,7 @@ for i in range(validation_points.shape[0]):
     subtile_filename = SUBTILES_DIR + "/lat_" + str(point_lat) + "_lon_" + str(point_lon) + ".npy"
 
     # Check how much of the subtile's reflectance data is missing (due to cloud cover)
-    print('Subtile shape', subtile.shape)
     fraction_missing_pixels = subtile[-1, :, :].sum() / (subtile.shape[1] * subtile.shape[2])
-    print('Missing pixels', fraction_missing_pixels)
     subtile_reflectance_coverage.append(1 - fraction_missing_pixels)
 
     # If too much reflectance data is missing, ignore this point
@@ -147,8 +149,9 @@ for i in range(validation_points.shape[0]):
     # We're constructing 2 datasets. "csv_rows" contains the filename of the sub-tile, as well
     # as the band averages. "large_tile_averages" contains the band averages of the surrounding large
     # tile.
-    csv_rows.append([point_lat, point_lon, DATE, subtile_filename] +
-                    np.nanmean(subtile, axis=(1,2)).tolist() + [sif, num_soundings, 'CFIS'])
+    subtile_averages = np.nanmean(subtile, axis=(1,2)).tolist() 
+    csv_rows.append([point_lat, point_lon, DATE, subtile_filename, large_tile_filename] +
+                     subtile_averages + [sif, num_soundings, 'CFIS'])
     large_tile_averages.append([point_lat, point_lon, DATE, large_tile_filename] +
                          np.nanmean(large_tile, axis=(1,2)).tolist() + [sif, num_soundings, 'CFIS'])
     sifs.append(sif)

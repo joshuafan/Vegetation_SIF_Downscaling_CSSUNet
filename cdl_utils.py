@@ -32,7 +32,7 @@ CDL_COLORS = ["white",
 
 
 
-def plot_cdl_layers(cover_bands, filename, title=''):
+def plot_cdl_layers(cover_bands, ax, title=''):
     assert(len(cover_bands.shape) == 3)
     cover_tile = np.zeros((cover_bands.shape[1], cover_bands.shape[2]))
     for i in range(cover_bands.shape[0]):
@@ -46,10 +46,9 @@ def plot_cdl_layers(cover_bands, filename, title=''):
     # be [-0.5, 30.5], because if this interval is split into 31 sections,
     # 0 will map to the first section [-0.5, 0.5], 1 will map to the second
     # section [0.5, 1.5], etc 
-    img = plt.imshow(cover_tile, interpolation='nearest',
+    img = ax.imshow(cover_tile, interpolation='nearest',
                      cmap=cmap, vmin=-0.5, vmax=len(CDL_COLORS)-0.5)
     ticks_loc = np.arange(0, len(CDL_COLORS), 1) #len(COVERS_TO_MASK) / len(CDL_COLORS))
-    print('ticks_loc', ticks_loc)
     cb = plt.colorbar(img, cmap=cmap)
     cb.set_ticks(ticks_loc)
     cb.set_ticklabels(COVER_NAMES)
@@ -58,9 +57,9 @@ def plot_cdl_layers(cover_bands, filename, title=''):
     #cb = plt.colorbar()
     #cb.set_ticks(loc)
     #cb.set_ticklabels(CDL_COLORS)
-    plt.title('Crop types: ' + title)
-    plt.savefig(filename)
-    plt.close()
+    ax.set_title('Crop types: ' + title)
+    # ax.savefig(filename)
+    # ax.close()
 
 
 

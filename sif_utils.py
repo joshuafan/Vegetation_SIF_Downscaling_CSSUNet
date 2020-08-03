@@ -15,8 +15,7 @@ from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_squared_error, r2_score
 
 # Plots all bands of the tile, and RGB/CDL bands. Tile is assumed to have shape (CxHxW)
-def plot_tile(tile, tile_description, title='', rgb_bands=[3, 2, 1], cdl_bands=range(12, 42)):
-    print('tile shape', tile.shape)
+def plot_tile(tile, tile_description, title='', rgb_bands=[3, 2, 1], cdl_bands=range(12, 42), sif=None):
 
     # Plot each band in its own plot
     fig, axeslist = plt.subplots(ncols=6, nrows=8, figsize=(24, 24))
@@ -28,8 +27,8 @@ def plot_tile(tile, tile_description, title='', rgb_bands=[3, 2, 1], cdl_bands=r
             # Binary masks (crop type or missing reflectance) range from 0 to 1
             axeslist.ravel()[band].imshow(layer, cmap='Greens', vmin=0, vmax=1)
         else:
-            # Other channels range from -2 to 2
-            axeslist.ravel()[band].imshow(layer, cmap='Greens', vmin=-2, vmax=2)
+            # Other channels range from -3 to 3
+            axeslist.ravel()[band].imshow(layer, cmap='Greens', vmin=-3, vmax=3)
 
         axeslist.ravel()[band].set_title('Band ' + str(band))
         axeslist.ravel()[band].set_axis_off()
@@ -38,16 +37,21 @@ def plot_tile(tile, tile_description, title='', rgb_bands=[3, 2, 1], cdl_bands=r
     plt.savefig('exploratory_plots/' + tile_description + '_all_bands.png')
     plt.close()
 
-    # Visualize the RGB bands
+    # Plot the RGB bands
     array = tile.transpose((1, 2, 0))
-    rgb_tile = (array[:, :, rgb_bands] + 2) / 4
-    plt.imshow(rgb_tile)
-    plt.title('RGB bands: ' + title)
-    plt.savefig("exploratory_plots/" + tile_description + "_rgb.png")
+    rgb_tile = (array[:, :, rgb_bands] + 3) / 6
+    fig, axeslist = plt.subplots(ncols=2, nrows=1, figsize=(12, 6))
+    axeslist.ravel()[0].imshow(rgb_tile)
+    axeslist.ravel()[0].set_title('RGB bands: ' + title)
+
+    # Plot crop cover
+    cdl_utils.plot_cdl_layers(tile[cdl_bands, :, :], axeslist.ravel()[1], title=title)
+    plt.savefig("exploratory_plots/" + tile_description + "_rgb_cdl.png")
     plt.close()
 
     # Visualize CDL
-    cdl_utils.plot_cdl_layers(tile[cdl_bands, :, :], "exploratory_plots/" + tile_description + "_cdl.png", title)
+    # cdl_utils.plot_cdl_layers(tile[cdl_bands, :, :], "exploratory_plots/" + tile_description + "_cdl.png", title)
+    return rgb_tile
 
 
 # Returns the upper-left corner of the large (1x1 degree) grid area
@@ -88,13 +92,28 @@ def lat_long_to_index(lat, lon, dataset_top_bound, dataset_left_bound, resolutio
     return int(height_idx+eps), int(width_idx+eps)
 
 
+# For each datapoint, returns the average of the pixels in "array" where "mask" is 1.
+# "array" and "mask" are assumed to have the same shape.
+# "mask" MUST be a binary 1/0 mask over the pixels.
+# "dim_to_average" are the dimensions to average over (usually, the height/width dimensions if you're averaging across an image)
+def masked_average(array, mask, dims_to_average):
+    assert(len(array.shape) == len(mask.shape))
+
+    # Zero out unwanted pixels
+    wanted_values = array * mask
+
+    # Sum over wanted pixels, then divide by the number of wanted pixels
+    return torch.sum(wanted_values, dim=dims_to_average) / torch.sum(mask, dim=dims_to_average)
+
+
+
 def plot_histogram(column, plot_filename, title=None, range=None):
     column = column.flatten()
     column = column[~np.isnan(column)]
     print(plot_filename)
     # print('Number of datapoints:', len(column))
-    #print('Mean:', round(np.mean(column), 4))
-    #print('Std:', round(np.std(column), 4))
+    print('Mean:', round(np.mean(column), 4))
+    print('Std:', round(np.std(column), 4))
     # print('Max:', round(np.max(column), 4))
     # print('Min:', round(np.min(column), 4))
     n, bins, patches = plt.hist(column, 40, facecolor='blue', alpha=0.5, range=range)
@@ -104,21 +123,45 @@ def plot_histogram(column, plot_filename, title=None, range=None):
     plt.close()
 
 
-def print_stats(true, predicted, average_sif):
+def print_stats(true, predicted, average_sif, ax=None):
     if isinstance(true, list): 
         true = np.array(true)
     if isinstance(predicted, list):
         predicted = np.array(predicted)
-    predicted_to_true = LinearRegression().fit(predicted.reshape(-1, 1), true)
-    print('True vs predicted regression: y = ' + str(round(predicted_to_true.coef_[0], 3)) + 'x + ' + str(round(predicted_to_true.intercept_, 3)))
-    predicted_rescaled = predicted_to_true.predict(predicted.reshape(-1, 1))
+    
+    # true = true.reshape(-1, 1)
+    # true_to_predicted = LinearRegression().fit(true, predicted)
+    # slope = true_to_predicted.coef_[0]
+    # intercept = true_to_predicted.intercept_
+    # true_rescaled = true_to_predicted.predict(true)
+    # r2 = r2_score(true_rescaled, predicted)
+
+    predicted = predicted.reshape(-1, 1)
+    predicted_to_true = LinearRegression().fit(predicted, true)
+    slope = predicted_to_true.coef_[0]
+    intercept = predicted_to_true.intercept_
+    predicted_rescaled = predicted_to_true.predict(predicted)
     r2 = r2_score(true, predicted_rescaled)
-    corr, _ = pearsonr(true, predicted_rescaled)
-    nrmse = math.sqrt(mean_squared_error(true, predicted_rescaled)) / average_sif
-    nrmse_unstd = math.sqrt(mean_squared_error(true, predicted)) / average_sif
-    spearman_rank_corr, _ = spearmanr(true, predicted_rescaled)
+
+    # Note NRMSE is not scaled linearly?
+    nrmse_unscaled = math.sqrt(mean_squared_error(true, predicted)) / average_sif
+    nrmse_scaled = math.sqrt(mean_squared_error(true, predicted_rescaled)) / average_sif
+    line = slope * predicted + intercept
+
+    if ax is not None:
+        ax.plot(predicted, line, 'r', label='y={:.2f}x+{:.2f} (R^2={:.3f}, NRMSE={:.3f})'.format(slope, intercept, r2, nrmse_unscaled))
+        ax.scatter(predicted, true, color="k", s=5)
+        ax.set(xlabel='Predicted', ylabel='True')
+        ax.legend(fontsize=9)
+
+    print('True vs predicted regression: y = ' + str(round(slope, 3)) + 'x + ' + str(round(intercept, 3)))
     print('R2:', round(r2, 3))
-    print('NRMSE:', round(nrmse_unstd, 3))
+    print('NRMSE (unscaled):', round(nrmse_unscaled, 3))
+    print('NRMSE (scaled):', round(nrmse_scaled, 3))
+
+    # corr, _ = pearsonr(true, predicted_rescaled)
+    # nrmse_unstd = math.sqrt(mean_squared_error(true, predicted)) / average_sif
+    # spearman_rank_corr, _ = spearmanr(true, predicted_rescaled)
     #print('NRMSE (unstandardized):', round(nrmse_unstd, 3))
     #print('Pearson correlation:', round(corr, 3))
     #print('Pearson (unstandardized):', round(pearsonr(true, predicted)[0], 3))
@@ -130,21 +173,33 @@ def print_stats(true, predicted, average_sif):
 # shape (SUBTILE x C x subtile_dim x subtile_dim).
 # NOTE: some sub-tiles will be removed if its fraction covered by clouds
 # exceeds "max_subtile_cloud_cover"
-def get_subtiles_list(tile, subtile_dim, max_subtile_cloud_cover=None):
+def get_subtiles_list(tile, subtile_dim): #, max_subtile_cloud_cover=None):
     bands, height, width = tile.shape
-    num_subtiles_along_height = int(height / subtile_dim)
-    num_subtiles_along_width = int(width / subtile_dim)
+    num_subtiles_along_height = round(height / subtile_dim)
+    num_subtiles_along_width = round(width / subtile_dim)
     num_subtiles = num_subtiles_along_height * num_subtiles_along_width
     subtiles = []
     skipped = 0
+
+    # Loop through all sub-tile positions
     for i in range(num_subtiles_along_height):
         for j in range(num_subtiles_along_width):
-            subtile = tile[:, subtile_dim*i:subtile_dim*(i+1), subtile_dim*j:subtile_dim*(j+1)]
-            fraction_missing = 1 - torch.mean(subtile[-1, :, :])
-            # print("Missing", fraction_missing)
-            if (max_subtile_cloud_cover is not None) and fraction_missing > max_subtile_cloud_cover:
-                skipped += 1
-                continue
+            # If this sub-tile would extend beyond the edge of the large tile,
+            # push it back inside. (That's what the "min" does.)
+            subtile_height_start = min(subtile_dim * i, height - subtile_dim)
+            subtile_height_end = min(subtile_dim * (i+1), height)
+            subtile_width_start = min(subtile_dim * j, width - subtile_dim)
+            subtile_width_end = min(subtile_dim * (j+1), width)
+
+            # Extract sub-tile
+            subtile = tile[:, subtile_height_start:subtile_height_end, subtile_width_start:subtile_width_end]
+
+            # If too much data is missing, don't include this sub-tile. (Not inlcuding this for now)
+            # fraction_missing = 1 - np.mean(subtile[-1, :, :])
+            # if (max_subtile_cloud_cover is not None) and fraction_missing > max_subtile_cloud_cover:
+            #     skipped += 1
+            #     continue
+
             subtiles.append(subtile)
     subtiles = np.stack(subtiles)
     #print('Subtile tensor shape', subtiles.shape, 'num skipped:', skipped)
@@ -248,11 +303,10 @@ def train_single_model(model, dataloaders, dataset_sizes, criterion, optimizer, 
             for sample in dataloaders[phase]: 
                 # Standardized input tile, (batch x C x W x H)
                 input_tile_standardized = sample['tile'].to(device)
-                # print('=========================')
-                # print(input_tile_standardized.shape)
-                # print('Input tile - random pixel', input_tile_standardized[0, :, 8, 8])
-                # print('Input band means')
-                # print(torch.mean(input_tile_standardized[0], dim=(1,2)))
+                print('=========================')
+                print('Input tile - random pixel', input_tile_standardized[0, :, 8, 8])
+                print('Input band means')
+                print(torch.mean(input_tile_standardized[0], dim=(1,2)))
 
                 # Real SIF value (non-standardized)
                 true_sif_non_standardized = sample['SIF'].to(device)
@@ -260,23 +314,22 @@ def train_single_model(model, dataloaders, dataset_sizes, criterion, optimizer, 
                 # Standardize SIF to have distribution with mean 0, standard deviation 1
                 true_sif_standardized = ((true_sif_non_standardized - sif_mean) / sif_std).to(device)
 
-                # zero the parameter gradients
-                optimizer.zero_grad()
-
                 # forward
                 # track history if only in train
                 with torch.set_grad_enabled(phase == 'train'):
                     output = model(input_tile_standardized)
-                    #print('pred sif std', predicted_sif_standardized.shape)
                     #print('pred shape', pred.shape)
-                    if type(output) is tuple:
-                        #subtile_pred = output[4] * sif_std + sif_mean
-                        output = output[0]
+                    # if type(output) is tuple:
+                    #     #subtile_pred = output[4] * sif_std + sif_mean
+                    #     output = output[0]
                     predicted_sif_standardized = output.flatten()
+                    print('pred sif std', predicted_sif_standardized.shape)
                     loss = criterion(predicted_sif_standardized, true_sif_standardized)
 
                     # backward + optimize only if in training phase
                     if phase == 'train':
+                        # zero the parameter gradients
+                        optimizer.zero_grad()
                         loss.backward()  #retain_graph=True)
                         optimizer.step()
 

@@ -8,6 +8,7 @@ from torch.utils.data import Dataset, DataLoader
 from PIL import Image
 from torchvision import transforms
 import sif_utils
+import time
 
 # Ignore warnings
 import warnings
@@ -49,15 +50,14 @@ class ReflectanceCoverSIFDataset(Dataset):
         tile = torch.tensor(tile, dtype=torch.float)
  
         sample = {'tile': tile,
-                  'SIF': current_tile_info.loc["SIF"]}
-                # 'lon': current_tile_info.loc['lon'],
-                #   'lat': current_tile_info.loc['lat'],
-                #   'tile_file': current_tile_info.loc[self.tile_file_column],
-                #   'source': current_tile_info.loc['source'],
-                #   'date': current_tile_info.loc['date'],
-                  #'year': year,
-                  #'day_of_year': day_of_year,
+                  'SIF': current_tile_info.loc["SIF"],
+                  'lon': current_tile_info.loc['lon'],
+                  'lat': current_tile_info.loc['lat'],
+                  'tile_file': current_tile_info.loc[self.tile_file_column],
+                  'source': current_tile_info.loc['source'],
+                  'date': current_tile_info.loc['date']}
         return sample
+
 
 class CombinedDataset(Dataset):
     """
@@ -65,7 +65,7 @@ class CombinedDataset(Dataset):
     OCO-2 and TROPOMI datapoints.
     """
 
-    def __init__(self, tropomi_tile_info, oco2_tile_info, transform, subtile_dim, tile_file_column='tile_file'):
+    def __init__(self, tropomi_tile_info, oco2_tile_info, transform, return_subtiles=True, subtile_dim=100, tile_file_column='tile_file'):
         """
         Args:
             tropomi_tile_info: Pandas dataframe containing metadata for each TROPOMI tile.
@@ -73,19 +73,27 @@ class CombinedDataset(Dataset):
             oco2_file_info: Pandas dataframe containing metadata for each OCO-2 tile.
                             The tile is assumed to have shape (band x lat x long)
         """
-        assert((self.tropomi_tile_info is not None) or (self.oco2_tile_info is not None))
+        assert((tropomi_tile_info is not None) or (oco2_tile_info is not None))
         self.tropomi_tile_info = tropomi_tile_info
         self.oco2_tile_info = oco2_tile_info
         self.transform = transform
-        self.subtile_dim = subtile_dim
         self.tile_file_column = tile_file_column
+        self.return_subtiles = return_subtiles
+        self.subtile_dim = subtile_dim
+        
+        # Store lengths of datasets
+        if tropomi_tile_info is None:
+            self.tropomi_len = 0
+        else:
+            self.tropomi_len = len(tropomi_tile_info)
+        if oco2_tile_info is None:
+            self.oco2_len = 0
+        else:
+            self.oco2_len = len(oco2_tile_info)
+
 
     def __len__(self):
-        if self.tropomi_tile_info is None:
-            return len(self.oco2_tile_info)
-        elif self.oco2_tile_info is None:
-            return len(self.tropomi_tile_info)
-        return max(len(self.tropomi_tile_info), len(self.oco2_tile_info))
+        return max(self.tropomi_len, self.oco2_len)
 
 
     def __getitem__(self, idx):
@@ -94,33 +102,65 @@ class CombinedDataset(Dataset):
         sample = {}
 
         # Read the TROPOMI tile if it exists
-        if self.tropomi_tile_info is not None:
+        if (self.tropomi_tile_info is not None):
             # If the index is larger than the length of one of the datasets, loop around
-            tropomi_idx = idx % len(self.tropomi_tile_info)
+            tropomi_idx = idx % self.tropomi_len
 
             # Load the TROPOMI tile
             tropomi_tile_info = self.tropomi_tile_info.iloc[tropomi_idx]
             tropomi_tile = np.load(tropomi_tile_info.loc[self.tile_file_column])
 
+            tile_description = 'dataloader_lat_' + str(round(tropomi_tile_info.loc['lat'], 5)) + '_lon_' + str(round(tropomi_tile_info.loc['lon'], 5)) + '_' + tropomi_tile_info.loc['date']
+            # sif_utils.plot_tile(tropomi_subtiles[0], tile_description + "_before_subtile_0.png")
+
             # Transform the TROPOMI tile
             if self.transform:
                 tropomi_tile = self.transform(tropomi_tile)
 
-            tropomi_subtiles = sif_utils.get_subtiles_list(tropomi_tile, self.subtile_dim, MAX_SUBTILE_CLOUD_COVER)
+            # print('Idx', idx, 'Upper left pixel', tropomi_tile[:, 0, 0])
+            # print('Idx', idx, 'Upper right pixel', tropomi_tile[:, 0, 370])
+            # print('Idx', idx, 'Bottom right pixel', tropomi_tile[:, 370, 370])
+            # sif_utils.plot_tile(tropomi_tile, tile_description + "_after_subtile_0.png")
 
-            # Add the TROPOMI tile to the sample
-            sample['tropomi_subtiles'] = torch.tensor(tropomi_subtiles, dtype=torch.float)
+            # print('plotted')
+            if self.return_subtiles:
+                tropomi_subtiles = sif_utils.get_subtiles_list(tropomi_tile, self.subtile_dim)
+                sample['tropomi_subtiles'] = torch.tensor(tropomi_subtiles, dtype=torch.float)
+            else:
+                sample['tropomi_tile'] = torch.tensor(tropomi_tile, dtype=torch.float)
             sample['tropomi_sif'] = tropomi_tile_info.loc['SIF']
+            sample['tropomi_description'] = tile_description
+
+
+            # print('Upper left pixel', tropomi_subtiles[0, :, 0, 0])
+            # print('Upper right pixel', tropomi_subtiles[3, :, 0, 99])
+            # print('Bottom right pixel', tropomi_subtiles[15, :, 99, 99])
+            # sif_utils.plot_tile(tropomi_subtiles[0], 'lat_after_transform_' + tile_description)
+            # sif_utils.plot_tile(tropomi_subtiles[15], 'lat_after_transform_' + tile_description)
+
+            # before_tensor = time.time()
+            # Add the TROPOMI tile to the sample
+            # loaded = time.time()
+
+            # print('======= Dataloader timing =======')
+            # print('Load tile from disk', before_transform-before_load)
+            # print('Transform tile', before_subtiles-before_transform)
+            # print('Get subtiles', before_tensor-before_subtiles)
+            # print('Convert to Torch tensor', loaded-before_tensor)
 
         # Read the OCO-2 tile if it exists
-        if self.oco2_tile_info is not None:
-            oco2_idx = idx % len(self.oco2_tile_info)
+        if (self.oco2_tile_info is not None):
+            oco2_idx = idx % self.oco2_len
             oco2_tile_info = self.oco2_tile_info.iloc[oco2_idx]
-            oco2_tile = np.load(oco2_tile_info.loc[self.tile_file_column]) 
+            oco2_tile = np.load(oco2_tile_info.loc[self.tile_file_column])
             if self.transform:
                 oco2_tile = self.transform(oco2_tile)
-            sample['oco2_tile'] = torch.tensor(oco2_tile, dtype=torch.float)
-            sample['oco2_sif'] = oco2_tile_info.loc['SIF']}
+            if self.return_subtiles:
+                oco2_subtiles = sif_utils.get_subtiles_list(oco2_tile, self.subtile_dim) #, self.max_subtile_cloud_cover)
+                sample['oco2_subtiles'] = torch.tensor(oco2_subtiles, dtype=torch.float)
+            else:
+                sample['oco2_tile'] = torch.tensor(oco2_tile, dtype=torch.float)
+            sample['oco2_sif'] = oco2_tile_info.loc['SIF']
 
         return sample
 
