@@ -8,20 +8,42 @@ class StandardizeTile(object):
     Standardizes the given bands (listed in "bands_to_transform") so that each band has
     mean 0, standard deviation 1.
     Note: do not standardize bands that are already binary masks.
-
-    The standardized values will be clipped into the range [min_input, max_input].
     """
-    def __init__(self, band_means, band_stds, min_input, max_input, bands_to_transform=list(range(0,12)),):
+    def __init__(self, band_means, band_stds, bands_to_transform=list(range(0,12)),):
         self.bands_to_transform = bands_to_transform 
         self.band_means = band_means[bands_to_transform, np.newaxis, np.newaxis]
         self.band_stds = band_stds[bands_to_transform, np.newaxis, np.newaxis]
-        self.min_input = min_input
-        self.max_input = max_input
 
     def __call__(self, tile):
         tile[self.bands_to_transform, :, :] = (tile[self.bands_to_transform, :, :] - self.band_means) / self.band_stds
-        tile[self.bands_to_transform, :, :] = np.clip(tile[self.bands_to_transform, :, :], a_min=self.min_input, a_max=self.max_input)
         tile[-1, :, :] = np.logical_not(tile[-1, :, :])
+        return tile
+
+
+class TanhTile(object):
+    """
+    Divides "bands_to_transform" by "tanh_stretch", then passes through a tanh function
+    """
+    def __init__(self, tanh_stretch=3, bands_to_transform=list(range(0, 12))):
+        self.bands_to_transform = bands_to_transform
+        self.tanh_stretch = tanh_stretch
+    
+    def __call__(self, tile):
+        tile[self.bands_to_transform, :, :] = np.tanh(tile[self.bands_to_transform, :, :] / self.tanh_stretch)
+        return tile
+
+class ClipTile(object):
+    """
+    Clips the specified bands ("bands_to_clip") to within the range [min_input, max_input].
+    """
+    def __init__(self, min_input, max_input, bands_to_clip=list(range(0, 12))):
+        self.min_input = min_input
+        self.max_input = max_input
+        self.bands_to_clip = bands_to_clip
+    
+    def __call__(self, tile):
+        if self.min_input is not None and self.max_input is not None:
+            tile[self.bands_to_clip, :, :] = np.clip(tile[self.bands_to_clip, :, :], a_min=self.min_input, a_max=self.max_input)
         return tile
 
 

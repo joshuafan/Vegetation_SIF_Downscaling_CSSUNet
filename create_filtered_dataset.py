@@ -26,7 +26,7 @@ UNFILTERED_OCO2_FILES = [os.path.join(dataset_dir, "oco2_eval_subtiles.csv") for
 
 # Create a folder for the processed dataset
 # PROCESSED_DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset")
-PROCESSED_DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset_all_2")
+PROCESSED_DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset_cloudy")
 if not os.path.exists(PROCESSED_DATASET_DIR):
     os.makedirs(PROCESSED_DATASET_DIR)
 
@@ -61,7 +61,7 @@ CDL_COLUMNS = ['grassland_pasture', 'corn', 'soybean', 'shrubland',
                     'lentils']
 
 MIN_CDL_COVERAGE = 0.8
-MAX_LANDSAT_CLOUD_COVER = 0.1
+MAX_LANDSAT_CLOUD_COVER = 0.5
 MAX_TROPOMI_CLOUD_COVER = 0.2
 MIN_TROPOMI_NUM_SOUNDINGS = 5
 MIN_OCO2_NUM_SOUNDINGS = 5
@@ -96,6 +96,7 @@ OCO2_SCALING_FACTOR = 1.69
 tropomi_frames = []
 for info_file in UNFILTERED_TROPOMI_FILES:
     tropomi_frame = pd.read_csv(info_file) 
+    print('Info file', info_file, 'Num samples', len(tropomi_frame))
     tropomi_frame['source'] = 'TROPOMI'
     tropomi_frames.append(tropomi_frame)
 tropomi_metadata = pd.concat(tropomi_frames)

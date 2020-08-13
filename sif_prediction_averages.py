@@ -21,12 +21,12 @@ DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
 # Train files
 # TRAIN_DATE = "2018-08-01" # "2018-07-16"
 # TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "dataset_" + TRAIN_DATE)
-PROCESSED_DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset_all_2") #_tropomi_train")
+PROCESSED_DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset_all_2") # "processed_dataset_all_2") #_tropomi_train")
 TILE_AVERAGE_TRAIN_FILE = os.path.join(PROCESSED_DATASET_DIR, "tile_info_train.csv")
 TILE_AVERAGE_VAL_FILE = os.path.join(PROCESSED_DATASET_DIR, "tile_info_val.csv")
 TILE_AVERAGE_TEST_FILE = os.path.join(PROCESSED_DATASET_DIR, "tile_info_test.csv")
 
-BAND_STATISTICS_FILE = os.path.join(PROCESSED_DATASET_DIR, "band_statistics_train.csv")
+BAND_STATISTICS_FILE = os.path.join(PROCESSED_DATASET_DIR, "band_statistics_pixels.csv") #"band_statistics_train.csv")
 
 # CFIS eval files
 # EVAL_DATE = "2016-08-01" #"2016-07-16"
@@ -44,28 +44,29 @@ MIN_CFIS_SOUNDINGS = 200
 # METHOD = "1a_tropomi_Ridge_Regression"
 # METHOD = "1b_tropomi_Gradient_Boosting_Regressor"
 # METHOD = "1c_tropomi_MLP"
-# METHOD = "2a_both_Ridge_Regression_467samples" 
-# METHOD = "2b_both_Gradient_Boosting_Regressor_467samples" # + str(MIN_CFIS_SOUNDINGS) + "_soundings"
-METHOD = "2c_both_MLP_467samples"
+# METHOD = "2a_both_Ridge_Regression" 
+METHOD = "2b_both_Gradient_Boosting_Regressor_467samples" # + str(MIN_CFIS_SOUNDINGS) + "_soundings"
+# METHOD = "2c_both_MLP"
 # METHOD = "3a_oco2_Ridge_Regression"
 # METHOD = "3b_oco2_Gradient_Boosting_Regressor"
 # METHOD = "3c_oco2_MLP_100samples"
 # METHOD = "3_cfis_Linear_Regression"
 CFIS_TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_cfis_' + METHOD
 OCO2_TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_oco2_' + METHOD
+CFIS_VS_OCO2_LOSS_PLOT = 'loss_plots/losses_' + METHOD + '_nrmse_cfis_vs_val_oco2.png'
 
 PURE_THRESHOLD = 0.6
 MIN_SOUNDINGS = 3
-MIN_INPUT = -3
-MAX_INPUT = 3
+MIN_INPUT = -2
+MAX_INPUT = 2
 MIN_SIF = 0.2
-MAX_SIF = 1.7
-MAX_PRED = 1.7
-MAX_CFIS_SIF = 2.7
+MAX_SIF = 2.7
+MAX_PRED = 2 # 1.7
+MAX_CFIS_SIF = 3 # 2.7
 NUM_RUNS = 3
 NUM_OCO2_SAMPLES = 467
-NUM_OCO2_REPEATS = 2 #round(0.5 * 51840 / NUM_OCO2_SAMPLES)
-NUM_TROPOMI_SAMPLES = 1000
+NUM_OCO2_REPEATS = round(0.1 * 51840 / NUM_OCO2_SAMPLES)
+NUM_TROPOMI_SAMPLES = 51840 #1000
 print('Num repeats:', NUM_OCO2_REPEATS)
 
 # Read datasets
@@ -82,8 +83,10 @@ eval_cfis_set = pd.read_csv(CFIS_AVERAGE_FILE)
 eval_cfis_set = eval_cfis_set[eval_cfis_set['num_soundings'] >= MIN_CFIS_SOUNDINGS]
 
 # Filter
-train_tropomi_set = train_set[train_set['source'] == 'TROPOMI'].copy().iloc[0:NUM_TROPOMI_SAMPLES]
-train_oco2_set = train_set[train_set['source'] == 'OCO2'].copy().iloc[0:NUM_OCO2_SAMPLES]
+# train_tropomi_set = train_set[(train_set['source'] == 'TROPOMI') & (train_set['date'] == '2018-08-05')].copy().iloc[0:NUM_TROPOMI_SAMPLES]
+# train_oco2_set = train_set[(train_set['source'] == 'OCO2') & (train_set['date'] == '2018-08-05')].copy().iloc[0:NUM_OCO2_SAMPLES]
+train_tropomi_set = train_set[(train_set['source'] == 'TROPOMI')].copy() #.iloc[0:NUM_TROPOMI_SAMPLES]
+train_oco2_set = train_set[(train_set['source'] == 'OCO2')].copy() #.iloc[0:NUM_OCO2_SAMPLES]
 val_tropomi_set = val_set[val_set['source'] == 'TROPOMI'].copy()
 val_oco2_set = val_set[val_set['source'] == 'OCO2'].copy()
 
@@ -127,6 +130,7 @@ print('average sif (test, OCO2)', test_set['SIF'].mean())
 print('average sif (CFIS subtiles)', eval_cfis_set['SIF'].mean())
 
 # Input feature names
+# INPUT_COLUMNS = ['ref_5', 'ref_6']
 INPUT_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
                     'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg', 
                     'grassland_pasture', 'corn', 'soybean', 'shrubland',
@@ -165,15 +169,24 @@ COVER_COLUMN_NAMES = ['grassland_pasture', 'corn', 'soybean', 'deciduous_forest'
 
 
 # Standardize data
-for column in COLUMNS_TO_STANDARDIZE:
-    column_mean = train_set[column].mean()
-    column_std = train_set[column].std()
-    train_set[column] = np.clip((train_set[column] - column_mean) / column_std, a_min=MIN_INPUT, a_max=MAX_INPUT)
-    val_set[column] = np.clip((val_set[column] - column_mean) / column_std, a_min=MIN_INPUT, a_max=MAX_INPUT)
-    val_tropomi_set[column] = np.clip((val_tropomi_set[column] - column_mean) / column_std, a_min=MIN_INPUT, a_max=MAX_INPUT)
-    val_oco2_set[column] = np.clip((val_oco2_set[column] - column_mean) / column_std, a_min=MIN_INPUT, a_max=MAX_INPUT)
-    test_set[column] = np.clip((test_set[column] - column_mean) / column_std, a_min=MIN_INPUT, a_max=MAX_INPUT)
-    eval_cfis_set[column] = np.clip((eval_cfis_set[column] - column_mean) / column_std, a_min=MIN_INPUT, a_max=MAX_INPUT)
+for idx, column in enumerate(COLUMNS_TO_STANDARDIZE):
+    train_set[column] = np.clip((train_set[column] - band_means[idx]) / band_stds[idx], a_min=MIN_INPUT, a_max=MAX_INPUT)
+    val_set[column] = np.clip((val_set[column] - band_means[idx]) / band_stds[idx], a_min=MIN_INPUT, a_max=MAX_INPUT)
+    val_tropomi_set[column] = np.clip((val_tropomi_set[column] - band_means[idx]) / band_stds[idx], a_min=MIN_INPUT, a_max=MAX_INPUT)
+    val_oco2_set[column] = np.clip((val_oco2_set[column] - band_means[idx]) / band_stds[idx], a_min=MIN_INPUT, a_max=MAX_INPUT)
+    test_set[column] = np.clip((test_set[column] - band_means[idx]) / band_stds[idx], a_min=MIN_INPUT, a_max=MAX_INPUT)
+    eval_cfis_set[column] = np.clip((eval_cfis_set[column] - band_means[idx]) / band_stds[idx], a_min=MIN_INPUT, a_max=MAX_INPUT)
+    
+    # column_mean = train_set[column].mean()
+    # column_std = train_set[column].std()
+    # cfis_column_mean = eval_cfis_set[column].mean()
+    # cfis_column_std = eval_cfis_set[column].mean()
+    # train_set[column] = np.clip((train_set[column] - column_mean) / column_std, a_min=MIN_INPUT, a_max=MAX_INPUT)
+    # val_set[column] = np.clip((val_set[column] - column_mean) / column_std, a_min=MIN_INPUT, a_max=MAX_INPUT)
+    # val_tropomi_set[column] = np.clip((val_tropomi_set[column] - column_mean) / column_std, a_min=MIN_INPUT, a_max=MAX_INPUT)
+    # val_oco2_set[column] = np.clip((val_oco2_set[column] - column_mean) / column_std, a_min=MIN_INPUT, a_max=MAX_INPUT)
+    # test_set[column] = np.clip((test_set[column] - column_mean) / column_std, a_min=MIN_INPUT, a_max=MAX_INPUT)
+    # eval_cfis_set[column] = np.clip((eval_cfis_set[column] - column_mean) / column_std, a_min=MIN_INPUT, a_max=MAX_INPUT)
 
     # # Histograms of standardized columns - MOVE (also plot by date)
     # plot_histogram(train_set[column].to_numpy(), "histogram_clipped_std_" + column + "_train.png")
@@ -182,12 +195,18 @@ for column in COLUMNS_TO_STANDARDIZE:
 
     # train_set[column] = (train_set[column] - column_mean) / column_std
     # val_set[column] = (val_set[column] - column_mean) / column_std
-    # val_tropomi_set[column] = (val_tropomi_set.loc[:, column] - column_mean) / column_std
-    # val_oco2_set[column] = (val_oco2_set.loc[:, column] - column_mean) / column_std
+    # val_tropomi_set[column] = (val_tropomi_set[column] - column_mean) / column_std
+    # val_oco2_set[column] = (val_oco2_set[column] - column_mean) / column_std
+    # test_set[column] = (test_set[column] - column_mean) / column_std
     # eval_cfis_set[column] = (eval_cfis_set[column] - column_mean) / column_std
+
+    # eval_cfis_set[column] = (eval_cfis_set[column] - cfis_column_mean) / cfis_column_std
 
     # train_set[column] = train_set[column] + np.random.normal(loc=0, scale=0.1, size=len(train_set[column]))
     # plot_histogram(eval_cfis_set[column].to_numpy(), "histogram_clipped_std_" + column + "_cfis.png")
+
+# eval_cfis_set['ref_5'] = eval_cfis_set['ref_5'] / 2
+
 
 # # Print averages of each feature (standardized by train stats)
 # print("************************************************************")
@@ -201,12 +220,13 @@ for column in COLUMNS_TO_STANDARDIZE:
 #     print('CFIS:', round(np.mean(eval_cfis_set[column_name]), 3))
 # print("************************************************************")
 
-print('============= train set ==============')
-pd.set_option('display.max_columns', 500)
-print(train_set.tail())
-print('============= cfis set ==============')
-print(eval_cfis_set.head())
-exit(0)
+# print('============= train set ==============')
+# pd.set_option('display.max_columns', 500)
+# print(train_set.tail())
+# print('============= cfis set ==============')
+# print(eval_cfis_set.head())
+# exit(0)
+
 X_train = train_set[INPUT_COLUMNS]
 Y_train = train_set[OUTPUT_COLUMN].values.ravel()
 X_val_tropomi = val_tropomi_set[INPUT_COLUMNS]
@@ -255,8 +275,8 @@ elif "Gradient_Boosting_Regressor" in METHOD:
             print(param_string)
             regression_models[param_string] = models
 elif "MLP" in METHOD:
-    hidden_layer_sizes = [(20,), (100,), (20, 20), (100, 100), (100, 100, 100)]
-    learning_rate_inits = [1e-2, 1e-3, 1e-4] 
+    hidden_layer_sizes = [(10,), (20,), (50,), (100,), (20, 20), (100, 100), (100, 100, 100)] #[(100, 100)] # 
+    learning_rate_inits =  [1e-2, 1e-3, 1e-4]  # [1e-3] #
     max_iter = 1000
     for hidden_layer_size in hidden_layer_sizes:
         for learning_rate_init in learning_rate_inits:
@@ -277,19 +297,35 @@ best_params = 'N/A'
 
 # Loop through all hyperparameter settings we trained models for, and compute
 # loss on the validation set
+average_losses_val = []
+average_losses_cfis = []
 for params, models in regression_models.items():
     losses_val = []
+    losses_cfis = []
     for model in models:
         predictions_val = model.predict(X_val_oco2)
-        loss_val = math.sqrt(mean_squared_error(Y_val_oco2, predictions_val)) / average_sif        
+        predictions_cfis = model.predict(X_cfis)
+        loss_val = math.sqrt(mean_squared_error(Y_val_oco2, predictions_val)) / average_sif  
+        loss_cfis, _, _ = print_stats(Y_cfis, predictions_cfis, average_sif, ax=None, print_report=False)
         if loss_val < best_loss:
             best_loss = loss_val
             best_params = params
             best_model = model
         losses_val.append(loss_val)
+        losses_cfis.append(loss_cfis)
     average_loss_val = sum(losses_val) / len(losses_val)
-    print(params + ': avg val loss', round(average_loss_val, 4))
+    average_loss_cfis = sum(losses_cfis) / len(losses_cfis)
+    print(params + ': avg val loss', round(average_loss_val, 4), 'avg CFIS loss', round(average_loss_cfis, 4))
+    average_losses_val.append(average_loss_val)
+    average_losses_cfis.append(average_loss_cfis)
 
+print('================== CFIS vs OCO-2 performance =================')
+print_stats(average_losses_cfis, average_losses_val, average_sif, ax=plt.gca())
+plt.title('CFIS vs OCO-2 (' + METHOD + ')')
+plt.xlabel('Val OCO-2 NRMSE')
+plt.ylabel('Val CFIS NRMSE')
+plt.savefig(CFIS_VS_OCO2_LOSS_PLOT)
+plt.close()
 
 print('Best params:', best_params)
 # print(best_model.coef_)

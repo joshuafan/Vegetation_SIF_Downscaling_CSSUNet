@@ -24,7 +24,7 @@ import simple_cnn
 import tile_transforms
 import resnet
 from SAN import SAN
-from unet.unet_model import UNet, UNetSmall
+from unet.unet_model import UNet, UNetSmall, UNet2_NoBilinear
 
 import sys
 sys.path.append('../')
@@ -122,6 +122,8 @@ DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
 DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset_all_2")
 TRAIN_TILE_DATASET = os.path.join(DATASET_DIR, "tile_info_train.csv")
 VAL_TILE_DATASET = os.path.join(DATASET_DIR, "tile_info_val.csv")
+CFIS_SUBTILE_DATASET = os.path.join(DATASET_DIR, "cfis_subtiles_filtered.csv")
+
 BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
 
 DATES = ["2018-04-29", "2018-05-13", "2018-05-27", "2018-06-10", "2018-06-24", 
@@ -156,14 +158,11 @@ CFIS_SIF_FILE = os.path.join(DATA_DIR, "CFIS/CFIS_201608a_300m_soundings.npy")
 TROPOMI_SIF_FILE = os.path.join(DATA_DIR, "TROPOMI_SIF/TROPO-SIF_01deg_biweekly_Apr18-Jan20.nc")
 OCO2_SIF_FILE = os.path.join(DATA_DIR, "OCO2/oco2_20180708_20180915_14day_3km.nc")
 
-CFIS_DATE = '2016-08-01'
-CFIS_SUBTILE_DATASET = os.path.join(DATA_DIR, "dataset_" + CFIS_DATE + "/eval_subtiles.csv")
-CFIS_DATE_RANGE = pd.date_range(start="2016-08-01", end="2016-08-16")
 
 RGB_BANDS = [3, 2, 1]
 CDL_BANDS = list(range(12, 42))
-SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/all_1d_train_tropomi_subtile_resnet") # "models/AUG_subtile_simple_cnn_v5")
-UNET_MODEL_FILE = os.path.join(DATA_DIR, "models/7_unet_small")
+SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/2d_train_both_subtile_resnet") # "models/AUG_subtile_simple_cnn_v5")
+UNET_MODEL_FILE = os.path.join(DATA_DIR, "models/7_unet2_nobilinear")
 
 EMBEDDING_TYPE = 'tile2vec'
 Z_DIM = 256
@@ -178,8 +177,8 @@ REDUCED_CHANNELS = 15
 SUBTILE_DIM = 100
 TILE_SIZE_DEGREES = 0.1
 INPUT_SIZE = 371
-MIN_INPUT = -3
-MAX_INPUT = 3
+MIN_INPUT = -1000
+MAX_INPUT = 1000
 NUM_OCO2_SAMPLES = 500
 OUTPUT_SIZE = int(INPUT_SIZE / SUBTILE_DIM)
 
@@ -216,7 +215,7 @@ subtile_sif_model.load_state_dict(torch.load(SUBTILE_SIF_MODEL_FILE, map_locatio
 subtile_sif_model.eval()
 
 # Load UNet model
-unet_model = UNetSmall(n_channels=INPUT_CHANNELS_UNET, n_classes=1, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)
+unet_model = UNet2_NoBilinear(n_channels=INPUT_CHANNELS_UNET, n_classes=1, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)
 unet_model.load_state_dict(torch.load(UNET_MODEL_FILE, map_location=device))
 unet_model.eval()
 
@@ -262,6 +261,8 @@ CROP_TYPES = ['grassland_pasture', 'corn', 'soybean', 'shrubland',
 print('input columns', INPUT_COLUMNS)
 
 
+
+
 # Standardize data
 for column in COLUMNS_TO_STANDARDIZE:
     column_mean = train_set[column].mean()
@@ -279,6 +280,26 @@ for column in COLUMNS_TO_STANDARDIZE:
 
 band_maxs = train_set.max(axis=0)
 band_mins = train_set.min(axis=0)
+train_set_august = train_set[train_set['date'] == '2018-08-05'].copy()
+val_oco2_set_august = val_oco2_set[val_oco2_set['date'] == '2018-08-05'].copy()
+
+# Plot histogram of each band (TROPOMI and OCO2, all time periods)
+for column in COLUMNS_TO_STANDARDIZE + OUTPUT_COLUMN:
+    print('============== ALL DATES - Column:', column, '==================')
+    train_tropomi_column = np.array(train_set_august[column])
+    print('-------------- Train TROPOMI ----------------------')
+    plot_histogram(train_tropomi_column, "histogram_aug_" + column + "_train_tropomi.png", title=column + ' (TROPOMI, 2018-08-05)') #, range=(band_mins[column], band_maxs[column]), title="All dates (train TROPOMI): "+column)
+
+    val_oco2_column = np.array(val_oco2_set_august[column])
+    print('-------------- Val OCO-2 ----------------------')
+    plot_histogram(val_oco2_column, "histogram_aug_" + column + "_val_oco2.png", title=column + ' (OCO-2, 2018-08-05)') #, range=(band_mins[column], band_maxs[column]), title="All dates (val OCO2): "+column)
+
+    print('-------------- CFIS sub-tiles ----------------------')
+    cfis_column = np.array(cfis_set[column])
+    plot_histogram(cfis_column, "histogram_aug_" + column + "_cfis.png", title=column + ' (CFIS, 2016-08-01)')
+
+exit(0)
+
 # # Plot histogram of each band (TROPOMI and OCO2, all time periods)
 # train_tropomi_stats = []
 # val_tropomi_stats = []

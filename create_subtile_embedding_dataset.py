@@ -39,19 +39,19 @@ from embedding_to_sif_model import EmbeddingToSIFModel
 
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset_all_2")
+DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset_cloudy")
 INFO_FILE_TRAIN = os.path.join(DATASET_DIR, "tile_info_train.csv")
 INFO_FILE_VAL = os.path.join(DATASET_DIR, "tile_info_val.csv")
 BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
 # SUBTILE_EMBEDDING_FILE_TRAIN = os.path.join(DATASET_DIR, "avg_embeddings_train.csv")
 # SUBTILE_EMBEDDING_FILE_VAL = os.path.join(DATASET_DIR, "avg_embeddings_val.csv")
-# SUBTILE_EMBEDDING_FILE_TRAIN = os.path.join(DATASET_DIR, "standardized_tiles_train.csv")
-# SUBTILE_EMBEDDING_FILE_VAL = os.path.join(DATASET_DIR, "standardized_tiles_val.csv")
-SUBTILE_EMBEDDING_FILE_TRAIN = os.path.join(DATASET_DIR, "resized_tiles_train.csv")
-SUBTILE_EMBEDDING_FILE_VAL = os.path.join(DATASET_DIR, "resized_tiles_val.csv")
+SUBTILE_EMBEDDING_FILE_TRAIN = os.path.join(DATASET_DIR, "cloudy_standardized_tiles_train.csv")
+SUBTILE_EMBEDDING_FILE_VAL = os.path.join(DATASET_DIR, "cloudy_standardized_tiles_val.csv")
+# SUBTILE_EMBEDDING_FILE_TRAIN = os.path.join(DATASET_DIR, "resized_tiles_train.csv")
+# SUBTILE_EMBEDDING_FILE_VAL = os.path.join(DATASET_DIR, "resized_tiles_val.csv")
 EMBEDDING_FILE_SUFFIX = '_avg_embeddings.npy'
-STANDARDIZED_TILE_FILE_SUFFIX = '_standardized.npy'
-STANDARDIZED_SUBTILES_FILE_SUFFIX = '_standardized_subtiles.npy'
+STANDARDIZED_TILE_FILE_SUFFIX = '_cloudy_standardized.npy'
+STANDARDIZED_SUBTILES_FILE_SUFFIX = '_cloudy_standardized_subtiles.npy'
 RESIZED_TILE_FILE_SUFFIX = '_resized_tile.npy'
 
 TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_august/TileNet.ckpt")
@@ -64,8 +64,6 @@ SUBTILE_DIM = 100
 Z_DIM = 256
 INPUT_CHANNELS = 43
 NUM_WORKERS = 8
-MIN_INPUT = -3
-MAX_INPUT = 3
 
 
 # For each tile returned by the dataloader, obtain a list of embeddings for each subtile. Save
@@ -165,8 +163,8 @@ sif_std = train_stds[-1]
 
 # Set up image transforms
 transform_list = []
-transform_list.append(tile_transforms.StandardizeTile(band_means, band_stds, min_input=MIN_INPUT, max_input=MAX_INPUT))
-transform_list.append(tile_transforms.ShrinkTile(target_dim=SUBTILE_DIM))
+transform_list.append(tile_transforms.StandardizeTile(band_means, band_stds))
+# transform_list.append(tile_transforms.ShrinkTile(target_dim=SUBTILE_DIM))
 
 transform = transforms.Compose(transform_list)
 
@@ -187,10 +185,10 @@ print('loaded tile2vec')
 # Obtain embeddings for all subtiles
 # train_tile_rows = compute_subtile_embeddings_to_sif_dataset(tile2vec_model, dataloaders['train'], SUBTILE_DIM, device) 
 # val_tile_rows = compute_subtile_embeddings_to_sif_dataset(tile2vec_model, dataloaders['val'], SUBTILE_DIM, device)
-# train_tile_rows = compute_standardized_tiles_to_sif_dataset(dataloaders['train'], SUBTILE_DIM, device) 
-# val_tile_rows = compute_standardized_tiles_to_sif_dataset(dataloaders['val'], SUBTILE_DIM, device)
-train_tile_rows = compute_resized_tile_dataset(dataloaders['train'], device) 
-val_tile_rows = compute_resized_tile_dataset(dataloaders['val'], device)
+train_tile_rows = compute_standardized_tiles_to_sif_dataset(dataloaders['train'], SUBTILE_DIM, device) 
+val_tile_rows = compute_standardized_tiles_to_sif_dataset(dataloaders['val'], SUBTILE_DIM, device)
+# train_tile_rows = compute_resized_tile_dataset(dataloaders['train'], device) 
+# val_tile_rows = compute_resized_tile_dataset(dataloaders['val'], device)
    
 # Write subtile embeddings to file
 with open(SUBTILE_EMBEDDING_FILE_TRAIN, "w") as output_csv_file:

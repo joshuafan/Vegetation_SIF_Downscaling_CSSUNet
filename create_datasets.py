@@ -75,8 +75,8 @@ MISSING_REFLECTANCE_IDX = -1
 APPEND = False
 
 # Date ranges of Landsat data
-# DATE_RANGES = [pd.date_range(start="2018-04-29", end="2018-05-12"),
-#                pd.date_range(start="2018-05-13", end="2018-05-26"),
+DATE_RANGES = [pd.date_range(start="2018-04-29", end="2018-05-12"),
+               pd.date_range(start="2018-05-13", end="2018-05-26")]
 #                pd.date_range(start="2018-05-27", end="2018-06-09"),
 #                pd.date_range(start="2018-06-10", end="2018-06-23"),
 #                pd.date_range(start="2018-06-24", end="2018-07-07"),
@@ -87,7 +87,7 @@ APPEND = False
 #                pd.date_range(start="2018-09-02", end="2018-09-15"),
 #                pd.date_range(start="2018-09-16", end="2018-09-29")]
 
-DATE_RANGES = [pd.date_range(start="2016-08-01", end="2016-08-16")]
+# DATE_RANGES = [pd.date_range(start="2016-08-01", end="2016-08-16")]
 
 
 for DATE_RANGE in DATE_RANGES:
@@ -140,8 +140,6 @@ for DATE_RANGE in DATE_RANGES:
     tropomi_n = sif_dataset.n.sel(time=slice(DATE_RANGE.date[0], DATE_RANGE.date[-1]))
 
     print("SIF array:", tropomi_sifs)
-    exit(0)
-    # print("FLDAS file", FLDAS_FILE)
 
     # Check if SIF is available for any date in time range. If there is, take the mean
     # over all dates in the time period. Otherwise, ask if we should still create the

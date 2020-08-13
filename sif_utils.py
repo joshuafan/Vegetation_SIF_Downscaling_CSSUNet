@@ -7,6 +7,8 @@ import time
 import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
+from matplotlib.ticker import FormatStrFormatter
+
 from datetime import datetime
 import cdl_utils
 
@@ -14,44 +16,6 @@ from scipy.stats import pearsonr, spearmanr
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_squared_error, r2_score
 
-# Plots all bands of the tile, and RGB/CDL bands. Tile is assumed to have shape (CxHxW)
-def plot_tile(tile, tile_description, title='', rgb_bands=[3, 2, 1], cdl_bands=range(12, 42), sif=None):
-
-    # Plot each band in its own plot
-    fig, axeslist = plt.subplots(ncols=6, nrows=8, figsize=(24, 24))
-    fig.suptitle('All bands: ' + title)
-
-    for band in range(0, 43):
-        layer = tile[band, :, :]
-        if band >= 12:
-            # Binary masks (crop type or missing reflectance) range from 0 to 1
-            axeslist.ravel()[band].imshow(layer, cmap='Greens', vmin=0, vmax=1)
-        else:
-            # Other channels range from -3 to 3
-            axeslist.ravel()[band].imshow(layer, cmap='Greens', vmin=-3, vmax=3)
-
-        axeslist.ravel()[band].set_title('Band ' + str(band))
-        axeslist.ravel()[band].set_axis_off()
-    plt.tight_layout() # optional
-    fig.subplots_adjust(top=0.94)
-    plt.savefig('exploratory_plots/' + tile_description + '_all_bands.png')
-    plt.close()
-
-    # Plot the RGB bands
-    array = tile.transpose((1, 2, 0))
-    rgb_tile = (array[:, :, rgb_bands] + 3) / 6
-    fig, axeslist = plt.subplots(ncols=2, nrows=1, figsize=(12, 6))
-    axeslist.ravel()[0].imshow(rgb_tile)
-    axeslist.ravel()[0].set_title('RGB bands: ' + title)
-
-    # Plot crop cover
-    cdl_utils.plot_cdl_layers(tile[cdl_bands, :, :], axeslist.ravel()[1], title=title)
-    plt.savefig("exploratory_plots/" + tile_description + "_rgb_cdl.png")
-    plt.close()
-
-    # Visualize CDL
-    # cdl_utils.plot_cdl_layers(tile[cdl_bands, :, :], "exploratory_plots/" + tile_description + "_cdl.png", title)
-    return rgb_tile
 
 
 # Returns the upper-left corner of the large (1x1 degree) grid area
@@ -123,7 +87,7 @@ def plot_histogram(column, plot_filename, title=None, range=None):
     plt.close()
 
 
-def print_stats(true, predicted, average_sif, ax=None):
+def print_stats(true, predicted, average_sif, print_report=True, ax=None):
     if isinstance(true, list): 
         true = np.array(true)
     if isinstance(predicted, list):
@@ -146,18 +110,22 @@ def print_stats(true, predicted, average_sif, ax=None):
     # Note NRMSE is not scaled linearly?
     nrmse_unscaled = math.sqrt(mean_squared_error(true, predicted)) / average_sif
     nrmse_scaled = math.sqrt(mean_squared_error(true, predicted_rescaled)) / average_sif
+    mse_scaled = mean_squared_error(true, predicted_rescaled)
     line = slope * predicted + intercept
 
     if ax is not None:
-        ax.plot(predicted, line, 'r', label='y={:.2f}x+{:.2f} (R^2={:.3f}, NRMSE={:.3f})'.format(slope, intercept, r2, nrmse_unscaled))
+        ax.plot(predicted, line, 'r', label='y={:.2f}x+{:.2f} (R^2={:.3f}, NRMSE={:.3f})'.format(slope, intercept, r2, nrmse_scaled))
         ax.scatter(predicted, true, color="k", s=5)
         ax.set(xlabel='Predicted', ylabel='True')
         ax.legend(fontsize=9)
 
-    print('True vs predicted regression: y = ' + str(round(slope, 3)) + 'x + ' + str(round(intercept, 3)))
-    print('R2:', round(r2, 3))
-    print('NRMSE (unscaled):', round(nrmse_unscaled, 3))
-    print('NRMSE (scaled):', round(nrmse_scaled, 3))
+    if print_report:
+        print('True vs predicted regression: y = ' + str(round(slope, 3)) + 'x + ' + str(round(intercept, 3)))
+        print('R2:', round(r2, 3))
+        print('NRMSE (unscaled):', round(nrmse_unscaled, 3))
+        print('NRMSE (scaled):', round(nrmse_scaled, 3))
+
+    return nrmse_scaled, mse_scaled, r2
 
     # corr, _ = pearsonr(true, predicted_rescaled)
     # nrmse_unstd = math.sqrt(mean_squared_error(true, predicted)) / average_sif

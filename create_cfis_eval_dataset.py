@@ -85,6 +85,8 @@ points_no_reflectance = 0  # Number of points outside bounds of reflectance data
 points_missing_reflectance = 0  # Number of points with missing reflectance data (due to cloud cover)
 points_with_reflectance = 0  # Number of points with reflectance data
 
+coordinates_dict = dict()
+
 # Loop through all CFIS data points
 for i in range(validation_points.shape[0]):
     sif = validation_points[i, 0]
@@ -99,6 +101,15 @@ for i in range(validation_points.shape[0]):
     sif *= 1.52  # TROPOMI SIF is roughly 1.52 times CFIS SIF
     point_lon = validation_points[i, 1]
     point_lat = validation_points[i, 2]
+
+    coordinates = (round(point_lon, 6), round(point_lat, 6))
+    if coordinates in coordinates_dict:
+        print('Fail! Multiple points with lat lon!')
+        print(coordinates_dict[coordinates])
+        print(validation_points[i])
+        exit(1)
+    else:
+        coordinates_dict[coordinates] = validation_points[i]
 
     # Compute the box of 0.1 degrees surrounding this point
     top_bound = get_top_bound(point_lat)
@@ -144,7 +155,7 @@ for i in range(validation_points.shape[0]):
     points_with_reflectance += 1
 
     # Save subtile to file
-    np.save(subtile_filename, subtile)
+    # np.save(subtile_filename, subtile)
 
     # We're constructing 2 datasets. "csv_rows" contains the filename of the sub-tile, as well
     # as the band averages. "large_tile_averages" contains the band averages of the surrounding large
@@ -160,7 +171,6 @@ print('=====================================================')
 print('Number of points with NO reflectance data', points_no_reflectance)
 print('Number of points with MISSING reflectance data', points_missing_reflectance)
 print('Number of points WITH reflectance data', points_with_reflectance)
-
 
 # Plot histograms of reflectance coverage percentage and SIF
 plot_histogram(np.array(subtile_reflectance_coverage), "CFIS_subtile_reflectance_coverage.png")

@@ -30,16 +30,16 @@ import torch.optim as optim
 import sys
 sys.path.append('../')
 from tile2vec.src.tilenet import make_tilenet
-from unet.unet_model import UNet, UNetSmall
+from unet.unet_model import UNet, UNetSmall, UNet2
 
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
 DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset_all_2")
-EVAL_FILE = os.path.join(DATASET_DIR, "tile_info_test.csv")
+EVAL_FILE = os.path.join(DATASET_DIR, "standardized_tiles_test.csv")
 BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
-MODEL_TYPE = "unet_small"
-#METHOD = "7_unet_small_both_random_output_0.01_decay_1e-4" 
-METHOD = "7_unet_small_both_1000samples_random_output_0.03"
+METHOD = "7_unet2_clip_-6_8_batchnorm_dimred"
+# METHOD = "7_unet2_reflectance_only_aug"
+MODEL_TYPE = "unet2"
 TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/" + METHOD)
 print('trained model file', os.path.basename(TRAINED_MODEL_FILE))
 TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_OCO2_' + METHOD 
@@ -81,8 +81,8 @@ MISSING_REFLECTANCE_IDX = -1
 RESIZE = False
 MIN_SIF = None #0
 MAX_SIF = None #1.7
-MIN_INPUT = -3
-MAX_INPUT = 3
+MIN_INPUT = -6
+MAX_INPUT = 8
 BATCH_SIZE = 16
 NUM_WORKERS = 8
 PURE_THRESHOLD = 0.6
@@ -175,7 +175,8 @@ else:
 # Set up image transforms
 transform_list = []
 # transform_list.append(tile_transforms.ShrinkTile())
-transform_list.append(tile_transforms.StandardizeTile(band_means, band_stds, min_input=MIN_INPUT, max_input=MAX_INPUT))
+#transform_list.append(tile_transforms.StandardizeTile(band_means, band_stds))
+transform_list.append(tile_transforms.ClipTile(min_input=MIN_INPUT, max_input=MAX_INPUT))
 if RESIZE:
     transform_list.append(tile_transforms.ResizeTile(target_dim=RESIZED_DIM, discrete_bands=DISCRETE_BANDS))
 transform = transforms.Compose(transform_list)
@@ -189,6 +190,9 @@ dataloader = torch.utils.data.DataLoader(dataset, batch_size=BATCH_SIZE,
 # Load trained model from file
 if MODEL_TYPE == 'unet_small':
     model = UNetSmall(n_channels=INPUT_CHANNELS, n_classes=1, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)
+elif MODEL_TYPE == 'unet2':
+    model = UNet2(n_channels=INPUT_CHANNELS, n_classes=1, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)
+
 else:
     print('Model type not supported')
     exit(1)
@@ -208,7 +212,7 @@ print('========== before clipping =========')
 print_stats(true, predicted, sif_mean)
 
 # Clip to be between 0.2 and 1.7
-predicted = np.clip(predicted, a_min=0.2, a_max=1.7)
+predicted = np.clip(predicted, a_min=0.2, a_max=None)
 
 # Print statistics
 print('========== after clipping =========')
