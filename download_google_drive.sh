@@ -46,13 +46,17 @@
 # 2018 CDL
 #DOCUMENT_IDS=("1_XR322SooLPsPpy47sBlPcdfNL_dMytz" "1ajjhIFBDv79gQ_4f98tn-Yqq1Qtxw-T8")
 
+# 2016-06-15 Landsat
+DOCUMENT_IDS=("19Fb_A9FbvYGyX_llSIuUlH__3fFLZqqR" "1PEFR_a8KMUfcfT5uEV-EuotWbNDqeziZ" "1SuCN0mPuu81FcZJabdSfcX6KeA8t66el" "1FI7T881lGVPJFB9KvBc61IRX7EnKHpjJ" "1LnxISeDtIeHpvYMVswYxbKfLCz-K_r7B" "1ybPedF-a4rIPWLZL9yz1CwGQ9S_vhCCY" "1F0TxwBoGnaZ4OcLQYtcNbn2SqpQZbbK2" "12GPzR--0IECN26W2dumudHj_-lv3CRus" "1p3hxM1rmff31JkzelKljhFLmL6jPZhtf" "1mA8AT1XtL3_QHAinElxrIUhSV31L5NKx" "17sWB47E4diCNa4v1yVHVbCRR5OXcpvOD" "18JrXBJTJZzkHaKIZNBSFnPuHNvjzwFsw" "1FOyeaTV4-vA0E4l1qr2kxFs3H1U4cYIx" "17WecOPrtj7c7yig6lsSusxvBS9CzFfuF" "1Gblwvn0y2YsTQBIny84dtOYXuhehfOUW" "10h3tH35NxXh2KN5eP263BpO-nhuHdL7o" "1lYaMtOtrwpfmt8PjBFtRVEduH5odYo5j" "17wzQ67jKo5vRkOwEcJ0rTVPEW4__xddd" "19V0356ae21pGU2dxS_GIXDGN8MsOIwjk" "129v-Ip5B3CY6b2gKxrFzFm8fUqaME4kj" "1aKwdD9Fua_oVINbUjLrl7WHpH9r-tE47")
+
 # 2016-08-01 Landsat
-DOCUMENT_IDS=("1jdyeJNfE7MReOp8hNvTksLa6Jw1bzlzT" "1yYtiVNE1KV4_wl_i8DFHcy-ZhLFaoKML" "1GaCMaDe_6gfPd7ejLlCWPDdFLaaN2us2" "1ru_j5b1sKCZ4_cGPYtlq6zQbVW8GmyCB" "16BcfzCdjrZ5qiESrtQ8Fn46RAVkMI8Aq" "18-pmY_084KA2zpiUqiQbFuLalDMZqYLo" "1m21sjzhehaf728QaF8mXJ_gFN5p8ga6L" "1I3Z-6HGgj7TYcfv7cLGiPf5djKHzOH1e" "1DO5k_bYXMDew5EB6G1GpockT6sdAB5k2" "1KTCy4e76LmOSjJIvaLc5oDJp-9fZBsxw" "1vs15E4vS0H25JsiiQBplvV1gpGO6jyVo" "1njI-BM7jHAFeh8ws0oxnyVyfd8ZzUF65" "1UeECIUM8WMI2m-rZSOA4okFP2ZijHVId" "1D0cGqABj4ow6owMVzGW94UYJw2AHTcEh" "1_eUVzllYRIa9SkrLnUNSELBq0m3eLl0b" "12eRO5rnvrV77IEDJtguwMLUPO7UIhofV" "1hPqQ2RcOa6h1pC2EE1jVTpe2W3xQDZ3r" "1-hHG3R8na9VmT4rMryN_Tlv0_-VLdlAO" "16ySGbT_-P2v-cSZmoSCEQqAnKoXg5MX7" "181uqEUs5I37pLRlLFHulV_Xm8lVoCUek" "18X4NkeoBcvBRJJZau3LUbQhdoqgtnDts")
+# DOCUMENT_IDS=("1jdyeJNfE7MReOp8hNvTksLa6Jw1bzlzT" "1yYtiVNE1KV4_wl_i8DFHcy-ZhLFaoKML" "1GaCMaDe_6gfPd7ejLlCWPDdFLaaN2us2" "1ru_j5b1sKCZ4_cGPYtlq6zQbVW8GmyCB" "16BcfzCdjrZ5qiESrtQ8Fn46RAVkMI8Aq" "18-pmY_084KA2zpiUqiQbFuLalDMZqYLo" "1m21sjzhehaf728QaF8mXJ_gFN5p8ga6L" "1I3Z-6HGgj7TYcfv7cLGiPf5djKHzOH1e" "1DO5k_bYXMDew5EB6G1GpockT6sdAB5k2" "1KTCy4e76LmOSjJIvaLc5oDJp-9fZBsxw" "1vs15E4vS0H25JsiiQBplvV1gpGO6jyVo" "1njI-BM7jHAFeh8ws0oxnyVyfd8ZzUF65" "1UeECIUM8WMI2m-rZSOA4okFP2ZijHVId" "1D0cGqABj4ow6owMVzGW94UYJw2AHTcEh" "1_eUVzllYRIa9SkrLnUNSELBq0m3eLl0b" "12eRO5rnvrV77IEDJtguwMLUPO7UIhofV" "1hPqQ2RcOa6h1pC2EE1jVTpe2W3xQDZ3r" "1-hHG3R8na9VmT4rMryN_Tlv0_-VLdlAO" "16ySGbT_-P2v-cSZmoSCEQqAnKoXg5MX7" "181uqEUs5I37pLRlLFHulV_Xm8lVoCUek" "18X4NkeoBcvBRJJZau3LUbQhdoqgtnDts")
 
 # 2016 CDL
-# DOCUMENT_IDS=("1kWyXMp2bk76zxoAmG5_AHqEQO7pTQaQm" "1YcyIty6nHbRJwzD903L3vQPsvigiHw6p")
+DOCUMENT_IDS=("1fTCPDaQhQH1mkwlqUfcvEJhszVqKUaxI" "16PjxBRu8ANuScfH_GzR9HdOQLNcxh4mc")
 
-DOWNLOAD_FOLDER="/mnt/beegfs/bulk/mirror/jyf6/datasets/LandsatReflectance/2016-08-01"
+# DOWNLOAD_FOLDER="/mnt/beegfs/bulk/mirror/jyf6/datasets/LandsatReflectance/2016-06-15"
+DOWNLOAD_FOLDER="/mnt/beegfs/bulk/mirror/jyf6/datasets/LandsatReflectance/2016-06-15"
 
 mkdir ./tmp
 mkdir ${DOWNLOAD_FOLDER}
@@ -65,5 +69,4 @@ for i in ${!DOCUMENT_IDS[@]}; do
   curl -sc ./tmp/cookie "https://drive.google.com/uc?export=download&id=${DOCUMENT_IDS[${i}]}" > /dev/null
   code="$(awk '/_warning_/ {print $NF}' ./tmp/cookie)"  
   curl -Lb ./tmp/cookie "https://drive.google.com/uc?export=download&confirm=${code}&id=${DOCUMENT_IDS[${i}]}" -o ${FINAL_DOWNLOADED_FILENAME}
-
 done

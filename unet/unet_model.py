@@ -17,8 +17,8 @@ class UNet(nn.Module):
         self.bilinear = bilinear
 
         # Try reducing dimensionality of the channels
-        # self.dimensionality_reduction = nn.Conv2d(n_channels, reduced_channels, kernel_size=1, stride=1)
-        self.inc = DoubleConv(n_channels, 64)
+        self.dimensionality_reduction = nn.Conv2d(n_channels, reduced_channels, kernel_size=1, stride=1)
+        self.inc = DoubleConv(reduced_channels, 64)
         self.down1 = Down(64, 128)
         self.down2 = Down(128, 256)
         self.down3 = Down(256, 512)
@@ -40,7 +40,7 @@ class UNet(nn.Module):
 
 
     def forward(self, x):
-        # x = self.dimensionality_reduction(x)
+        x = self.dimensionality_reduction(x)
         x1 = self.inc(x)
         x2 = self.down1(x1)
         x3 = self.down2(x2)

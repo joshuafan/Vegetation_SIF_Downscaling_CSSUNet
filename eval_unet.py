@@ -35,7 +35,7 @@ from unet.unet_model import UNet, UNetSmall, UNet2
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
 DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset_all_2")
-EVAL_FILE = os.path.join(DATASET_DIR, "standardized_tiles_test.csv")
+EVAL_FILE = os.path.join(DATASET_DIR, "tile_info_val.csv")
 BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
 METHOD = "7_unet2_clip_-6_8_batchnorm_dimred"
 # METHOD = "7_unet2_reflectance_only_aug"
@@ -175,7 +175,7 @@ else:
 # Set up image transforms
 transform_list = []
 # transform_list.append(tile_transforms.ShrinkTile())
-#transform_list.append(tile_transforms.StandardizeTile(band_means, band_stds))
+transform_list.append(tile_transforms.StandardizeTile(band_means, band_stds))
 transform_list.append(tile_transforms.ClipTile(min_input=MIN_INPUT, max_input=MAX_INPUT))
 if RESIZE:
     transform_list.append(tile_transforms.ResizeTile(target_dim=RESIZED_DIM, discrete_bands=DISCRETE_BANDS))

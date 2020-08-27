@@ -8,11 +8,14 @@ import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FormatStrFormatter
+from matplotlib import cm
+from matplotlib.colors import Normalize 
 
 from datetime import datetime
 import cdl_utils
 
-from scipy.stats import pearsonr, spearmanr
+from scipy.interpolate import interpn
+from scipy.stats import gaussian_kde, pearsonr, spearmanr
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_squared_error, r2_score
 
@@ -22,7 +25,11 @@ from sklearn.metrics import mean_squared_error, r2_score
 def get_large_grid_area_coordinates(lon, lat):
     return (math.floor(lon), math.ceil(lat))
 
-# 
+# Round down to the next-lower multiple of "divisor".
+# Code from https://stackoverflow.com/questions/13082698/rounding-down-integers-to-nearest-multiple
+def round_down(num, divisor):
+    return num - (num%divisor)
+
 def determine_split(large_grid_areas, row):
     grid_area_coordinates = get_large_grid_area_coordinates(row['lon'], row['lat'])
     if grid_area_coordinates in large_grid_areas:
@@ -71,7 +78,7 @@ def masked_average(array, mask, dims_to_average):
 
 
 
-def plot_histogram(column, plot_filename, title=None, range=None):
+def plot_histogram(column, plot_filename, title=None):
     column = column.flatten()
     column = column[~np.isnan(column)]
     print(plot_filename)
@@ -80,11 +87,40 @@ def plot_histogram(column, plot_filename, title=None, range=None):
     print('Std:', round(np.std(column), 4))
     # print('Max:', round(np.max(column), 4))
     # print('Min:', round(np.min(column), 4))
-    n, bins, patches = plt.hist(column, 40, facecolor='blue', alpha=0.5, range=range)
+    n, bins, patches = plt.hist(column, 40, facecolor='blue', alpha=0.5)
     if title is not None:
         plt.title(title)
     plt.savefig('exploratory_plots/' + plot_filename)
     plt.close()
+
+
+# Code from
+# https://stackoverflow.com/questions/20105364/how-can-i-make-a-scatter-plot-colored-by-density-in-matplotlib
+def density_scatter(x, y, ax=None, sort=True, bins=20, **kwargs):
+    """
+    Scatter plot colored by 2d histogram
+    """
+    if ax is None :
+        fig, ax = plt.subplots()
+    print('x/y shape', x.shape, y.shape)
+    data , x_e, y_e = np.histogram2d( x, y, bins = bins, density = True )
+    z = interpn( ( 0.5*(x_e[1:] + x_e[:-1]) , 0.5*(y_e[1:]+y_e[:-1]) ) , data , np.vstack([x,y]).T , method = "splinef2d", bounds_error = False)
+
+    #To be sure to plot all data
+    z[np.where(np.isnan(z))] = 0.0
+
+    # Sort the points by density, so that the densest points are plotted last
+    if sort :
+        idx = z.argsort()
+        x, y, z = x[idx], y[idx], z[idx]
+
+    ax.scatter( x, y, c=z, **kwargs )
+
+    norm = Normalize(vmin = np.min(z), vmax = np.max(z))
+    # cbar = fig.colorbar(cm.ScalarMappable(norm = norm), ax=ax)
+    # cbar.ax.set_ylabel('Density')
+
+    return ax
 
 
 def print_stats(true, predicted, average_sif, print_report=True, ax=None):
@@ -92,7 +128,7 @@ def print_stats(true, predicted, average_sif, print_report=True, ax=None):
         true = np.array(true)
     if isinstance(predicted, list):
         predicted = np.array(predicted)
-    
+
     # true = true.reshape(-1, 1)
     # true_to_predicted = LinearRegression().fit(true, predicted)
     # slope = true_to_predicted.coef_[0]
@@ -114,8 +150,25 @@ def print_stats(true, predicted, average_sif, print_report=True, ax=None):
     line = slope * predicted + intercept
 
     if ax is not None:
+        predicted = predicted.ravel()
+        true = true.ravel()
+        print('Predicted/true shape', predicted.shape, true.shape)
+        if predicted.size > 1000:
+            ax = density_scatter(predicted, true, bins=[40, 40], ax=ax, s=5)
+            # # Calculate the point density
+            # xy = np.vstack([predicted, true])
+            # z = gaussian_kde(xy)(xy)
+
+            # # Sort the points by density, so that the densest points are plotted last
+            # idx = z.argsort()
+            # x, y, z = predicted[idx], true[idx], z[idx]
+
+            # fig, ax = plt.subplots()
+            # ax.scatter(x, y, c=z, s=50, edgecolor='')
+        else:
+            ax.scatter(predicted, true, color="k", s=5)
+
         ax.plot(predicted, line, 'r', label='y={:.2f}x+{:.2f} (R^2={:.3f}, NRMSE={:.3f})'.format(slope, intercept, r2, nrmse_scaled))
-        ax.scatter(predicted, true, color="k", s=5)
         ax.set(xlabel='Predicted', ylabel='True')
         ax.legend(fontsize=9)
 

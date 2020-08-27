@@ -21,10 +21,10 @@ def maskL8sr(image):
   return image.updateMask(mask).select(bands).divide(10000)
 
 # The image input data is a 2018 cloud-masked median composite.
-cloud_masked_image = ee.ImageCollection('LANDSAT/LC08/C01/T1_SR')
-                  .filterDate('2018-08-01', '2018-08-15')
-                  .map(maskL8sr)
-                  .select(bands)
+cloud_masked_image = ee.ImageCollection('LANDSAT/LC08/C01/T1_SR') \
+                  .filterDate('2018-08-01', '2018-08-15') \
+                  .map(maskL8sr) \
+                  .select(bands) \
                   .max()
 print('Masked clouds')
 

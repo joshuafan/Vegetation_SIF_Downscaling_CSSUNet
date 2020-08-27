@@ -18,11 +18,10 @@ from sklearn.metrics import mean_squared_error, r2_score
 from scipy.stats import pearsonr
 from numpy import poly1d
 
-from sif_utils import lat_long_to_index, plot_histogram, get_subtiles_list, plot_tile
+from sif_utils import lat_long_to_index, plot_histogram, get_subtiles_list
 import cdl_utils
 import simple_cnn
 import tile_transforms
-import resnet
 from SAN import SAN
 from unet.unet_model import UNet, UNetSmall, UNet2_NoBilinear
 

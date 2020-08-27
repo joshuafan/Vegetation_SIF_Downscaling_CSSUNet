@@ -4,6 +4,7 @@ import torch
 import pandas as pd
 from skimage import io, transform
 import numpy as np
+import numpy.ma as ma
 from torch.utils.data import Dataset, DataLoader
 from PIL import Image
 from torchvision import transforms
@@ -13,6 +14,57 @@ import time
 # Ignore warnings
 import warnings
 warnings.filterwarnings("ignore")
+
+class CFISDataset(Dataset):
+    """Dataset mapping a tile (with reflectance/cover bands) to a coarse or fine resolution SIF map"""
+
+    def __init__(self, tile_info, transform, tile_file_column='tile_file', 
+                 sif_fine_file_column='sif_fine_file', sif_coarse_file_column='sif_coarse_file'):
+        """
+        Args:
+            tile_info: Pandas dataframe containing metadata for each tile.
+            The tile is assumed to have shape (band x lat x long)
+        """
+        self.tile_info = tile_info
+        self.transform = transform
+        self.tile_file_column = tile_file_column
+        self.sif_fine_file_column = sif_fine_file_column
+        self.sif_coarse_file_column = sif_coarse_file_column
+
+
+    def __len__(self):
+        return len(self.tile_info)
+
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+
+        current_tile_info = self.tile_info.iloc[idx]
+        input_tile = np.load(current_tile_info.loc[self.tile_file_column], allow_pickle=True)
+        fine_sif_tile = np.load(current_tile_info.loc[self.sif_fine_file_column], allow_pickle=True)
+        coarse_sif_tile = np.load(current_tile_info.loc[self.sif_coarse_file_column], allow_pickle=True)
+
+        # print('Idx', idx, 'Band means before transform', np.mean(tile, axis=(1, 2)))
+        # tile_description = str(round(current_tile_info.loc['lat'], 5)) + '_lon_' + str(round(current_tile_info.loc['lon'], 5)) + '_' + current_tile_info.loc['date']
+        # sif_utils.plot_tile(tile,  'lat_before_augment_lat_' + tile_description)
+
+        if self.transform:
+            input_tile = self.transform(input_tile)
+
+        # sif_utils.plot_tile(input_tile,  'lat_after_augment_lat_' + tile_description)
+        # print('Idx', idx, 'Band means after transform', np.mean(tile, axis=(1,2)))
+ 
+        sample = {'input_tile': torch.tensor(input_tile, dtype=torch.float),
+                  'fine_sif': torch.tensor(fine_sif_tile.data, dtype=torch.float),
+                  'fine_sif_mask': torch.tensor(fine_sif_tile.mask, dtype=torch.bool),
+                  'coarse_sif': torch.tensor(coarse_sif_tile.data, dtype=torch.float),
+                  'coarse_sif_mask': torch.tensor(coarse_sif_tile.mask, dtype=torch.bool),
+                  'tile_file': current_tile_info.loc[self.tile_file_column],
+                  'lon': current_tile_info.loc['lon'],
+                  'lat': current_tile_info.loc['lat'],
+                  'date': current_tile_info.loc['date']}
+        return sample
+
 
 class ReflectanceCoverSIFDataset(Dataset):
     """Dataset mapping a tile (with reflectance/cover bands) to total SIF"""
