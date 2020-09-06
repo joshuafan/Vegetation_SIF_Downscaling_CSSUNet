@@ -277,7 +277,7 @@ if FROM_PRETRAINED_EMBEDDING_TO_SIF:
 criterion = nn.MSELoss(reduction='mean')
 
 
-if OPTIMIZER_TYPE == "Adam"
+if OPTIMIZER_TYPE == "Adam":
     if FREEZE_TILE2VEC:
         # Don't optimize Tile2vec model; just use pre-trained version
         tile2vec_optimizer = None

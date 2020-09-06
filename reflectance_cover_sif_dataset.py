@@ -15,6 +15,107 @@ import time
 import warnings
 warnings.filterwarnings("ignore")
 
+
+
+class CombinedCfisOco2Dataset(Dataset):
+    """Dataset mapping a tile (with reflectance/cover bands) to a coarse or fine resolution SIF map"""
+
+    def __init__(self, cfis_tile_info, oco2_tile_info, transform,
+                 min_cfis_soundings,
+                 tile_file_column='tile_file',
+                 cfis_fine_sif_file_column='sif_fine_file',
+                 cfis_fine_soundings_file_column='fine_soundings',
+                 cfis_coarse_sif_column='sif_coarse_file',
+                 oco2_sif_column='SIF',
+                 oco2_soundings_column='num_soundings'):
+        """
+        Args:
+            tile_info: Pandas dataframe containing metadata for each tile.
+            The tile is assumed to have shape (band x lat x long)
+        """
+        self.cfis_tile_info = cfis_tile_info
+        self.oco2_tile_info = oco2_tile_info
+        self.transform = transform
+        self.min_cfis_soundings = min_cfis_soundings
+        self.tile_file_column = tile_file_column
+        self.cfis_fine_sif_file_column = cfis_fine_sif_file_column
+        self.cfis_fine_soundings_file_column = cfis_fine_soundings_file_column
+        self.cfis_coarse_sif_column = cfis_coarse_sif_column
+        self.oco2_sif_column = oco2_sif_column
+        self.oco2_soundings_column = oco2_soundings_column
+
+        # Store lengths of datasets
+        if cfis_tile_info is None:
+            self.cfis_len = 0
+        else:
+            self.cfis_len = len(cfis_tile_info)
+        if oco2_tile_info is None:
+            self.oco2_len = 0
+        else:
+            self.oco2_len = len(oco2_tile_info)
+
+
+    def __len__(self):
+        return max(self.cfis_len, self.oco2_len)
+
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+        sample = {}
+
+        # Read CFIS tile
+        if self.cfis_tile_info is not None:
+            cfis_idx = idx % self.cfis_len
+            current_cfis_tile_info = self.cfis_tile_info.iloc[cfis_idx]
+            cfis_input_tile = np.load(current_cfis_tile_info.loc[self.tile_file_column], allow_pickle=True)
+            cfis_fine_sif_tile = np.load(current_cfis_tile_info.loc[self.cfis_fine_sif_file_column], allow_pickle=True)
+            cfis_fine_soundings_tile = np.load(current_cfis_tile_info.loc[self.cfis_fine_soundings_file_column], allow_pickle=True)
+            
+            # Mark fine SIF entries with too few soundings as invalid (so that they don't get counted in the loss)
+            # cfis_fine_sif_tile.mask[cfis_fine_soundings_tile < self.min_cfis_soundings] = True
+            cfis_coarse_sif = np.load(current_cfis_tile_info.loc[self.cfis_coarse_sif_column], allow_pickle=True)
+            if self.transform:
+                cfis_input_tile = self.transform(cfis_input_tile)
+
+            sample = {'cfis_input_tile': torch.tensor(cfis_input_tile, dtype=torch.float),
+                    'cfis_fine_sif': torch.tensor(cfis_fine_sif_tile.data, dtype=torch.float),
+                    'cfis_fine_sif_mask': torch.tensor(cfis_fine_sif_tile.mask, dtype=torch.bool),
+                    'cfis_fine_soundings': torch.tensor(cfis_fine_soundings_tile, dtype=torch.float),
+                    'cfis_coarse_sif': torch.tensor(cfis_coarse_sif, dtype=torch.float),
+                    'cfis_tile_file': current_cfis_tile_info.loc[self.tile_file_column],
+                    'cfis_lon': current_cfis_tile_info.loc['lon'],
+                    'cfis_lat': current_cfis_tile_info.loc['lat'],
+                    'cfis_date': current_cfis_tile_info.loc['date']}
+
+        # print('Idx', idx, 'Band means before transform', np.mean(tile, axis=(1, 2)))
+        # tile_description = str(round(current_tile_info.loc['lat'], 5)) + '_lon_' + str(round(current_tile_info.loc['lon'], 5)) + '_' + current_tile_info.loc['date']
+        # sif_utils.plot_tile(tile,  'lat_before_augment_lat_' + tile_description)
+
+        # Read OCO-2 tile
+        if self.oco2_tile_info is not None:
+            oco2_idx = idx % self.oco2_len
+            current_oco2_tile_info = self.oco2_tile_info.iloc[oco2_idx]
+            oco2_input_tile = np.load(current_oco2_tile_info.loc[self.tile_file_column], allow_pickle=True)
+            oco2_sif = current_oco2_tile_info.loc[self.oco2_sif_column]  # TODO temporary
+            oco2_soundings = current_oco2_tile_info.loc[self.oco2_soundings_column]
+
+            if self.transform:
+                oco2_input_tile = self.transform(oco2_input_tile)
+
+            # sif_utils.plot_tile(input_tile,  'lat_after_augment_lat_' + tile_description)
+            # print('Idx', idx, 'Band means after transform', np.mean(tile, axis=(1,2)))
+ 
+            sample['oco2_input_tile'] = torch.tensor(oco2_input_tile, dtype=torch.float)
+            sample['oco2_sif'] = oco2_sif
+            sample['oco2_soundings'] = oco2_soundings
+            sample['oco2_lon'] = current_oco2_tile_info.loc['lon']
+            sample['oco2_lat'] = current_oco2_tile_info.loc['lat']
+            sample['oco2_date'] = current_oco2_tile_info.loc['date']
+
+        return sample
+
+
+
 class CFISDataset(Dataset):
     """Dataset mapping a tile (with reflectance/cover bands) to a coarse or fine resolution SIF map"""
 

@@ -11,9 +11,9 @@ import torch.nn as nn
 import torch.optim as optim
 
 import simple_cnn
-from reflectance_cover_sif_dataset import CFISDataset
+from reflectance_cover_sif_dataset import CFISDataset, CombinedCfisOco2Dataset
 from unet.unet_model import UNet, UNetSmall, UNet2
-import cdl_utils
+import visualization_utils
 import sif_utils
 import tile_transforms
 from sklearn.linear_model import Ridge
@@ -23,31 +23,44 @@ from sklearn.neural_network import MLPRegressor
 torch.manual_seed(0)
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-DATASET_DIR = os.path.join(DATA_DIR, "CFIS")
-INFO_FILE_VAL = os.path.join(DATASET_DIR, "cfis_tile_metadata_val_4soundings.csv")
-FINE_AVERAGES_TRAIN_FILE = os.path.join(DATASET_DIR, 'cfis_fine_averages_train_4soundings.csv')
-COARSE_AVERAGES_TRAIN_FILE = os.path.join(DATASET_DIR, 'cfis_coarse_averages_train_4soundings.csv')
-FINE_AVERAGES_VAL_FILE = os.path.join(DATASET_DIR, 'cfis_fine_averages_val_4soundings.csv')
-COARSE_AVERAGES_VAL_FILE = os.path.join(DATASET_DIR, 'cfis_coarse_averages_val_4soundings.csv')
+CFIS_DIR = os.path.join(DATA_DIR, "CFIS")
+OCO2_DIR = os.path.join(DATA_DIR, "OCO2")
+# CFIS_TILE_METADATA_VAL_FILE = os.path.join(CFIS_DIR, 'cfis_tile_metadata_train.csv')
+OCO2_METADATA_TRAIN_FILE = os.path.join(OCO2_DIR, 'oco2_metadata_train.csv')
+FINE_AVERAGES_TRAIN_FILE = os.path.join(CFIS_DIR, 'cfis_fine_averages_train.csv')
+# FINE_AVERAGES_VAL_FILE = os.path.join(CFIS_DIR, 'cfis_fine_averages_val.csv')
+FINE_AVERAGES_VAL_FILE = os.path.join(CFIS_DIR, 'cfis_fine_averages_train.csv')
+COARSE_AVERAGES_TRAIN_FILE = os.path.join(CFIS_DIR, 'cfis_coarse_averages_train.csv')
+# COARSE_AVERAGES_VAL_FILE = os.path.join(CFIS_DIR, 'cfis_coarse_averages_val.csv')
+COARSE_AVERAGES_VAL_FILE = os.path.join(CFIS_DIR, 'cfis_coarse_averages_train.csv')
 
-BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "cfis_band_statistics_train_4soundings.csv")
-METHOD = "8_downscaling_unet_no_batchnorm_no_augment_no_decay_4soundings"
+BAND_STATISTICS_FILE = os.path.join(CFIS_DIR, 'cfis_band_statistics_train.csv')
+
+# INFO_FILE_VAL = os.path.join(DATASET_DIR, "cfis_tile_metadata_val_4soundings.csv")
+# FINE_AVERAGES_TRAIN_FILE = os.path.join(DATASET_DIR, 'cfis_fine_averages_train_4soundings.csv')
+# COARSE_AVERAGES_TRAIN_FILE = os.path.join(DATASET_DIR, 'cfis_coarse_averages_train_4soundings.csv')
+# FINE_AVERAGES_VAL_FILE = os.path.join(DATASET_DIR, 'cfis_fine_averages_val_4soundings.csv')
+# COARSE_AVERAGES_VAL_FILE = os.path.join(DATASET_DIR, 'cfis_coarse_averages_val_4soundings.csv')
+
+# BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "cfis_band_statistics_train_4soundings.csv")
+# METHOD = "8_downscaling_unet_no_batchnorm_no_augment_no_decay_4soundings"
+METHOD = "9d_unet_cfis_best_train"
 MODEL_TYPE = "unet"
-COARSE_CFIS_RESULTS_CSV_FILE = os.path.join(DATASET_DIR, 'cfis_results_' + METHOD + '_coarse.csv')
-FINE_CFIS_RESULTS_CSV_FILE = os.path.join(DATASET_DIR, 'cfis_results_' + METHOD + '_fine.csv')
+COARSE_CFIS_RESULTS_CSV_FILE = os.path.join(CFIS_DIR, 'cfis_results_' + METHOD + '_coarse.csv')
+FINE_CFIS_RESULTS_CSV_FILE = os.path.join(CFIS_DIR, 'cfis_results_' + METHOD + '_fine.csv')
 
-CFIS_TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_cfis_' + METHOD
+MIN_FINE_CFIS_SOUNDINGS = 5
+
+CFIS_TRUE_VS_PREDICTED_PLOT = os.path.join(DATA_DIR, "exploratory_plots/true_vs_predicted_sif_cfis_" + METHOD)
 MODEL_FILE = os.path.join(DATA_DIR, "models/" + METHOD)
-BATCH_SIZE = 8
+BATCH_SIZE = 64
 NUM_WORKERS = 8
 MIN_SIF = None
 MAX_SIF = None
-MIN_SIF_CLIP = 0.2
-MAX_SIF_CLIP = 1.5
-MIN_INPUT = -2
-MAX_INPUT = 2
-MAX_PRED = 2
-MAX_CFIS_SIF = 3
+MIN_INPUT = -3
+MAX_INPUT = 3
+MIN_SIF_PLOT = -0.2
+MAX_SIF_PLOT = 1.6
 BANDS = list(range(0, 43))
 INPUT_CHANNELS = len(BANDS)
 MISSING_REFLECTANCE_IDX = -1
@@ -55,7 +68,7 @@ REDUCED_CHANNELS = 15
 COARSE_SIF_PIXELS = 25
 RES = (0.00026949458523585647, 0.00026949458523585647)
 COARSE_RES = (RES[0] * COARSE_SIF_PIXELS, RES[1] * COARSE_SIF_PIXELS)
-TILE_PIXELS = 200
+TILE_PIXELS = 100
 TILE_SIZE_DEGREES = RES[0] * TILE_PIXELS
 
 PURE_THRESHOLD = 0.7
@@ -104,8 +117,8 @@ print("Device", device)
 
 
 # Read train/val tile metadata
-val_metadata = pd.read_csv(INFO_FILE_VAL)
-print('Number of val tiles', len(val_metadata))
+cfis_val_metadata = pd.read_csv(COARSE_AVERAGES_VAL_FILE)
+print('Number of val tiles', len(cfis_val_metadata))
 
 # Read mean/standard deviation for each band, for standardization purposes
 train_statistics = pd.read_csv(BAND_STATISTICS_FILE)
@@ -114,9 +127,9 @@ train_stds = train_statistics['std'].values
 print("Means", train_means)
 print("Stds", train_stds)
 band_means = train_means[:-1]
-sif_mean = train_means[-1]
+sif_mean = train_means[-1] / 1.52
 band_stds = train_stds[:-1]
-sif_std = train_stds[-1]
+sif_std = train_stds[-1] / 1.52
 
 # Constrain predicted SIF to be between certain values (unstandardized), if desired
 # Don't forget to standardize
@@ -134,7 +147,8 @@ transform_list_val = [standardize_transform, clip_transform]
 val_transform = transforms.Compose(transform_list_val)
 
 # Create dataset/dataloader
-dataset = CFISDataset(val_metadata, val_transform)
+# dataset = CFISDataset(val_metadata, val_transform)
+dataset = CombinedCfisOco2Dataset(cfis_val_metadata, None, val_transform, MIN_FINE_CFIS_SOUNDINGS)
 dataloader = torch.utils.data.DataLoader(dataset, batch_size=BATCH_SIZE,
                                          shuffle=False, num_workers=NUM_WORKERS)
 
@@ -144,6 +158,13 @@ fine_train_set = pd.read_csv(FINE_AVERAGES_TRAIN_FILE)
 coarse_val_set = pd.read_csv(COARSE_AVERAGES_VAL_FILE)
 fine_val_set = pd.read_csv(FINE_AVERAGES_VAL_FILE)
 
+fine_train_set = fine_train_set[(fine_train_set['num_soundings'] >= MIN_FINE_CFIS_SOUNDINGS)] # & (fine_train_set['SIF'] >= MIN_SIF_CLIP)]
+fine_val_set = fine_val_set[(fine_val_set['num_soundings'] >= MIN_FINE_CFIS_SOUNDINGS)] # & (fine_val_set['SIF'] >= MIN_SIF_CLIP)]
+
+fine_train_set['SIF'] /= 1.52
+fine_val_set['SIF'] /= 1.52
+coarse_train_set['SIF'] /= 1.52
+coarse_val_set['SIF'] /= 1.52
 
 # Standardize data
 for idx, column in enumerate(COLUMNS_TO_STANDARDIZE):
@@ -196,193 +217,252 @@ model.eval()
 
 # Iterate over data.
 for sample in dataloader:
+    # # Read input tile
+    # input_tiles_std = sample['input_tile'][:, BANDS, :, :].to(device)
+
+    # # Read coarse-resolution SIF labels
+    # true_coarse_sifs = sample['coarse_sif'].to(device)
+    # valid_coarse_sif_mask = torch.logical_not(sample['coarse_sif_mask']).to(device)  # Flatten coarse SIF mask, and flip so that valid points are True
+
+    # # Read fine-resolution SIF labels
+    # true_fine_sifs = sample['fine_sif'].to(device)
+    # valid_fine_sif_mask = torch.logical_not(sample['fine_sif_mask']).to(device)
+
+    # # Predict fine-resolution SIF using model
+    # predicted_fine_sifs_std = model(input_tiles_std)  # predicted_fine_sifs_std: (batch size, 1, H, W)
+    # predicted_fine_sifs_std = torch.squeeze(predicted_fine_sifs_std, dim=1)
+    # predicted_fine_sifs = predicted_fine_sifs_std * sif_std + sif_mean
+
+    # # Zero out predicted SIFs for invalid pixels (pixels with no valid SIF label, or cloudy pixels).
+    # # Now, only VALID pixels contain a non-zero predicted SIF.
+    # predicted_fine_sifs[valid_fine_sif_mask == 0] = 0
+
+    # # For each coarse-SIF sub-region, compute the fraction of valid pixels.
+    # # Each square is: (# valid fine pixels) / (# total fine pixels)
+    # avg_pool = nn.AvgPool2d(kernel_size=COARSE_SIF_PIXELS)
+    # fraction_valid = avg_pool(valid_fine_sif_mask.float())
+    # # Average together fine SIF predictions for each coarse SIF area.
+    # # Each square is: (sum predicted SIF over valid fine pixels) / (# total fine pixels)
+    # predicted_coarse_sifs = avg_pool(predicted_fine_sifs)
+
+    # # Instead of dividing by the total number of fine pixels, divide by the number of VALID fine pixels.
+    # # Each square is now: (sum predicted SIF over valid fine pixels) / (# valid fine pixels), which is what we want.
+    # predicted_coarse_sifs = predicted_coarse_sifs / fraction_valid
+    # predicted_coarse_sifs[valid_coarse_sif_mask == 0] = 0
+
+    # # Extract the coarse SIF data points where we have labels, and compute loss
+    # valid_coarse_sif_mask_flat = valid_coarse_sif_mask.flatten()
+    # true_coarse_sifs_filtered = true_coarse_sifs.flatten()[valid_coarse_sif_mask_flat]
+    # predicted_coarse_sifs_filtered = predicted_coarse_sifs.flatten()[valid_coarse_sif_mask_flat]
+    # coarse_loss = criterion(true_coarse_sifs_filtered, predicted_coarse_sifs_filtered)
+
+    # # Extract the fine SIF data points where we have labels, and compute loss
+    # valid_fine_sif_mask_flat = valid_fine_sif_mask.flatten()
+    # true_fine_sifs_filtered = true_fine_sifs.flatten()[valid_fine_sif_mask_flat]
+    # predicted_fine_sifs_filtered = predicted_fine_sifs.flatten()[valid_fine_sif_mask_flat]
+    # fine_loss = criterion(true_fine_sifs_filtered, predicted_fine_sifs_filtered)
+
+    # running_coarse_loss += coarse_loss.item() * len(true_coarse_sifs_filtered)
+    # num_coarse_datapoints += len(true_coarse_sifs_filtered)
+    # running_fine_loss += fine_loss.item() * len(true_fine_sifs_filtered)
+    # num_fine_datapoints += len(true_fine_sifs_filtered)
+
     # Read input tile
-    input_tiles_std = sample['input_tile'][:, BANDS, :, :].to(device)
+    with torch.set_grad_enabled(False):
+        input_tiles_std = sample['cfis_input_tile'][:, BANDS, :, :].to(device)
 
-    # Read coarse-resolution SIF labels
-    true_coarse_sifs = sample['coarse_sif'].to(device)
-    valid_coarse_sif_mask = torch.logical_not(sample['coarse_sif_mask']).to(device)  # Flatten coarse SIF mask, and flip so that valid points are True
+        # Read coarse-resolution SIF labels
+        true_coarse_sifs = sample['cfis_coarse_sif'].to(device)
+        valid_coarse_sif_mask = torch.logical_not(sample['cfis_coarse_sif_mask']).to(device)  # Flatten coarse SIF mask, and flip so that valid points are True
 
-    # Read fine-resolution SIF labels
-    true_fine_sifs = sample['fine_sif'].to(device)
-    valid_fine_sif_mask = torch.logical_not(sample['fine_sif_mask']).to(device)
+        # Read fine-resolution SIF labels
+        true_fine_sifs = sample['cfis_fine_sif'].to(device)
+        valid_fine_sif_mask = torch.logical_not(sample['cfis_fine_sif_mask']).to(device)
+        fine_soundings = sample['cfis_fine_soundings'].to(device)
 
-    # Predict fine-resolution SIF using model
-    predicted_fine_sifs_std = model(input_tiles_std)  # predicted_fine_sifs_std: (batch size, 1, H, W)
-    predicted_fine_sifs_std = torch.squeeze(predicted_fine_sifs_std, dim=1)
-    predicted_fine_sifs = predicted_fine_sifs_std * sif_std + sif_mean
+        # Predict fine-resolution SIF using model
+        predicted_fine_sifs_std = model(input_tiles_std)  # predicted_fine_sifs_std: (batch size, 1, H, W)
+        predicted_fine_sifs_std = torch.squeeze(predicted_fine_sifs_std, dim=1)
+        predicted_fine_sifs = predicted_fine_sifs_std * sif_std + sif_mean
 
-    # Zero out predicted SIFs for invalid pixels (pixels with no valid SIF label, or cloudy pixels).
-    # Now, only VALID pixels contain a non-zero predicted SIF.
-    predicted_fine_sifs[valid_fine_sif_mask == 0] = 0
+        # Zero out predicted SIFs for invalid pixels (pixels with no valid SIF label, or cloudy pixels).
+        # Now, only VALID pixels contain a non-zero predicted SIF.
+        predicted_fine_sifs[valid_fine_sif_mask == 0] = 0
 
-    # For each coarse-SIF sub-region, compute the fraction of valid pixels.
-    # Each square is: (# valid fine pixels) / (# total fine pixels)
-    avg_pool = nn.AvgPool2d(kernel_size=COARSE_SIF_PIXELS)
-    fraction_valid = avg_pool(valid_fine_sif_mask.float())
-    # Average together fine SIF predictions for each coarse SIF area.
-    # Each square is: (sum predicted SIF over valid fine pixels) / (# total fine pixels)
-    predicted_coarse_sifs = avg_pool(predicted_fine_sifs)
+        # For each coarse-SIF sub-region, compute the fraction of valid pixels.
+        # Each square is: (# valid fine pixels) / (# total fine pixels)
+        avg_pool = nn.AvgPool2d(kernel_size=COARSE_SIF_PIXELS)
+        fraction_valid = avg_pool(valid_fine_sif_mask.float())
 
-    # Instead of dividing by the total number of fine pixels, divide by the number of VALID fine pixels.
-    # Each square is now: (sum predicted SIF over valid fine pixels) / (# valid fine pixels), which is what we want.
-    predicted_coarse_sifs = predicted_coarse_sifs / fraction_valid
-    predicted_coarse_sifs[valid_coarse_sif_mask == 0] = 0
+        # Average together fine SIF predictions for each coarse SIF area.
+        # Each square is: (sum predicted SIF over valid fine pixels) / (# total fine pixels)
+        predicted_coarse_sifs = avg_pool(predicted_fine_sifs)
+        # print('Predicted coarse sifs', predicted_coarse_sifs.shape)
+        # print('Fraction valid', fraction_valid.shape)
 
-    # Extract the coarse SIF data points where we have labels, and compute loss
-    valid_coarse_sif_mask_flat = valid_coarse_sif_mask.flatten()
-    true_coarse_sifs_filtered = true_coarse_sifs.flatten()[valid_coarse_sif_mask_flat]
-    predicted_coarse_sifs_filtered = predicted_coarse_sifs.flatten()[valid_coarse_sif_mask_flat]
-    coarse_loss = criterion(true_coarse_sifs_filtered, predicted_coarse_sifs_filtered)
+        # Instead of dividing by the total number of fine pixels, divide by the number of VALID fine pixels.
+        # Each square is now: (sum predicted SIF over valid fine pixels) / (# valid fine pixels), which is what we want.
+        predicted_coarse_sifs = predicted_coarse_sifs / fraction_valid
+        predicted_coarse_sifs[valid_coarse_sif_mask == 0] = 0
 
-    # Extract the fine SIF data points where we have labels, and compute loss
-    valid_fine_sif_mask_flat = valid_fine_sif_mask.flatten()
-    true_fine_sifs_filtered = true_fine_sifs.flatten()[valid_fine_sif_mask_flat]
-    predicted_fine_sifs_filtered = predicted_fine_sifs.flatten()[valid_fine_sif_mask_flat]
-    fine_loss = criterion(true_fine_sifs_filtered, predicted_fine_sifs_filtered)
+        # Extract the coarse SIF data points where we have labels, and compute loss
+        valid_coarse_sif_mask_flat = valid_coarse_sif_mask.flatten()
+        true_coarse_sifs_filtered = true_coarse_sifs.flatten()[valid_coarse_sif_mask_flat]
+        predicted_coarse_sifs_filtered = predicted_coarse_sifs.flatten()[valid_coarse_sif_mask_flat]
+        coarse_loss = criterion(true_coarse_sifs_filtered, predicted_coarse_sifs_filtered)
 
-    running_coarse_loss += coarse_loss.item() * len(true_coarse_sifs_filtered)
-    num_coarse_datapoints += len(true_coarse_sifs_filtered)
-    running_fine_loss += fine_loss.item() * len(true_fine_sifs_filtered)
-    num_fine_datapoints += len(true_fine_sifs_filtered)
+        # Extract the fine SIF data points where we have labels, and compute loss
+        sufficient_fine_soundings_mask = (fine_soundings >= MIN_FINE_CFIS_SOUNDINGS)
+        valid_fine_sif_mask_flat = valid_fine_sif_mask.flatten() & sufficient_fine_soundings_mask.flatten()
+        true_fine_sifs_filtered = true_fine_sifs.flatten()[valid_fine_sif_mask_flat]
+        predicted_fine_sifs_filtered = predicted_fine_sifs.flatten()[valid_fine_sif_mask_flat]
+        fine_loss = criterion(true_fine_sifs_filtered, predicted_fine_sifs_filtered)
 
-    # Iterate through all examples in batch
-    for i in range(input_tiles_std.shape[0]):
-        large_tile_lat = sample['lat'][i].item()
-        large_tile_lon = sample['lon'][i].item()
-        large_tile_file = sample['tile_file'][i]
-        date = sample['date'][i]
-        valid_coarse_sif_mask_tile = valid_coarse_sif_mask[i].cpu().detach().numpy()
-        valid_fine_sif_mask_tile = valid_fine_sif_mask[i].cpu().detach().numpy()
-        true_coarse_sifs_tile = true_coarse_sifs[i].cpu().detach().numpy()
-        true_fine_sifs_tile = true_fine_sifs[i].cpu().detach().numpy()
-        predicted_coarse_sifs_linear = np.zeros(valid_coarse_sif_mask_tile.shape)
-        predicted_coarse_sifs_mlp = np.zeros(valid_coarse_sif_mask_tile.shape)
-        predicted_coarse_sifs_unet = predicted_coarse_sifs[i].cpu().detach().numpy()
-        predicted_fine_sifs_linear = np.zeros(valid_fine_sif_mask_tile.shape)
-        predicted_fine_sifs_mlp = np.zeros(valid_fine_sif_mask_tile.shape)
-        predicted_fine_sifs_unet = predicted_fine_sifs[i].cpu().detach().numpy()
+        running_coarse_loss += coarse_loss.item() * len(true_coarse_sifs_filtered)
+        num_coarse_datapoints += len(true_coarse_sifs_filtered)
+        running_fine_loss += fine_loss.item() * len(true_fine_sifs_filtered)
+        num_fine_datapoints += len(true_fine_sifs_filtered)
 
-        # Get averages of valid coarse and fine pixels (which have been pre-computed)
-        tile_coarse_averages = coarse_val_set.loc[coarse_val_set['tile_file'] == large_tile_file]
-        tile_fine_averages = fine_val_set.loc[fine_val_set['tile_file'] == large_tile_file]
-        tile_description = 'lat_' + str(round(large_tile_lat, 5)) + '_lon_' + str(round(large_tile_lon, 5)) + '_' + sample['date'][i]
+        # Iterate through all examples in batch
+        for i in range(input_tiles_std.shape[0]):
+            large_tile_lat = sample['cfis_lat'][i].item()
+            large_tile_lon = sample['cfis_lon'][i].item()
+            large_tile_file = sample['cfis_tile_file'][i]
+            date = sample['cfis_date'][i]
+            valid_coarse_sif_mask_tile = valid_coarse_sif_mask[i].cpu().detach().numpy()
+            valid_fine_sif_mask_tile = valid_fine_sif_mask[i].cpu().detach().numpy()
+            true_coarse_sifs_tile = true_coarse_sifs[i].cpu().detach().numpy()
+            true_fine_sifs_tile = true_fine_sifs[i].cpu().detach().numpy()
+            predicted_coarse_sifs_linear = np.zeros(valid_coarse_sif_mask_tile.shape)
+            predicted_coarse_sifs_mlp = np.zeros(valid_coarse_sif_mask_tile.shape)
+            predicted_coarse_sifs_unet = predicted_coarse_sifs[i].cpu().detach().numpy()
+            predicted_fine_sifs_linear = np.zeros(valid_fine_sif_mask_tile.shape)
+            predicted_fine_sifs_mlp = np.zeros(valid_fine_sif_mask_tile.shape)
+            predicted_fine_sifs_unet = predicted_fine_sifs[i].cpu().detach().numpy()
 
-        # Loop through all coarse pixels, compute linear/MLP predictions, store results
-        for idx, row in tile_coarse_averages.iterrows():
-            coarse_averages = row[INPUT_COLUMNS].to_numpy(copy=True).reshape(1, -1)
-            true_sif = row['SIF']
-            linear_predicted_sif = linear_model.predict(coarse_averages)[0]
-            mlp_predicted_sif = mlp_model.predict(coarse_averages)[0]
+            # Get averages of valid coarse and fine pixels (which have been pre-computed)
+            print('Large tile file', large_tile_file)
+            tile_coarse_averages = coarse_val_set.loc[coarse_val_set['tile_file'] == large_tile_file]
+            print('Tile coarse avg', len(tile_coarse_averages))
+            tile_fine_averages = fine_val_set.loc[fine_val_set['tile_file'] == large_tile_file]
+            print('Tile fine averages', len(tile_fine_averages))
+            tile_description = 'lat_' + str(round(large_tile_lat, 5)) + '_lon_' + str(round(large_tile_lon, 5)) + '_' + date
 
-            # Index of coarse pixel within this tile
-            height_idx, width_idx = sif_utils.lat_long_to_index(row['lat'], row['lon'],
-                                                                large_tile_lat + TILE_SIZE_DEGREES / 2,
-                                                                large_tile_lon - TILE_SIZE_DEGREES / 2,
-                                                                COARSE_RES)
+            # Loop through all coarse pixels, compute linear/MLP predictions, store results
+            for idx, row in tile_coarse_averages.iterrows():
+                coarse_averages = row[INPUT_COLUMNS].to_numpy(copy=True).reshape(1, -1)
+                true_sif = row['SIF']
+                linear_predicted_sif = linear_model.predict(coarse_averages)[0]
+                mlp_predicted_sif = mlp_model.predict(coarse_averages)[0]
 
-            unet_predicted_sif = predicted_coarse_sifs_unet[height_idx, width_idx]
-            assert valid_coarse_sif_mask_tile[height_idx, width_idx]
-            assert abs(true_sif - true_coarse_sifs_tile[height_idx, width_idx]) < 1e-3
+                # Index of coarse pixel within this tile
+                height_idx, width_idx = sif_utils.lat_long_to_index(row['lat'], row['lon'],
+                                                                    large_tile_lat + TILE_SIZE_DEGREES / 2,
+                                                                    large_tile_lon - TILE_SIZE_DEGREES / 2,
+                                                                    COARSE_RES)
 
-            # Update linear/MLP prediction array
-            predicted_coarse_sifs_linear[height_idx, width_idx] = linear_predicted_sif
-            predicted_coarse_sifs_mlp[height_idx, width_idx] = mlp_predicted_sif
+                unet_predicted_sif = predicted_coarse_sifs_unet[height_idx, width_idx]
+                assert valid_coarse_sif_mask_tile[height_idx, width_idx]
+                assert abs(true_sif - true_coarse_sifs_tile[height_idx, width_idx]) < 1e-3
 
-            # Create csv row
-            result_row = [true_sif, linear_predicted_sif, mlp_predicted_sif, unet_predicted_sif,
-                          row['lon'], row['lat'], 'CFIS', row['date'],
-                          large_tile_file, large_tile_lon, large_tile_lat] + coarse_averages.flatten().tolist()
-            coarse_results.append(result_row)
+                # Update linear/MLP prediction array
+                predicted_coarse_sifs_linear[height_idx, width_idx] = linear_predicted_sif
+                predicted_coarse_sifs_mlp[height_idx, width_idx] = mlp_predicted_sif
 
-            # # Safety check
-            # valid_fine_sif_mask = valid_fine_sif_mask.unsqueeze(1).expand(-1, 43, -1, -1)
-            # fraction_valid = fraction_valid.unsqueeze(1).expand(-1, 43, -1, -1)
-            # print('Valid fine sif mask', valid_fine_sif_mask.shape)
-            # input_tiles_std[valid_fine_sif_mask == 0] = 0
-            # # avg_pooled_coarse_sifs = avg_pool(input_tiles_std[i:i+1]) / fraction_valid[i:i+1]
+                # Create csv row
+                result_row = [true_sif, linear_predicted_sif, mlp_predicted_sif, unet_predicted_sif,
+                            row['lon'], row['lat'], 'CFIS', row['date'],
+                            large_tile_file, large_tile_lon, large_tile_lat] + coarse_averages.flatten().tolist()
+                coarse_results.append(result_row)
 
-            # print('Coarse averages', coarse_averages)
-            # print('Avg pooled', avg_pooled_coarse_sifs[0, height_idx, width_idx])
-            # # print('Averages in tile', torch.mean(input_tiles_std[i, :, COARSE_SIF_PIXELS*height_idx:COARSE_SIF_PIXELS*(height_idx+1),
-            # #                                                      COARSE_SIF_PIXELS*width_idx:COARSE_SIF_PIXELS*(width_idx+1)], dim=(1, 2)))
-            # exit(0)
+                # # Safety check
+                # valid_fine_sif_mask = valid_fine_sif_mask.unsqueeze(1).expand(-1, 43, -1, -1)
+                # fraction_valid = fraction_valid.unsqueeze(1).expand(-1, 43, -1, -1)
+                # print('Valid fine sif mask', valid_fine_sif_mask.shape)
+                # input_tiles_std[valid_fine_sif_mask == 0] = 0
+                # # avg_pooled_coarse_sifs = avg_pool(input_tiles_std[i:i+1]) / fraction_valid[i:i+1]
 
-        # Loop through all fine pixels, compute linear/MLP predictions, store results
-        for idx, row in tile_fine_averages.iterrows():
-            fine_averages = row[INPUT_COLUMNS].to_numpy(copy=True).reshape(1, -1)
+                # print('Coarse averages', coarse_averages)
+                # print('Avg pooled', avg_pooled_coarse_sifs[0, height_idx, width_idx])
+                # # print('Averages in tile', torch.mean(input_tiles_std[i, :, COARSE_SIF_PIXELS*height_idx:COARSE_SIF_PIXELS*(height_idx+1),
+                # #                                                      COARSE_SIF_PIXELS*width_idx:COARSE_SIF_PIXELS*(width_idx+1)], dim=(1, 2)))
+                # exit(0)
 
-            # Index of fine pixel within this tile
-            height_idx, width_idx = sif_utils.lat_long_to_index(row['lat'] - RES[0]/2, row['lon'] + RES[0]/2,
-                                                                large_tile_lat + TILE_SIZE_DEGREES / 2,
-                                                                large_tile_lon - TILE_SIZE_DEGREES / 2,
-                                                                RES)
-            true_sif = row['SIF']
-            linear_predicted_sif = linear_model.predict(fine_averages)[0]
-            mlp_predicted_sif = mlp_model.predict(fine_averages)[0]
-            unet_predicted_sif = predicted_fine_sifs_unet[height_idx, width_idx]
-            # print('Top left lat/lon', large_tile_lat + TILE_SIZE_DEGREES / 2, large_tile_lon - TILE_SIZE_DEGREES / 2)
-            # print('Lat/lon', row['lat'] - RES[0] / 2, row['lon'] + RES[0]/2)
-            # print('Indices', height_idx, width_idx)
-            # Update linear/MLP prediction array
-            predicted_fine_sifs_linear[height_idx, width_idx] = linear_predicted_sif
-            predicted_fine_sifs_mlp[height_idx, width_idx] = mlp_predicted_sif
-            assert valid_fine_sif_mask_tile[height_idx, width_idx]
-            assert abs(true_sif - true_fine_sifs_tile[height_idx, width_idx]) < 1e-6
-            result_row = [true_sif, linear_predicted_sif, mlp_predicted_sif, unet_predicted_sif,
-                          row['lon'], row['lat'], 'CFIS', row['date'],
-                          large_tile_file, large_tile_lon, large_tile_lat] + fine_averages.flatten().tolist()
-            fine_results.append(result_row)
+            # Loop through all fine pixels, compute linear/MLP predictions, store results
+            for idx, row in tile_fine_averages.iterrows():
+                fine_averages = row[INPUT_COLUMNS].to_numpy(copy=True).reshape(1, -1)
 
-        # Plot selected coarse tiles
-        if i == 0:
-            # Find index of first nonzero coarse pixel
-            valid_coarse = np.nonzero(valid_coarse_sif_mask_tile)
-            coarse_height_idx = valid_coarse[0][0]
-            coarse_width_idx = valid_coarse[1][0]
-            plot_names = ['True SIF', 'Predicted SIF (Linear)', 'Predicted SIF (ANN)', 'Predicted SIF (U-Net)']
-            height_idx = coarse_height_idx * COARSE_SIF_PIXELS
-            width_idx = coarse_width_idx * COARSE_SIF_PIXELS
-            assert valid_coarse_sif_mask_tile[coarse_height_idx, coarse_width_idx]
-            large_tile_upper_lat = large_tile_lat + TILE_SIZE_DEGREES / 2
-            large_tile_left_lon = large_tile_lon + TILE_SIZE_DEGREES / 2
-            subtile_lat = large_tile_upper_lat - RES[0] * (height_idx + COARSE_SIF_PIXELS / 2)
-            subtile_lon = large_tile_left_lon + RES[1] * (width_idx + COARSE_SIF_PIXELS / 2)
+                # Index of fine pixel within this tile
+                height_idx, width_idx = sif_utils.lat_long_to_index(row['lat'] - RES[0]/2, row['lon'] + RES[0]/2,
+                                                                    large_tile_lat + TILE_SIZE_DEGREES / 2,
+                                                                    large_tile_lon - TILE_SIZE_DEGREES / 2,
+                                                                    RES)
+                true_sif = row['SIF']
+                linear_predicted_sif = linear_model.predict(fine_averages)[0]
+                mlp_predicted_sif = mlp_model.predict(fine_averages)[0]
+                unet_predicted_sif = predicted_fine_sifs_unet[height_idx, width_idx]
+                # print('Top left lat/lon', large_tile_lat + TILE_SIZE_DEGREES / 2, large_tile_lon - TILE_SIZE_DEGREES / 2)
+                # print('Lat/lon', row['lat'] - RES[0] / 2, row['lon'] + RES[0]/2)
+                # print('Indices', height_idx, width_idx)
+                # Update linear/MLP prediction array
+                predicted_fine_sifs_linear[height_idx, width_idx] = linear_predicted_sif
+                predicted_fine_sifs_mlp[height_idx, width_idx] = mlp_predicted_sif
+                assert valid_fine_sif_mask_tile[height_idx, width_idx]
+                assert abs(true_sif - true_fine_sifs_tile[height_idx, width_idx]) < 1e-6
+                result_row = [true_sif, linear_predicted_sif, mlp_predicted_sif, unet_predicted_sif,
+                            row['lon'], row['lat'], 'CFIS', row['date'],
+                            large_tile_file, large_tile_lon, large_tile_lat] + fine_averages.flatten().tolist()
+                fine_results.append(result_row)
 
-            true_fine_sifs_tile[valid_fine_sif_mask_tile == 0] = 0
-            sif_tiles = [true_fine_sifs_tile,
-                    predicted_fine_sifs_linear,
-                    predicted_fine_sifs_mlp,
-                    predicted_fine_sifs_unet]
-            cdl_utils.plot_tile(input_tiles_std[i].cpu().detach().numpy(), 
-                    sif_tiles, plot_names, large_tile_lon, large_tile_lat, date, TILE_SIZE_DEGREES)
+            # Plot selected coarse tiles
+            if i == 0:
+                # Find index of first nonzero coarse pixel
+                valid_coarse = np.nonzero(valid_coarse_sif_mask_tile)
+                coarse_height_idx = valid_coarse[0][0]
+                coarse_width_idx = valid_coarse[1][0]
+                plot_names = ['True SIF', 'Predicted SIF (Linear)', 'Predicted SIF (ANN)', 'Predicted SIF (U-Net)']
+                height_idx = coarse_height_idx * COARSE_SIF_PIXELS
+                width_idx = coarse_width_idx * COARSE_SIF_PIXELS
+                assert valid_coarse_sif_mask_tile[coarse_height_idx, coarse_width_idx]
+                large_tile_upper_lat = large_tile_lat + TILE_SIZE_DEGREES / 2
+                large_tile_left_lon = large_tile_lon + TILE_SIZE_DEGREES / 2
+                subtile_lat = large_tile_upper_lat - RES[0] * (height_idx + COARSE_SIF_PIXELS / 2)
+                subtile_lon = large_tile_left_lon + RES[1] * (width_idx + COARSE_SIF_PIXELS / 2)
 
-            # sif_tiles = [true_fine_sifs_tile[height_idx:height_idx+COARSE_SIF_PIXELS, width_idx:width_idx+COARSE_SIF_PIXELS],
-            #         predicted_fine_sifs_linear[height_idx:height_idx+COARSE_SIF_PIXELS, width_idx:width_idx+COARSE_SIF_PIXELS],
-            #         predicted_fine_sifs_mlp[height_idx:height_idx+COARSE_SIF_PIXELS, width_idx:width_idx+COARSE_SIF_PIXELS],
-            #         predicted_fine_sifs_unet[height_idx:height_idx+COARSE_SIF_PIXELS, width_idx:width_idx+COARSE_SIF_PIXELS]]
-            # cdl_utils.plot_tile(input_tiles_std[i, :, height_idx:height_idx+COARSE_SIF_PIXELS, width_idx:width_idx+COARSE_SIF_PIXELS].cpu().detach().numpy(), 
-            #         sif_tiles, plot_names, subtile_lon, subtile_lat, date, TILE_SIZE_DEGREES)
-            
+                # Plot example tile 
+                true_fine_sifs_tile[valid_fine_sif_mask_tile == 0] = 0
+                sif_tiles = [true_fine_sifs_tile,
+                        predicted_fine_sifs_linear,
+                        predicted_fine_sifs_mlp,
+                        predicted_fine_sifs_unet]
+                visualization_utils.plot_tile(input_tiles_std[i].cpu().detach().numpy(), 
+                        sif_tiles, plot_names, large_tile_lon, large_tile_lat, date, TILE_SIZE_DEGREES)
 
-            # cdl_utils.plot_tile(input_tiles_std[i].cpu().detach().numpy(), 
-            #                     true_coarse_sifs[i].cpu().detach().numpy(),
-            #                     true_fine_sifs[i].cpu().detach().numpy(),
-            #                     predicted_coarse_sifs_list,
-            #                     predicted_fine_sifs_list,
-            #                     method_names, large_tile_lon, large_tile_lat, date,
-            #                     TILE_SIZE_DEGREES)
+                # sif_tiles = [true_fine_sifs_tile[height_idx:height_idx+COARSE_SIF_PIXELS, width_idx:width_idx+COARSE_SIF_PIXELS],
+                #         predicted_fine_sifs_linear[height_idx:height_idx+COARSE_SIF_PIXELS, width_idx:width_idx+COARSE_SIF_PIXELS],
+                #         predicted_fine_sifs_mlp[height_idx:height_idx+COARSE_SIF_PIXELS, width_idx:width_idx+COARSE_SIF_PIXELS],
+                #         predicted_fine_sifs_unet[height_idx:height_idx+COARSE_SIF_PIXELS, width_idx:width_idx+COARSE_SIF_PIXELS]]
+                # cdl_utils.plot_tile(input_tiles_std[i, :, height_idx:height_idx+COARSE_SIF_PIXELS, width_idx:width_idx+COARSE_SIF_PIXELS].cpu().detach().numpy(), 
+                #         sif_tiles, plot_names, subtile_lon, subtile_lat, date, TILE_SIZE_DEGREES)
+                
+
+                # cdl_utils.plot_tile(input_tiles_std[i].cpu().detach().numpy(), 
+                #                     true_coarse_sifs[i].cpu().detach().numpy(),
+                #                     true_fine_sifs[i].cpu().detach().numpy(),
+                #                     predicted_coarse_sifs_list,
+                #                     predicted_fine_sifs_list,
+                #                     method_names, large_tile_lon, large_tile_lat, date,
+                #                     TILE_SIZE_DEGREES)
 
 coarse_nrmse = math.sqrt(running_coarse_loss / num_coarse_datapoints) / sif_mean
 fine_nrmse = math.sqrt(running_fine_loss / num_fine_datapoints) / sif_mean
 print('Coarse NRMSE (calculated from running loss)', coarse_nrmse)
 print('Fine NRMSE (calculated from running loss)', fine_nrmse)
 
-# TODO add crop-specific scatters
 coarse_results_df = pd.DataFrame(coarse_results, columns=COLUMN_NAMES)
-coarse_results_df[PREDICTION_COLUMNS] = coarse_results_df[PREDICTION_COLUMNS].clip(lower=MIN_SIF, upper=MAX_SIF)
+# coarse_results_df[PREDICTION_COLUMNS] = coarse_results_df[PREDICTION_COLUMNS].clip(lower=MIN_SIF, upper=MAX_SIF)
 fine_results_df = pd.DataFrame(fine_results, columns=COLUMN_NAMES)
-fine_results_df[PREDICTION_COLUMNS] = fine_results_df[PREDICTION_COLUMNS].clip(lower=MIN_SIF, upper=MAX_SIF)
+# fine_results_df[PREDICTION_COLUMNS] = fine_results_df[PREDICTION_COLUMNS].clip(lower=MIN_SIF, upper=MAX_SIF)
 coarse_results_df.to_csv(COARSE_CFIS_RESULTS_CSV_FILE)
 fine_results_df.to_csv(FINE_CFIS_RESULTS_CSV_FILE)
 
@@ -408,8 +488,8 @@ sif_utils.print_stats(fine_results_df['true_sif'].values.ravel(), fine_results_d
 print('========= Fine pixels: True vs U-Net predictions ==================')
 sif_utils.print_stats(fine_results_df['true_sif'].values.ravel(), fine_results_df['predicted_sif_unet'].values.ravel(), sif_mean, ax=plt.gca())
 plt.title('True vs predicted (U-Net)')
-plt.xlim(left=0, right=MAX_SIF_CLIP)
-plt.ylim(bottom=0, top=MAX_SIF_CLIP)
+plt.xlim(left=MIN_SIF_PLOT, right=MAX_SIF_PLOT)
+plt.ylim(bottom=MIN_SIF_PLOT, top=MAX_SIF_PLOT)
 plt.savefig(CFIS_TRUE_VS_PREDICTED_PLOT + '.png')
 plt.close()
 
@@ -427,8 +507,8 @@ for idx, crop_type in enumerate(COVER_COLUMN_NAMES):
     if len(predicted) >= 2:
         print(' ----- All crop regression ------')
         sif_utils.print_stats(true, predicted, sif_mean, ax=ax)
-        ax.set_xlim(left=0, right=MAX_SIF_CLIP)
-        ax.set_ylim(bottom=0, top=MAX_SIF_CLIP)
+        ax.set_xlim(left=MIN_SIF_PLOT, right=MAX_SIF_PLOT)
+        ax.set_ylim(bottom=MIN_SIF_PLOT, top=MAX_SIF_PLOT)
         ax.set_title(crop_type)
 
 plt.tight_layout()
@@ -455,8 +535,8 @@ for date in DATES:
     ax = axeslist.ravel()[idx]
     sif_utils.print_stats(true, predicted, sif_mean, ax=ax)
 
-    ax.set_xlim(left=0, right=MAX_SIF_CLIP)
-    ax.set_ylim(bottom=0, top=MAX_SIF_CLIP)
+    ax.set_xlim(left=MIN_SIF_PLOT, right=MAX_SIF_PLOT)
+    ax.set_ylim(bottom=MIN_SIF_PLOT, top=MAX_SIF_PLOT)
     ax.set_title(date)
     idx += 1
 

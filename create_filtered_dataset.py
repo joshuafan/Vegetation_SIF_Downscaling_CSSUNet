@@ -13,7 +13,7 @@ from sif_utils import plot_histogram, determine_split, determine_split_random
 import torch
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-DATES = ["2018-04-29", "2018-05-13", "2018-05-27", "2018-06-10", "2018-06-24", 
+DATES = ["2018-04-29", "2018-05-13", "2018-05-27", "2018-06-10", "2018-06-24",
          "2018-07-08", "2018-07-22", "2018-08-05", "2018-08-19", "2018-09-02",
          "2018-09-16"]
 

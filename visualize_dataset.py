@@ -19,7 +19,7 @@ from scipy.stats import pearsonr
 from numpy import poly1d
 
 from sif_utils import lat_long_to_index, plot_histogram, get_subtiles_list
-import cdl_utils
+import visualization_utils
 import simple_cnn
 import tile_transforms
 from SAN import SAN
@@ -32,37 +32,6 @@ from embedding_to_sif_model import EmbeddingToSIFModel
 from embedding_to_sif_nonlinear_model import EmbeddingToSIFNonlinearModel
 
 
-# Taken from https://stackoverflow.com/questions/11159436/multiple-figures-in-a-single-window
-def plot_figures(output_file, figures, nrows = 1, ncols=1, cmap=None):
-    """Plot a dictionary of figures.
-
-    Parameters
-    ----------
-    figures : <title, figure> dictionary
-    ncols : number of columns of subplots wanted in the display
-    nrows : number of rows of subplots wanted in the figure
-    """
-    #fig = plt.figure(figsize=(8, 20))
-    fig, axeslist = plt.subplots(ncols=ncols, nrows=nrows, figsize=(20, 20))
-    for ind,title in enumerate(figures):
-        axeslist.ravel()[ind].imshow(figures[title], vmin=0, vmax=1, cmap=cmap)  #, cmap=plt.gray())
-        axeslist.ravel()[ind].set_title(title)
-        #axeslist.ravel()[ind].set_axis_off()
-    plt.tight_layout() # optional
-    plt.savefig(output_file)
-    plt.close()
-
-def plot_rgb_images(image_rows, image_filename_column, output_file):
-    images = {}
-    for idx, image_row in image_rows.iterrows():
-        subtile = np.load(image_row[image_filename_column]).transpose((1, 2, 0))
-        title = 'Lat' + str(round(image_row['lat'], 6)) + ', Lon' + str(round(image_row['lon'], 6)) + ' (SIF = ' + str(round(image_row['SIF'], 3)) + ')'
-        #print('BLUE: max', np.max(subtile[:, :, 1]), 'min', np.min(subtile[:, :, 1]))
-        #print('GREEN: max', np.max(subtile[:, :, 2]), 'min', np.min(subtile[:, :, 2]))
-        #print('RED: max', np.max(subtile[:, :, 3]), 'min', np.min(subtile[:, :, 3]))
-        images[title] = subtile[:, :, RGB_BANDS] / 1000
-
-    plot_figures(output_file, images, nrows=math.ceil(len(images) / 5), ncols=5)
  
 
 def plot_band_images(image_rows, image_filename_column, output_file_prefix):
@@ -546,11 +515,13 @@ for date in DATES:
 
 # Display tiles with largest/smallest TROPOMI SIFs
 highest_tropomi_sifs = train_tropomi_set.nlargest(25, 'SIF')
-plot_rgb_images(highest_tropomi_sifs, 'tile_file', 'exploratory_plots/tropomi_sif_high_subtiles.png')
-plot_band_images(highest_tropomi_sifs, 'tile_file', 'exploratory_plots/tropomi_sif_high_subtiles')
+visualization_utils.plot_rgb_images(highest_tropomi_sifs, 'tile_file', 'exploratory_plots/tropomi_sif_high_subtiles.png')
+visualization_utils.plot_band_images(highest_tropomi_sifs, 'tile_file', 'exploratory_plots/tropomi_sif_high_subtiles')
+visualization_utils.plot_cdl_layers(highest_tropomi_sifs, 'tile_file', 'exploratory_plots/tropomi_sif_high_subtiles_cdl.png')
 lowest_tropomi_sifs = train_tropomi_set.nsmallest(25, 'SIF')
-plot_rgb_images(lowest_tropomi_sifs, 'tile_file', 'exploratory_plots/tropomi_sif_low_subtiles.png')
-plot_band_images(lowest_tropomi_sifs, 'tile_file', 'exploratory_plots/tropomi_sif_low_subtiles')
+visualization_utils.plot_rgb_images(lowest_tropomi_sifs, 'tile_file', 'exploratory_plots/tropomi_sif_low_subtiles.png')
+visualization_utils.plot_band_images(lowest_tropomi_sifs, 'tile_file', 'exploratory_plots/tropomi_sif_low_subtiles')
+visualization_utils.plot_cdl_layers(lowest_tropomi_sifs, 'tile_file', 'exploratory_plots/tropomi_sif_low_subtiles_cdl')
 
 # Display tiles with largest/smallest OCO-2 SIFs
 highest_oco2_sifs = train_oco2_set.nlargest(25, 'SIF')
@@ -561,6 +532,24 @@ lowest_oco2_sifs = train_oco2_set.nsmallest(25, 'SIF')
 plot_rgb_images(lowest_oco2_sifs, 'tile_file', 'exploratory_plots/oco2_sif_low_subtiles.png')
 plot_band_images(lowest_oco2_sifs, 'tile_file', 'exploratory_plots/oco2_sif_low_subtiles')
 plot_cdl_layers(lowest_oco2_sifs, 'tile_file', 'exploratory_plots/oco2_sif_low_subtiles_cdl.png')
+
+# # Display tiles with largest/smallest TROPOMI SIFs
+# highest_tropomi_sifs = train_tropomi_set.nlargest(25, 'SIF')
+# plot_rgb_images(highest_tropomi_sifs, 'tile_file', 'exploratory_plots/tropomi_sif_high_subtiles.png')
+# plot_band_images(highest_tropomi_sifs, 'tile_file', 'exploratory_plots/tropomi_sif_high_subtiles')
+# lowest_tropomi_sifs = train_tropomi_set.nsmallest(25, 'SIF')
+# plot_rgb_images(lowest_tropomi_sifs, 'tile_file', 'exploratory_plots/tropomi_sif_low_subtiles.png')
+# plot_band_images(lowest_tropomi_sifs, 'tile_file', 'exploratory_plots/tropomi_sif_low_subtiles')
+
+# # Display tiles with largest/smallest OCO-2 SIFs
+# highest_oco2_sifs = train_oco2_set.nlargest(25, 'SIF')
+# plot_rgb_images(highest_oco2_sifs, 'tile_file', 'exploratory_plots/oco2_sif_high_subtiles.png')
+# plot_band_images(highest_oco2_sifs, 'tile_file', 'exploratory_plots/oco2_sif_high_subtiles')
+# plot_cdl_layers(highest_oco2_sifs, 'tile_file', 'exploratory_plots/oco2_sif_high_subtiles_cdl.png')
+# lowest_oco2_sifs = train_oco2_set.nsmallest(25, 'SIF')
+# plot_rgb_images(lowest_oco2_sifs, 'tile_file', 'exploratory_plots/oco2_sif_low_subtiles.png')
+# plot_band_images(lowest_oco2_sifs, 'tile_file', 'exploratory_plots/oco2_sif_low_subtiles')
+# plot_cdl_layers(lowest_oco2_sifs, 'tile_file', 'exploratory_plots/oco2_sif_low_subtiles_cdl.png')
 
 exit(0)
 # print("========================= Lowest OCO2 SIF files =====================")
