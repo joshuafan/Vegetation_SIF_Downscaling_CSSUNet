@@ -12,7 +12,7 @@ from matplotlib import cm
 from matplotlib.colors import Normalize 
 
 from datetime import datetime
-import cdl_utils
+import visualization_utils
 
 from scipy.interpolate import interpn
 from scipy.stats import gaussian_kde, pearsonr, spearmanr
@@ -63,6 +63,99 @@ def lat_long_to_index(lat, lon, dataset_top_bound, dataset_left_bound, resolutio
     return int(height_idx+eps), int(width_idx+eps)
 
 
+# Compute average input features for this subregion, over valid pixels.
+# "input_tile" should be of shape (# channels x height x width).
+# "invalid_mask" should be of shape (height x width).
+def compute_band_averages(input_tile, invalid_mask, missing_reflectance_idx=-1):
+    assert input_tile.shape[1] == invalid_mask.shape[0] and input_tile.shape[2] == invalid_mask.shape[1]
+
+    input_pixels = np.moveaxis(input_tile, 0, -1)
+    input_pixels = input_pixels.reshape((-1, input_pixels.shape[2]))
+    invalid_pixels = invalid_mask.flatten()
+    pixels_with_data = input_pixels[invalid_pixels == 0, :]
+    average_input_features = np.mean(pixels_with_data, axis=0)
+
+    # Only change the "missing reflectance" feature to be the average across all pixels
+    # (not just non-missing ones)
+    average_input_features[missing_reflectance_idx] = np.mean(input_tile[missing_reflectance_idx, :, :])
+    return average_input_features
+
+
+def extract_input_subtile(min_lon, max_lon, min_lat, max_lat, input_tiles_dir, subtile_size_pixels,
+                          res, input_channels=43, reflectance_tile_pixels=371):
+    # Figure out which reflectance files to open. For each edge of the bounding box,
+    # find the left/top bound of the surrounding reflectance large tile.
+    min_lon_tile_left = (math.floor(min_lon * 10) / 10)
+    max_lon_tile_left = (math.floor(max_lon * 10) / 10)
+    min_lat_tile_top = (math.ceil(min_lat * 10) / 10)
+    max_lat_tile_top = (math.ceil(max_lat * 10) / 10)
+    num_tiles_lon = round((max_lon_tile_left - min_lon_tile_left) * 10) + 1
+    num_tiles_lat = round((max_lat_tile_top - min_lat_tile_top) * 10) + 1
+    file_left_lons = np.linspace(min_lon_tile_left, max_lon_tile_left, num_tiles_lon,
+                                 endpoint=True)
+
+    # Go through lats from top to bottom, because indices are numbered from top to bottom
+    file_top_lats = np.linspace(min_lat_tile_top, max_lat_tile_top, num_tiles_lat,
+                                endpoint=True)[::-1]
+    # print("File left lons", file_left_lons)
+    # print("File top lats", file_top_lats)
+
+
+    # Because a sub-tile could span multiple files, patch together all of the files that
+    # contain any portion of the sub-tile
+    columns = []
+    FILE_EXISTS = False  # Set to True if at least one file exists
+    for file_left_lon in file_left_lons:
+        rows = []
+        for file_top_lat in file_top_lats:
+            # Find what reflectance file to read from
+            file_center_lon = round(file_left_lon + 0.05, 2)
+            file_center_lat = round(file_top_lat - 0.05, 2)
+            large_tile_filename = input_tiles_dir + "/reflectance_lat_" + str(file_center_lat) +  \
+                                  "_lon_" + str(file_center_lon) + ".npy"
+            if not os.path.exists(large_tile_filename):
+                print('Needed data file', large_tile_filename, 'does not exist!')
+                # For now, consider the data for this section as missing
+                missing_tile = np.zeros((input_channels, reflectance_tile_pixels,
+                                         reflectance_tile_pixels))
+                missing_tile[-1, :, :] = 1
+                rows.append(missing_tile)
+            else:
+                # print('Large tile filename', large_tile_filename)
+                large_tile = np.load(large_tile_filename)
+                rows.append(large_tile)
+                FILE_EXISTS = True
+
+        column = np.concatenate(rows, axis=1)
+        columns.append(column)
+
+    # If no input files exist, ignore this tile
+    if not FILE_EXISTS:
+        return None
+
+    combined_large_tiles = np.concatenate(columns, axis=2)
+    # print('All large tiles shape', combined_large_tiles.shape)
+
+    # Find indices of bounding box within this combined large tile
+    top_idx, left_idx = lat_long_to_index(max_lat, min_lon, max_lat_tile_top,
+                                          min_lon_tile_left, res)
+    bottom_idx = top_idx + subtile_size_pixels
+    right_idx = left_idx + subtile_size_pixels
+    # print('From combined large tile: Top', top_idx, 'Bottom', bottom_idx, 'Left', left_idx, 'Right', right_idx)
+
+    # If the selected region (box) goes outside the range of the cover or reflectance dataset, that's a bug!
+    if top_idx < 0 or left_idx < 0:
+        print("Index was negative!")
+        exit(1)
+    if (bottom_idx > combined_large_tiles.shape[1] or right_idx > combined_large_tiles.shape[2]):
+        print("Reflectance index went beyond edge of array!")
+        exit(1)
+
+    input_tile = combined_large_tiles[:, top_idx:bottom_idx, left_idx:right_idx]
+    return input_tile
+
+
+
 # For each datapoint, returns the average of the pixels in "array" where "mask" is 1.
 # "array" and "mask" are assumed to have the same shape.
 # "mask" MUST be a binary 1/0 mask over the pixels.
@@ -78,7 +171,7 @@ def masked_average(array, mask, dims_to_average):
 
 
 
-def plot_histogram(column, plot_filename, title=None):
+def plot_histogram(column, plot_filename, plot_dir="/mnt/beegfs/bulk/mirror/jyf6/datasets/exploratory_plots", title=None):
     column = column.flatten()
     column = column[~np.isnan(column)]
     print(plot_filename)
@@ -90,7 +183,7 @@ def plot_histogram(column, plot_filename, title=None):
     n, bins, patches = plt.hist(column, 40, facecolor='blue', alpha=0.5)
     if title is not None:
         plt.title(title)
-    plt.savefig('exploratory_plots/' + plot_filename)
+    plt.savefig(os.path.join(plot_dir, plot_filename))
     plt.close()
 
 
@@ -102,7 +195,6 @@ def density_scatter(x, y, ax=None, sort=True, bins=20, **kwargs):
     """
     if ax is None :
         fig, ax = plt.subplots()
-    print('x/y shape', x.shape, y.shape)
     data , x_e, y_e = np.histogram2d( x, y, bins = bins, density = True )
     z = interpn( ( 0.5*(x_e[1:] + x_e[:-1]) , 0.5*(y_e[1:]+y_e[:-1]) ) , data , np.vstack([x,y]).T , method = "splinef2d", bounds_error = False)
 
@@ -135,6 +227,7 @@ def print_stats(true, predicted, average_sif, print_report=True, ax=None):
     # intercept = true_to_predicted.intercept_
     # true_rescaled = true_to_predicted.predict(true)
     # r2 = r2_score(true_rescaled, predicted)
+    print('(num datapoints)', true.size)
 
     predicted = predicted.reshape(-1, 1)
     predicted_to_true = LinearRegression().fit(predicted, true)
@@ -152,7 +245,6 @@ def print_stats(true, predicted, average_sif, print_report=True, ax=None):
     if ax is not None:
         predicted = predicted.ravel()
         true = true.ravel()
-        print('Predicted/true shape', predicted.shape, true.shape)
         if predicted.size > 1000:
             ax = density_scatter(predicted, true, bins=[40, 40], ax=ax, s=5)
             # # Calculate the point density
@@ -168,9 +260,13 @@ def print_stats(true, predicted, average_sif, print_report=True, ax=None):
         else:
             ax.scatter(predicted, true, color="k", s=5)
 
-        ax.plot(predicted, line, 'r', label='y={:.2f}x+{:.2f} (R^2={:.3f}, NRMSE={:.3f})'.format(slope, intercept, r2, nrmse_scaled))
+        ax.plot(predicted, line, 'r', label='y={:.2f}x+{:.2f} (R^2={:.3f}, unscaled NRMSE={:.3f})'.format(slope, intercept, r2, nrmse_unscaled))
         ax.set(xlabel='Predicted', ylabel='True')
-        ax.legend(fontsize=9)
+        if predicted.size > 1000:
+            loc = 'lower right'
+        else:
+            loc = 'best'
+        ax.legend(fontsize=9, loc=loc)
 
     if print_report:
         print('True vs predicted regression: y = ' + str(round(slope, 3)) + 'x + ' + str(round(intercept, 3)))
