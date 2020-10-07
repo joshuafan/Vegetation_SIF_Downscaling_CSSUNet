@@ -156,6 +156,67 @@ def extract_input_subtile(min_lon, max_lon, min_lat, max_lat, input_tiles_dir, s
 
 
 
+def downsample_sif(sif_array, valid_sif_mask, soundings_array, resolution_pixels):
+    # Zero out SIFs for invalid pixels (pixels with no valid SIF label, or cloudy pixels).
+    # Now, only VALID pixels contain a non-zero SIF.
+    sif_array[valid_sif_mask == 0] = 0
+    soundings_array[valid_sif_mask == 0] = 0
+    # print('Sif array', sif_array.shape)
+    # print('valid sif mask', valid_sif_mask.shape)
+    # print('soundings array', soundings_array.shape)
+
+    # For each coarse-SIF sub-region, compute the fraction of valid pixels.
+    # Each square of "fraction_valid" is: (# valid fine pixels) / (# total fine pixels)
+    avg_pool = nn.AvgPool2d(kernel_size=resolution_pixels)
+    fraction_valid = avg_pool(valid_sif_mask.float())
+
+    # Average together fine SIF predictions for each coarse SIF area.
+    # Each square of "coarse_sifs" is: (sum SIF over valid fine pixels) / (# total fine pixels)
+    coarse_sifs = avg_pool(sif_array)
+    # print('Coarse sifs', coarse_sifs.shape)
+    # print('Fraction valid', fraction_valid.shape)
+
+    # Instead of dividing by the total number of fine pixels, divide by the number of VALID fine pixels.
+    # Each square is now: (sum SIF over valid fine pixels) / (# valid fine pixels), which is what we want.
+    coarse_sifs = coarse_sifs / fraction_valid
+
+    # Compute number of soundings in coarse array: (average * # total fine pixels)
+    coarse_soundings = avg_pool(soundings_array) * (resolution_pixels ** 2)
+
+    return coarse_sifs, fraction_valid, coarse_soundings
+
+
+# Inefficient method, used to double-check correctness of downsampling
+def downsample_sif_for_loop(sif_array, valid_sif_mask, soundings_array, resolution_pixels):
+    # Zero out SIFs for invalid pixels (pixels with no valid SIF label, or cloudy pixels).
+    # Now, only VALID pixels contain a non-zero SIF.
+    sif_array[valid_sif_mask == 0] = 0
+    soundings_array[valid_sif_mask == 0] = 0
+
+    coarse_shape = (int(sif_array.shape[0] / resolution_pixels), int(sif_array.shape[1] / resolution_pixels))
+    coarse_sifs = np.zeros(coarse_shape)
+    fraction_valid = np.zeros(coarse_shape)
+    coarse_soundings = np.zeros(coarse_shape)
+
+    for i in range(coarse_shape[0]):
+        for j in range(coarse_shape[1]):
+            # For each coarse area, grab the corresponding subregion from input tile and SIF
+            valid_sif_mask_subregion = valid_sif_mask[i*resolution_pixels:(i+1)*resolution_pixels, 
+                                                      j*resolution_pixels:(j+1)*resolution_pixels].numpy()
+            if np.count_nonzero(valid_sif_mask_subregion) == 0:
+                continue
+            sif_subregion = sif_array[i*resolution_pixels:(i+1)*resolution_pixels, 
+                                      j*resolution_pixels:(j+1)*resolution_pixels].numpy()
+            soundings_subregion = soundings_array[i*resolution_pixels:(i+1)*resolution_pixels, 
+                                                  j*resolution_pixels:(j+1)*resolution_pixels].numpy()
+            coarse_sifs[i, j] = np.sum(sif_subregion) / np.count_nonzero(valid_sif_mask_subregion)
+            fraction_valid[i, j] = np.count_nonzero(valid_sif_mask_subregion) / valid_sif_mask_subregion.size
+            coarse_soundings[i, j] = np.sum(soundings_subregion)
+    return coarse_sifs, fraction_valid, coarse_soundings
+
+
+
+
 # For each datapoint, returns the average of the pixels in "array" where "mask" is 1.
 # "array" and "mask" are assumed to have the same shape.
 # "mask" MUST be a binary 1/0 mask over the pixels.
@@ -169,6 +230,14 @@ def masked_average(array, mask, dims_to_average):
     # Sum over wanted pixels, then divide by the number of wanted pixels
     return torch.sum(wanted_values, dim=dims_to_average) / torch.sum(mask, dim=dims_to_average)
 
+def masked_average_numpy(array, mask, dims_to_average):
+    assert(len(array.shape) == len(mask.shape))
+
+    # Zero out unwanted pixels
+    wanted_values = array * mask
+
+    # Sum over wanted pixels, then divide by the number of wanted pixels
+    return np.sum(wanted_values, axis=dims_to_average) / np.sum(mask, axis=dims_to_average)
 
 
 def plot_histogram(column, plot_filename, plot_dir="/mnt/beegfs/bulk/mirror/jyf6/datasets/exploratory_plots", title=None):
@@ -215,7 +284,7 @@ def density_scatter(x, y, ax=None, sort=True, bins=20, **kwargs):
     return ax
 
 
-def print_stats(true, predicted, average_sif, print_report=True, ax=None):
+def print_stats(true, predicted, average_sif, print_report=True, ax=None, fit_intercept=False):
     if isinstance(true, list): 
         true = np.array(true)
     if isinstance(predicted, list):
@@ -230,17 +299,24 @@ def print_stats(true, predicted, average_sif, print_report=True, ax=None):
     print('(num datapoints)', true.size)
 
     predicted = predicted.reshape(-1, 1)
-    predicted_to_true = LinearRegression().fit(predicted, true)
+    predicted_to_true = LinearRegression(fit_intercept=fit_intercept).fit(predicted, true)
     slope = predicted_to_true.coef_[0]
-    intercept = predicted_to_true.intercept_
+    if fit_intercept:
+        intercept = predicted_to_true.intercept_
     predicted_rescaled = predicted_to_true.predict(predicted)
     r2 = r2_score(true, predicted_rescaled)
+    r2_unscaled = r2_score(true, predicted)
 
     # Note NRMSE is not scaled linearly?
     nrmse_unscaled = math.sqrt(mean_squared_error(true, predicted)) / average_sif
     nrmse_scaled = math.sqrt(mean_squared_error(true, predicted_rescaled)) / average_sif
     mse_scaled = mean_squared_error(true, predicted_rescaled)
-    line = slope * predicted + intercept
+    if fit_intercept:
+        line = slope * predicted + intercept
+        equation_string = 'y={:.2f}x+{:.2f}'.format(slope, intercept)
+    else:
+        line = slope * predicted
+        equation_string = 'y={:.2f}x'.format(slope)
 
     if ax is not None:
         predicted = predicted.ravel()
@@ -260,7 +336,8 @@ def print_stats(true, predicted, average_sif, print_report=True, ax=None):
         else:
             ax.scatter(predicted, true, color="k", s=5)
 
-        ax.plot(predicted, line, 'r', label='y={:.2f}x+{:.2f} (R^2={:.3f}, unscaled NRMSE={:.3f})'.format(slope, intercept, r2, nrmse_unscaled))
+        ax.plot(predicted, line, 'r', label=equation_string + ' (R^2={:.3f}, unscaled NRMSE={:.3f})'.format(r2, nrmse_unscaled))
+        # ax.plot(predicted, line, 'r', label='y={:.2f}x+{:.2f} (R^2={:.3f}, unscaled NRMSE={:.3f})'.format(slope, intercept, r2, nrmse_unscaled))
         ax.set(xlabel='Predicted', ylabel='True')
         if predicted.size > 1000:
             loc = 'lower right'
@@ -269,12 +346,13 @@ def print_stats(true, predicted, average_sif, print_report=True, ax=None):
         ax.legend(fontsize=9, loc=loc)
 
     if print_report:
-        print('True vs predicted regression: y = ' + str(round(slope, 3)) + 'x + ' + str(round(intercept, 3)))
+        print('True vs predicted regression:', equation_string)
         print('R2:', round(r2, 3))
+        # print('R2 (unscaled):', round(r2_unscaled, 3))
         print('NRMSE (unscaled):', round(nrmse_unscaled, 3))
-        print('NRMSE (scaled):', round(nrmse_scaled, 3))
+        # print('NRMSE (scaled):', round(nrmse_scaled, 3))
 
-    return nrmse_scaled, mse_scaled, r2
+    return r2, nrmse_unscaled
 
     # corr, _ = pearsonr(true, predicted_rescaled)
     # nrmse_unstd = math.sqrt(mean_squared_error(true, predicted)) / average_sif

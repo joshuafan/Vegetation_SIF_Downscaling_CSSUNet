@@ -3,20 +3,39 @@ import torch
 import torch.nn.functional as F
 from skimage.transform import resize
 
+
+# Encourages predictions to be similar within a single crop type, and
+# different across crop types.
+def crop_type_loss(predicted, tile, valid_mask, crop_type_indices=list(range(12, 42))):
+    crop_type_sif_means = torch.empty((len(crop_type_indices)))
+    crop_type_sif_stds = torch.empty((len(crop_type_indices)))
+    for i, idx in enumerate(crop_type_indices):
+        valid_crop_type_pixels = tile[idx] & valid_mask
+        print('Valid crop type pixels', valid_crop_type_pixels)
+        print('Count', torch.count_nonzero(valid_crop_type_pixels))
+        predicted_sif_crop_type = predicted[valid_crop_type_pixels].flatten()
+        print('Predicted sif crop type shape', predicted_sif_crop_type.shape)
+        crop_type_sif_means[i] = torch.mean(predicted_sif_crop_type)
+        crop_type_sif_stds[i] = torch.std(predicted_sif_crop_type)
+    print('Crop type sif means', crop_type_sif_means)
+    print('Crop type sif stds', crop_type_sif_stds)
+    return torch.std(crop_type_sif_means) - torch.mean(crop_type_sif_stds)
+
+
+
 class StandardizeTile(object):
     """
     Standardizes the given bands (listed in "bands_to_transform") so that each band has
     mean 0, standard deviation 1.
     Note: do not standardize bands that are already binary masks.
     """
-    def __init__(self, band_means, band_stds, bands_to_transform=list(range(0,12)),):
+    def __init__(self, band_means, band_stds, bands_to_transform=list(range(0,12))):
         self.bands_to_transform = bands_to_transform 
         self.band_means = band_means[bands_to_transform, np.newaxis, np.newaxis]
         self.band_stds = band_stds[bands_to_transform, np.newaxis, np.newaxis]
 
     def __call__(self, tile):
         tile[self.bands_to_transform, :, :] = (tile[self.bands_to_transform, :, :] - self.band_means) / self.band_stds
-        tile[-1, :, :] = np.logical_not(tile[-1, :, :])
         return tile
 
 
@@ -37,13 +56,13 @@ class ClipTile(object):
     Clips the specified bands ("bands_to_clip") to within the range [min_input, max_input].
     """
     def __init__(self, min_input, max_input, bands_to_clip=list(range(0, 12))):
-        self.min_input = min_input
-        self.max_input = max_input
-        self.bands_to_clip = bands_to_clip
+        self._min_input = min_input
+        self._max_input = max_input
+        self._bands_to_clip = bands_to_clip
     
     def __call__(self, tile):
-        if self.min_input is not None and self.max_input is not None:
-            tile[self.bands_to_clip, :, :] = np.clip(tile[self.bands_to_clip, :, :], a_min=self.min_input, a_max=self.max_input)
+        if self._min_input is not None and self._max_input is not None:
+            tile[self._bands_to_clip, :, :] = np.clip(tile[self._bands_to_clip, :, :], a_min=self._min_input, a_max=self._max_input)
         return tile
 
 
@@ -60,6 +79,17 @@ class GaussianNoise(object):
         #print('After noise', tile[self.continuous_bands, 0:3, 0:3])
         return tile
 
+class ColorDistortion(object):
+    def __init__(self, continuous_bands, standard_deviation=0.1):
+        self.continuous_bands = continuous_bands
+        self.standard_deviation = standard_deviation
+
+    def __call__(self, tile):
+        noise = np.random.normal(loc=0, scale=self.standard_deviation, size=(len(self.continuous_bands)))
+        noise = noise[:, np.newaxis, np.newaxis].astype(np.float32)
+        tile[self.continuous_bands, :, :] = tile[self.continuous_bands, :, :] + noise
+        #print('After noise', tile[self.continuous_bands, 0:3, 0:3])
+        return tile
 
 class GaussianNoiseSubtiles(object):
     def __init__(self, continuous_bands, standard_deviation=0.1):

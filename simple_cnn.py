@@ -304,9 +304,10 @@ class SimpleCNNSmall5(nn.Module):
 class PixelNN(nn.Module):
     def __init__(self, input_channels, output_dim, min_output=None, max_output=None):
         super(PixelNN, self).__init__()
-        self.conv1 = nn.Conv2d(input_channels, 256, kernel_size=1, stride=1, padding=0)
-        self.conv2 = nn.Conv2d(256, 256, kernel_size=1, stride=1, padding=0)
-        self.conv3 = nn.Conv2d(256, 1, kernel_size=1, stride=1, padding=0)
+        self.conv1 = nn.Conv2d(input_channels, 100, kernel_size=1, stride=1, padding=0)
+        self.conv2 = nn.Conv2d(100, 100, kernel_size=1, stride=1, padding=0)
+        self.conv3 = nn.Conv2d(100, 100, kernel_size=1, stride=1, padding=0)
+        self.conv4 = nn.Conv2d(100, 1, kernel_size=1, stride=1, padding=0)
 
         if min_output is not None and max_output is not None:
             self.restrict_output = True
@@ -318,7 +319,8 @@ class PixelNN(nn.Module):
     def forward(self, x):
         x = F.relu(self.conv1(x))
         x = F.relu(self.conv2(x))
-        x = self.conv3(x)
+        x = F.relu(self.conv3(x))
+        x = self.conv4(x)
         if self.restrict_output:
             x = (F.tanh(x) * self.scale_factor) + self.mean_output
         return x

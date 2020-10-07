@@ -23,9 +23,10 @@ class CombinedCfisOco2Dataset(Dataset):
     def __init__(self, cfis_tile_info, oco2_tile_info, transform,
                  min_cfis_soundings,
                  tile_file_column='tile_file',
-                 cfis_fine_sif_file_column='sif_fine_file',
-                 cfis_fine_soundings_file_column='fine_soundings',
-                 cfis_coarse_sif_column='sif_coarse_file',
+                 cfis_fine_sif_file_column='fine_sif_file',
+                 cfis_fine_soundings_file_column='fine_soundings_file',
+                 cfis_coarse_sif_column='SIF',
+                 cfis_coarse_soundings_column='num_soundings',
                  oco2_sif_column='SIF',
                  oco2_soundings_column='num_soundings'):
         """
@@ -36,11 +37,12 @@ class CombinedCfisOco2Dataset(Dataset):
         self.cfis_tile_info = cfis_tile_info
         self.oco2_tile_info = oco2_tile_info
         self.transform = transform
-        self.min_cfis_soundings = min_cfis_soundings
+        self.min_cfis_soundings = min_cfis_soundings  # TODO remove this
         self.tile_file_column = tile_file_column
         self.cfis_fine_sif_file_column = cfis_fine_sif_file_column
         self.cfis_fine_soundings_file_column = cfis_fine_soundings_file_column
         self.cfis_coarse_sif_column = cfis_coarse_sif_column
+        self.cfis_coarse_soundings_column = cfis_coarse_soundings_column
         self.oco2_sif_column = oco2_sif_column
         self.oco2_soundings_column = oco2_soundings_column
 
@@ -70,18 +72,37 @@ class CombinedCfisOco2Dataset(Dataset):
             cfis_input_tile = np.load(current_cfis_tile_info.loc[self.tile_file_column], allow_pickle=True)
             cfis_fine_sif_tile = np.load(current_cfis_tile_info.loc[self.cfis_fine_sif_file_column], allow_pickle=True)
             cfis_fine_soundings_tile = np.load(current_cfis_tile_info.loc[self.cfis_fine_soundings_file_column], allow_pickle=True)
-            
+            # print('Cfis input tile', cfis_input_tile[])
             # Mark fine SIF entries with too few soundings as invalid (so that they don't get counted in the loss)
             # cfis_fine_sif_tile.mask[cfis_fine_soundings_tile < self.min_cfis_soundings] = True
-            cfis_coarse_sif = np.load(current_cfis_tile_info.loc[self.cfis_coarse_sif_column], allow_pickle=True)
+            # cfis_coarse_sif = current_tile_info[self.cfis_coarse_sif_column]  # np.load(current_cfis_tile_info.loc[self.cfis_coarse_sif_column], allow_pickle=True)
             if self.transform:
-                cfis_input_tile = self.transform(cfis_input_tile)
+                consolidated_tile = np.concatenate([cfis_input_tile, np.expand_dims(cfis_fine_sif_tile.data, axis=0),
+                                                    np.expand_dims(cfis_fine_sif_tile.mask, axis=0),
+                                                    np.expand_dims(cfis_fine_soundings_tile, axis=0)], axis=0)
+                # print('random', consolidated_tile[:, 0, 0])
+                # print('random', consolidated_tile[:, 1, 1])
+                # print('random', consolidated_tile[:, 2, 2])
+                # print('random', consolidated_tile[:, 3, 3])
+                # print('consolidated tile', consolidated_tile.shape)
+                consolidated_tile = self.transform(consolidated_tile)
+                # print('after transform', consolidated_tile.shape)
+                # print('random', consolidated_tile[:, 0, 0])
+                # print('random', consolidated_tile[:, 1, 1])
+                # print('random', consolidated_tile[:, 2, 2])
+                # print('random', consolidated_tile[:, 3, 3])
+
+                cfis_input_tile = consolidated_tile[:-3]
+                cfis_fine_sif_tile = consolidated_tile[-3]
+                cfis_fine_sif_mask = consolidated_tile[-2]
+                cfis_fine_soundings_tile = consolidated_tile[-1]
 
             sample = {'cfis_input_tile': torch.tensor(cfis_input_tile, dtype=torch.float),
-                    'cfis_fine_sif': torch.tensor(cfis_fine_sif_tile.data, dtype=torch.float),
-                    'cfis_fine_sif_mask': torch.tensor(cfis_fine_sif_tile.mask, dtype=torch.bool),
+                    'cfis_fine_sif': torch.tensor(cfis_fine_sif_tile, dtype=torch.float),
+                    'cfis_fine_sif_mask': torch.tensor(cfis_fine_sif_mask, dtype=torch.bool),
                     'cfis_fine_soundings': torch.tensor(cfis_fine_soundings_tile, dtype=torch.float),
-                    'cfis_coarse_sif': torch.tensor(cfis_coarse_sif, dtype=torch.float),
+                    'cfis_coarse_sif': current_cfis_tile_info[self.cfis_coarse_sif_column],  #torch.tensor(cfis_coarse_sif, dtype=torch.float),
+                    'cfis_coarse_soundings': current_cfis_tile_info[self.cfis_coarse_soundings_column],
                     'cfis_tile_file': current_cfis_tile_info.loc[self.tile_file_column],
                     'cfis_lon': current_cfis_tile_info.loc['lon'],
                     'cfis_lat': current_cfis_tile_info.loc['lat'],

@@ -176,7 +176,7 @@ for idx, column in enumerate(COLUMNS_TO_STANDARDIZE):
     val_oco2_set[column] = np.clip((val_oco2_set[column] - band_means[idx]) / band_stds[idx], a_min=MIN_INPUT, a_max=MAX_INPUT)
     test_set[column] = np.clip((test_set[column] - band_means[idx]) / band_stds[idx], a_min=MIN_INPUT, a_max=MAX_INPUT)
     eval_cfis_set[column] = np.clip((eval_cfis_set[column] - band_means[idx]) / band_stds[idx], a_min=MIN_INPUT, a_max=MAX_INPUT)
-    
+
     # column_mean = train_set[column].mean()
     # column_std = train_set[column].std()
     # cfis_column_mean = eval_cfis_set[column].mean()

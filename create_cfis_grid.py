@@ -23,28 +23,14 @@ OCO2_FILES = [os.path.join(OCO2_DIR, "oco2_20160615_20160629_3km.nc"),
               os.path.join(OCO2_DIR, "oco2_20160801_20160816_3km.nc")]
 
 MIN_SOUNDINGS_FINE = 1
-MIN_COARSE_DATAPOINTS_PER_TILE = 1
-MAX_INVALID_SIF_PIXELS = 0.99  # Max fraction of invalid pixels when computing coarse-resolution SIF
+MIN_FRACTION_VALID_PIXELS = 0.1  # Max fraction of invalid pixels when computing coarse-resolution SIF
 MIN_CDL_COVERAGE = 0.5  # Exclude areas where there is no CDL coverage (e.g. Canada)
 CDL_INDICES = list(range(12, 42))
-# MIN_SIF = 0.2
 FRACTION_VAL = 0.2
 FRACTION_TEST = 0.2
 
 # Scaling factors to correct for differing wavelengths
 OCO2_SCALING_FACTOR = 1.69 / 1.52
-
-# # Columns for U-Net tile dataset (mapping tile to per-pixel SIF and coarse SIF)
-# CFIS_TILE_METADATA_COLUMNS = ['lon', 'lat', 'date', 'tile_file', 'sif_fine_file', 'sif_coarse_file', 
-#                               'fine_soundings', 'coarse_soundings']
-
-# # CFIS U-Net tile datasets
-# CFIS_TILE_METADATA_TRAIN_FILE = os.path.join(CFIS_DIR, 'cfis_tile_metadata_train.csv')
-# CFIS_TILE_METADATA_VAL_FILE = os.path.join(CFIS_DIR, 'cfis_tile_metadata_val.csv')
-# CFIS_TILE_METADATA_TEST_FILE = os.path.join(CFIS_DIR, 'cfis_tile_metadata_test.csv')
-# cfis_tile_metadata_train = []
-# cfis_tile_metadata_val = []
-# cfis_tile_metadata_test = []
 
 # OCO-2 tile datasets
 OCO2_METADATA_TRAIN_FILE = os.path.join(OCO2_DIR, 'oco2_metadata_train.csv')
@@ -67,7 +53,7 @@ BAND_AVERAGE_COLUMNS = ['lon', 'lat', 'date', 'tile_file', 'ref_1', 'ref_2', 're
                         'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
                         'lentils', 'missing_reflectance', 'SIF', 'num_soundings']
 FINE_CFIS_AVERAGE_COLUMNS = BAND_AVERAGE_COLUMNS + ['coarse_sif']
-COARSE_CFIS_AVERAGE_COLUMNS = BAND_AVERAGE_COLUMNS + ['num_valid_pixels', 'fine_sif_file', 'fine_soundings_file']
+COARSE_CFIS_AVERAGE_COLUMNS = BAND_AVERAGE_COLUMNS + ['fraction_valid', 'fine_sif_file', 'fine_soundings_file']
 
 # CFIS coarse/fine averages
 FINE_AVERAGES_TRAIN_FILE = os.path.join(CFIS_DIR, 'cfis_fine_averages_train.csv')
@@ -108,7 +94,6 @@ TOP_BOUND = 48.7
 RES = (0.00026949458523585647, 0.00026949458523585647)  # Degrees per Landsat pixel
 TILE_SIZE_PIXELS = 100  # Size of output tile, in Landsat pixels
 TILE_SIZE_DEGREES = TILE_SIZE_PIXELS * RES[0]
-COARSE_SIF_PIXELS = 25  # Size of each (generated) coarse SIF datapoint, in Landsat pixels
 
 REFLECTANCE_PIXELS = 371
 INPUT_CHANNELS = 43
@@ -125,9 +110,7 @@ for date_idx, DATE in enumerate(DATES):
 
     # Output tile prefixes
     INPUT_TILE_PREFIX = os.path.join(OUTPUT_TILES_DIR, 'input_tile_')
-    # COARSE_SIF_PREFIX = os.path.join(OUTPUT_TILES_DIR, 'coarse_sif_')
     FINE_SIF_PREFIX = os.path.join(OUTPUT_TILES_DIR, 'fine_sif_')
-    # COARSE_SOUNDINGS_PREFIX = os.path.join(OUTPUT_TILES_DIR, 'coarse_soundings_')
     FINE_SOUNDINGS_PREFIX = os.path.join(OUTPUT_TILES_DIR, 'fine_soundings_')
 
     # Maps from *region indices* of the upper/left corner of each output tile to:
@@ -137,7 +120,6 @@ for date_idx, DATE in enumerate(DATES):
     tile_to_cfis_soundings_array = dict()
     tile_to_oco2_sif = dict()
     tile_to_oco2_soundings = dict()
-
 
     # Read OCO-2 dataset
     dataset = xr.open_dataset(OCO2_FILES[date_idx])
@@ -154,7 +136,7 @@ for date_idx, DATE in enumerate(DATES):
 
     # In order to align CFIS and OCO-2 grids, we need to know where to "start" the OCO-2 grid.
     # (OCO2_LAT_OFFSET, OCO2_LON_OFFSET) are the *region indices* of the upper left corner of
-    # the OCO-2 grid (where the grid starts). 
+    # the OCO-2 grid (where the grid starts).
     # (Recall: *region indices* are relative to TOP_BOUND/LEFT_BOUND of the entire dataset.)
     oco2_grid_top_degrees = oco2_lats[0] + TILE_SIZE_DEGREES / 2
     oco2_grid_left_degrees = oco2_lons[0] - TILE_SIZE_DEGREES / 2
@@ -199,7 +181,7 @@ for date_idx, DATE in enumerate(DATES):
 
     # Loop through all soundings. The arrays in "tile_to_sum_sif_array" will store the SUM
     # of all SIF soundings per pixel. Then we will divide by the number of soundings (computed in
-    # "cfis_") to get the AVERAGE.
+    # "tile_to_cfis_soundings_array") to get the AVERAGE.
     for i in range(lons.shape[0]):
         if lats[i] < BOTTOM_BOUND or lats[i] > TOP_BOUND or lons[i] < LEFT_BOUND or \
                                      lons[i] > RIGHT_BOUND:
@@ -245,11 +227,10 @@ for date_idx, DATE in enumerate(DATES):
         tile_to_cfis_soundings_array[tile_indices] = tile_soundings
 
 
-    # Now, compute the average SIF for each fine pixel
+    # Now, compute the average CFIS SIF for each fine pixel
     for tile_indices in tile_to_sum_cfis_sif_array:
         sum_sif_array = tile_to_sum_cfis_sif_array[tile_indices]
         soundings_array = tile_to_cfis_soundings_array[tile_indices]
-        num_pixels_with_data = np.count_nonzero(soundings_array)
 
         # Create a mask of which pixels have enough SIF soundings to be reliable
         invalid_mask = soundings_array < MIN_SOUNDINGS_FINE
@@ -259,9 +240,7 @@ for date_idx, DATE in enumerate(DATES):
         avg_sif_array = np.zeros_like(sum_sif_array)
         avg_sif_array[valid_mask] = (sum_sif_array[valid_mask] / soundings_array[valid_mask])
 
-        # # Also filter out low-SIF pixels
-        # low_sif_mask = avg_sif_array < MIN_SIF
-        # invalid_mask = np.logical_or(invalid_mask, low_sif_mask)
+        # Store masked array in dictionary
         tile_to_avg_cfis_sif_array[tile_indices] = np.ma.array(avg_sif_array, mask=invalid_mask)
 
 
@@ -305,8 +284,6 @@ for date_idx, DATE in enumerate(DATES):
             print('CDL coverage too low', tile_description)
             continue
 
-        landsat_cloud_mask = input_tile[MISSING_REFLECTANCE_IDX, :, :]
-
         # Save input data to file
         input_tile_filename = INPUT_TILE_PREFIX + tile_description + '.npy'
         np.save(input_tile_filename, input_tile)
@@ -316,7 +293,8 @@ for date_idx, DATE in enumerate(DATES):
             oco2_sif = tile_to_oco2_sif[tile_indices]
             oco2_soundings = tile_to_oco2_soundings[tile_indices]
             average_input_features = sif_utils.compute_band_averages(input_tile, input_tile[MISSING_REFLECTANCE_IDX])
-            oco2_tile_metadata = [tile_center_lon, tile_center_lat, DATE, input_tile_filename] + average_input_features.tolist() + [oco2_sif, oco2_soundings]
+            oco2_tile_metadata = [tile_center_lon, tile_center_lat, DATE, input_tile_filename] + \
+                                  average_input_features.tolist() + [oco2_sif, oco2_soundings]
 
             if split == 'train':
                 oco2_metadata_train.append(oco2_tile_metadata)
@@ -334,13 +312,13 @@ for date_idx, DATE in enumerate(DATES):
             fine_soundings_array = tile_to_cfis_soundings_array[tile_indices]
 
             # If the corresponding Landsat pixel has cloud cover, mark this SIF pixel as invalid
+            landsat_cloud_mask = input_tile[MISSING_REFLECTANCE_IDX, :, :]
             new_invalid_mask = np.logical_or(fine_sif_array.mask, landsat_cloud_mask)
             fine_sif_array.mask = new_invalid_mask
 
             # Check how many SIF pixels in this tile actually have data. If not enough do, skip this tile.
-            num_invalid_pixels = np.count_nonzero(fine_sif_array.mask)
-            num_valid_pixels = fine_sif_array.size - num_invalid_pixels
-            if num_invalid_pixels / fine_sif_array.size > MAX_INVALID_SIF_PIXELS:
+            fraction_valid = 1 - (np.count_nonzero(fine_sif_array.mask) / fine_sif_array.size)
+            if fraction_valid < MIN_FRACTION_VALID_PIXELS:
                 continue
 
             # Compute the average SIF and total number of soundings for this subregion
@@ -348,87 +326,24 @@ for date_idx, DATE in enumerate(DATES):
             tile_soundings = fine_soundings_array.sum()
             average_input_features = sif_utils.compute_band_averages(input_tile, fine_sif_array.mask)
 
-            # # Compute coarse-resolution version
-            # NUM_COARSE_PIXELS_PER_TILE = int(TILE_SIZE_PIXELS / COARSE_SIF_PIXELS)
-            # coarse_sif_array = np.zeros([NUM_COARSE_PIXELS_PER_TILE, NUM_COARSE_PIXELS_PER_TILE])
-            # coarse_soundings_array = np.zeros([NUM_COARSE_PIXELS_PER_TILE, NUM_COARSE_PIXELS_PER_TILE])
-            # coarse_invalid_mask = np.zeros([NUM_COARSE_PIXELS_PER_TILE, NUM_COARSE_PIXELS_PER_TILE])
-            # NUM_COARSE_SIF_DATAPOINTS = 0
-            # coarse_sif_points = []
-    
-            # for i in range(0, TILE_SIZE_PIXELS, COARSE_SIF_PIXELS):
-            #     for j in range(0, TILE_SIZE_PIXELS, COARSE_SIF_PIXELS):
-            #         # For each coarse area, grab the corresponding subregion from input tile and SIF
-            #         input_subregion = input_tile[:, i:i+COARSE_SIF_PIXELS, j:j+COARSE_SIF_PIXELS]
-            #         sif_subregion = fine_sif_array[i:i+COARSE_SIF_PIXELS, j:j+COARSE_SIF_PIXELS]
-            #         soundings_subregion = fine_soundings_array[i:i+COARSE_SIF_PIXELS, j:j+COARSE_SIF_PIXELS]
-
-            #         # Check how many SIF pixels in this "subregion" actually have data.
-            #         # If many are missing data, mark this subregion as invalid
-            #         num_invalid_pixels = np.count_nonzero(sif_subregion.mask)
-            #         num_valid_pixels = sif_subregion.size - num_invalid_pixels
-            #         if num_invalid_pixels / sif_subregion.size > MAX_INVALID_SIF_PIXELS:
-            #             coarse_invalid_mask[i // COARSE_SIF_PIXELS, j // COARSE_SIF_PIXELS] = True
-            #             continue
-
-            #         # Compute the average SIF and total number of soundings for this subregion
-            #         subregion_sif = sif_subregion.mean()
-            #         subregion_soundings = soundings_subregion.sum()
-
-            #         # # Compute avg sif using for loop
-            #         # num_points = 0
-            #         # sum_sif_subregion = 0.
-            #         # for idx1 in range(sif_subregion.shape[0]):
-            #         #     for idx2 in range(sif_subregion.shape[1]):
-            #         #         if not sif_subregion.mask[idx1, idx2]:
-            #         #             sum_sif_subregion += sif_subregion.data[idx1, idx2]
-            #         #             num_points += 1
-            #         # subregion_sif_for_loop = sum_sif_subregion / num_points
-            #         # print('Subregion SIF: by mean method', subregion_sif, 'by for loop', subregion_sif_for_loop)
-            #         # print('Subregion SIF:', subregion_sif, '- based on', subregion_soundings, 'soundings (from', (sif_subregion.size - num_invalid_pixels), 'pixels)')
-            #         # print('Subregion:', sif_subregion)
-            #         # print('Num soundings', subregion_soundings)
-            #         # assert subregion_sif_for_loop == subregion_sif
-
-            #         coarse_sif_array[i // COARSE_SIF_PIXELS, j // COARSE_SIF_PIXELS] = subregion_sif
-            #         coarse_soundings_array[i // COARSE_SIF_PIXELS, j // COARSE_SIF_PIXELS] = subregion_soundings
-            #         NUM_COARSE_SIF_DATAPOINTS += 1
-
-            #         # Compute average input features for this coarse SIF area
-            #         average_input_features = sif_utils.compute_band_averages(input_subregion, sif_subregion.mask)
-
-            #         # Add a row to "coarse SIF metadata"
-            #         subregion_lat = max_lat - RES[0] * (i + COARSE_SIF_PIXELS / 2)
-            #         subregion_lon = min_lon + RES[1] * (j + COARSE_SIF_PIXELS / 2)
-            #         coarse_sif_points.append([subregion_lon, subregion_lat, DATE, input_tile_filename] + average_input_features.tolist() + [subregion_sif, subregion_soundings, num_valid_pixels])
-
-            # If this tile has too few coarse SIF datapoints, remove it
-            # if NUM_COARSE_SIF_DATAPOINTS < MIN_COARSE_DATAPOINTS_PER_TILE:
-            #     continue
-            # coarse_sif_array_masked = np.ma.array(coarse_sif_array, mask=coarse_invalid_mask)
-
             # Fine SIF/soundings file names to output to
             fine_sif_filename = FINE_SIF_PREFIX + tile_description + '.npy'
             fine_soundings_filename = FINE_SOUNDINGS_PREFIX + tile_description + '.npy'
-            # coarse_sif_filename = COARSE_SIF_PREFIX + tile_description + '.npy'
-            # coarse_soundings_filename = COARSE_SOUNDINGS_PREFIX + tile_description + '.npy'
 
             # Write fine SIF tile and fine soundings tile to files
             fine_sif_array.dump(fine_sif_filename)
             np.save(fine_soundings_filename, fine_soundings_array)
-            # coarse_sif_array_masked.dump(coarse_sif_filename)
-            # np.save(coarse_soundings_filename, coarse_soundings_array)
 
             # Plot tile
             # cdl_utils.plot_tile(input_tile, coarse_sif_array_masked, fine_sif_array, center_lon, center_lat, TILE_SIZE_DEGREES, tile_description)
 
             # Create row: reflectance/crop cover tile, fine SIF, coarse SIF.
-            tile_metadata = [tile_center_lon, tile_center_lat, DATE, input_tile_filename] + average_input_features.tolist() + [tile_sif, tile_soundings, num_valid_pixels, fine_sif_filename, fine_soundings_filename]
+            tile_metadata = [tile_center_lon, tile_center_lat, DATE, input_tile_filename] + average_input_features.tolist() + \
+                            [tile_sif, tile_soundings, fraction_valid, fine_sif_filename, fine_soundings_filename]
 
-            # tile_metadata = [center_lon, center_lat, DATE, input_tile_filename, fine_sif_filename, coarse_sif_filename, fine_soundings_filename, coarse_soundings_filename]
-
-            # For each *valid* fine-resolution SIF pixel, extract features, and add to dataset. To-do: vectorize
+            # For each *valid* fine-resolution SIF pixel, extract features, and add to dataset.
             fine_sif_points = []
+            pixel_sif_sum = 0
             for i in range(fine_sif_array.shape[0]):
                 for j in range(fine_sif_array.shape[1]):
                     # Exclude pixels where SIF is invalid
@@ -441,10 +356,14 @@ for date_idx, DATE in enumerate(DATES):
                     pixel_lat = tile_max_lat - RES[0] * i
                     pixel_lon = tile_min_lon + RES[1] * j
                     pixel_sif = fine_sif_array[i, j]
-                    # subregion_sif = coarse_sif_array[i // COARSE_SIF_PIXELS, j // COARSE_SIF_PIXELS]
+                    pixel_sif_sum += pixel_sif
                     pixel_soundings = fine_soundings_array[i, j]
                     assert pixel_soundings >= MIN_SOUNDINGS_FINE
                     fine_sif_points.append([pixel_lon, pixel_lat, DATE, input_tile_filename] + input_features.tolist() + [pixel_sif, pixel_soundings, tile_sif])
+
+            print('===============================')
+            print('Avg Pixel SIF', pixel_sif_sum / len(fine_sif_points))
+            print('Tile SIF', tile_sif)
 
             if split == 'train':
                 coarse_averages_train.append(tile_metadata)
@@ -458,17 +377,12 @@ for date_idx, DATE in enumerate(DATES):
             else:
                 print('Invalid split!!!', split)
                 exit(1)
-    
 
 
 print('Number of fine SIF points (train/val/test)', len(fine_averages_train), len(fine_averages_val), len(fine_averages_test))
 print('Number of coarse SIF points (train/val/test)', len(coarse_averages_train), len(coarse_averages_val), len(coarse_averages_test))
-# print('Number of U-Net tiles (train/val/test)', len(cfis_tile_metadata_train), len(cfis_tile_metadata_val), len(cfis_tile_metadata_test))
 
 # Construct DataFrames
-# cfis_tile_metadata_train_df = pd.DataFrame(cfis_tile_metadata_train, columns=CFIS_TILE_METADATA_COLUMNS)
-# cfis_tile_metadata_val_df = pd.DataFrame(cfis_tile_metadata_val, columns=CFIS_TILE_METADATA_COLUMNS)
-# cfis_tile_metadata_test_df = pd.DataFrame(cfis_tile_metadata_test, columns=CFIS_TILE_METADATA_COLUMNS)
 oco2_metadata_train_df = pd.DataFrame(oco2_metadata_train, columns=BAND_AVERAGE_COLUMNS)
 oco2_metadata_val_df = pd.DataFrame(oco2_metadata_val, columns=BAND_AVERAGE_COLUMNS)
 oco2_metadata_test_df = pd.DataFrame(oco2_metadata_test, columns=BAND_AVERAGE_COLUMNS)
@@ -480,9 +394,6 @@ coarse_averages_val_df = pd.DataFrame(coarse_averages_val, columns=COARSE_CFIS_A
 coarse_averages_test_df = pd.DataFrame(coarse_averages_test, columns=COARSE_CFIS_AVERAGE_COLUMNS)
 
 # Write DataFrames to files
-# cfis_tile_metadata_train_df.to_csv(CFIS_TILE_METADATA_TRAIN_FILE)
-# cfis_tile_metadata_val_df.to_csv(CFIS_TILE_METADATA_VAL_FILE)
-# cfis_tile_metadata_test_df.to_csv(CFIS_TILE_METADATA_TEST_FILE)
 oco2_metadata_train_df.to_csv(OCO2_METADATA_TRAIN_FILE)
 oco2_metadata_val_df.to_csv(OCO2_METADATA_VAL_FILE)
 oco2_metadata_test_df.to_csv(OCO2_METADATA_TEST_FILE)

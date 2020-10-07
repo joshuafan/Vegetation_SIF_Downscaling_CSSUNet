@@ -25,8 +25,7 @@ UNFILTERED_OCO2_FILES = [os.path.join(dataset_dir, "oco2_eval_subtiles.csv") for
 # print("Unfiltered OCO2 files:", UNFILTERED_OCO2_FILES)
 
 # Create a folder for the processed dataset
-# PROCESSED_DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset")
-PROCESSED_DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset_cloudy")
+PROCESSED_DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset")
 if not os.path.exists(PROCESSED_DATASET_DIR):
     os.makedirs(PROCESSED_DATASET_DIR)
 
@@ -63,34 +62,32 @@ CDL_COLUMNS = ['grassland_pasture', 'corn', 'soybean', 'shrubland',
 MIN_CDL_COVERAGE = 0.8
 MAX_LANDSAT_CLOUD_COVER = 0.5
 MAX_TROPOMI_CLOUD_COVER = 0.2
-MIN_TROPOMI_NUM_SOUNDINGS = 5
-MIN_OCO2_NUM_SOUNDINGS = 5
+MIN_TROPOMI_NUM_SOUNDINGS = 3
+MIN_OCO2_NUM_SOUNDINGS = 3
 MIN_SIF = 0.2
-TROPOMI_FRACTION_VAL = 0.1
-OCO2_FRACTION_VAL = 0.4
-OCO2_FRACTION_TEST = 0.5
+FRACTION_VAL = 0.2
+FRACTION_TEST = 0.2
 OCO2_SCALING_FACTOR = 1.69
 
 
 # Divide the region into 1x1 degree large grid areas. Split them between train/val/test
-# LONS = list(range(-108, -82))  # These lat/lons are the UPPER LEFT corner of the large grid areas
-# LATS = list(range(39, 50))
-# large_grid_areas = dict()
-# for lon in LONS:
-#     for lat in LATS:
-#         random_number = random.random()
-#         if random_number < 1 - FRACTION_TEST - FRACTION_VAL:
-#             # split = 'train'
-#             split = 'val'
-#         elif random_number < 1 - FRACTION_TEST:
-#             split = 'val'
-#         else:
-#             split = 'test'
-#         large_grid_areas[(lon, lat)] = split
+LONS = list(range(-108, -82))  # These lat/lons are the UPPER LEFT corner of the large grid areas
+LATS = list(range(39, 50))
+large_grid_areas = dict()
+for lon in LONS:
+    for lat in LATS:
+        random_number = random.random()
+        if random_number < 1 - FRACTION_TEST - FRACTION_VAL:
+            split = 'train'
+        elif random_number < 1 - FRACTION_TEST:
+            split = 'val'
+        else:
+            split = 'test'
+        large_grid_areas[(lon, lat)] = split
 
-# # Save the split to a file
-# with open(TRAIN_VAL_TEST_SPLIT_FILE, 'wb') as f:
-#     pickle.dump(large_grid_areas, f, pickle.HIGHEST_PROTOCOL)
+# Save the split to a file
+with open(TRAIN_VAL_TEST_SPLIT_FILE, 'wb') as f:
+    pickle.dump(large_grid_areas, f, pickle.HIGHEST_PROTOCOL)
 
 # Read TROPOMI files
 tropomi_frames = []
@@ -128,12 +125,12 @@ print('TROPOMI tiles after filtering low # of soundings:', len(tropomi_metadata)
 tropomi_metadata = tropomi_metadata.loc[tropomi_metadata['SIF'] >= MIN_SIF]
 print('TROPOMI tiles after filtering low SIF:', len(tropomi_metadata))
 
-# Split TROPOMI datapoints into train, val
-tropomi_val_start_idx = int((1 - TROPOMI_FRACTION_VAL) * len(tropomi_metadata))
-tropomi_train_metadata, tropomi_val_metadata = np.split(tropomi_metadata.sample(frac=1), [tropomi_val_start_idx])
-print('===========================================')
-print('TROPOMI train samples:', len(tropomi_train_metadata))
-print('TROPOMI val samples:', len(tropomi_val_metadata))
+# # Split TROPOMI datapoints into train, val
+# tropomi_val_start_idx = int((1 - TROPOMI_FRACTION_VAL) * len(tropomi_metadata))
+# tropomi_train_metadata, tropomi_val_metadata = np.split(tropomi_metadata.sample(frac=1), [tropomi_val_start_idx])
+# print('===========================================')
+# print('TROPOMI train samples:', len(tropomi_train_metadata))
+# print('TROPOMI val samples:', len(tropomi_val_metadata))
 
 # Read OCO-2 files
 oco2_frames = []
@@ -165,30 +162,28 @@ print('OCO2 tiles after filtering low # of soundings:', len(oco2_metadata))
 oco2_metadata = oco2_metadata.loc[oco2_metadata['SIF'] >= MIN_SIF]
 print('OCO2 tiles after filtering low SIF:', len(oco2_metadata))
 
-# Shuffle OCO-2 data
-oco2_metadata = oco2_metadata.sample(frac=1).reset_index(drop=True)
+# # Shuffle OCO-2 data
+# oco2_metadata = oco2_metadata.sample(frac=1).reset_index(drop=True)
 
-# Split OCO-2 datapoints into train, val, test
-oco2_val_start_idx = int((1 - OCO2_FRACTION_VAL - OCO2_FRACTION_TEST) * len(oco2_metadata))
-oco2_test_start_idx = int((1 - OCO2_FRACTION_TEST) * len(oco2_metadata))
-oco2_train_metadata, oco2_val_metadata, oco2_test_metadata = np.split(oco2_metadata.sample(frac=1), [oco2_val_start_idx, oco2_test_start_idx])
-print('===========================================')
-print('OCO2 train samples:', len(oco2_train_metadata))
-print('OCO2 val samples:', len(oco2_val_metadata))
-print('OCO2 test samples:', len(oco2_test_metadata))
+# # Split OCO-2 datapoints into train, val, test
+# oco2_val_start_idx = int((1 - OCO2_FRACTION_VAL - OCO2_FRACTION_TEST) * len(oco2_metadata))
+# oco2_test_start_idx = int((1 - OCO2_FRACTION_TEST) * len(oco2_metadata))
+# oco2_train_metadata, oco2_val_metadata, oco2_test_metadata = np.split(oco2_metadata.sample(frac=1), [oco2_val_start_idx, oco2_test_start_idx])
+# print('===========================================')
+# print('OCO2 train samples:', len(oco2_train_metadata))
+# print('OCO2 val samples:', len(oco2_val_metadata))
+# print('OCO2 test samples:', len(oco2_test_metadata))
 
-# Combine OCO-2 and TROPOMI train/val points
-train_metadata = pd.concat([tropomi_train_metadata, oco2_train_metadata])
-train_metadata.reset_index(drop=True, inplace=True)
-train_metadata = train_metadata.sample(frac=1).reset_index(drop=True)
-val_metadata = pd.concat([tropomi_val_metadata, oco2_val_metadata])
-val_metadata.reset_index(drop=True, inplace=True)
-val_metadata = val_metadata.sample(frac=1).reset_index(drop=True)
-split_metadata = {'train': train_metadata,
-                  'val': val_metadata,
-                  'test': oco2_test_metadata}
-
-
+# # Combine OCO-2 and TROPOMI train/val points
+# train_metadata = pd.concat([tropomi_train_metadata, oco2_train_metadata])
+# train_metadata.reset_index(drop=True, inplace=True)
+# train_metadata = train_metadata.sample(frac=1).reset_index(drop=True)
+# val_metadata = pd.concat([tropomi_val_metadata, oco2_val_metadata])
+# val_metadata.reset_index(drop=True, inplace=True)
+# val_metadata = val_metadata.sample(frac=1).reset_index(drop=True)
+# split_metadata = {'train': train_metadata,
+#                   'val': val_metadata,
+#                   'test': oco2_test_metadata}
 
 # Train on TROPOMI, val/test on OCO-2
 # oco2_metadata['split'] = oco2_metadata.apply(lambda row: determine_split(large_grid_areas, row), axis=1)
@@ -197,22 +192,22 @@ split_metadata = {'train': train_metadata,
 #                   'test': oco2_metadata[oco2_metadata['split'] == 'test']}
 
 # Combine OCO2 and TROPOMI tiles into a single dataframe
-# tile_metadata = pd.concat([tropomi_metadata, oco2_metadata])
-# tile_metadata.reset_index(drop=True, inplace=True)
+tile_metadata = pd.concat([tropomi_metadata, oco2_metadata])
+tile_metadata.reset_index(drop=True, inplace=True)
 
-# # Shuffle rows to mix OCO2/TROPOMI together
-# tile_metadata = tile_metadata.sample(frac=1).reset_index(drop=True)
-# # print('After all filtering:', tile_metadata['source'].value_counts())
-# print('TROPOMI by date', tropomi_metadata['date'].value_counts())
-# print('OCO2 by date', oco2_metadata['date'].value_counts())
+# Shuffle rows to mix OCO2/TROPOMI together
+tile_metadata = tile_metadata.sample(frac=1).reset_index(drop=True)
+# print('After all filtering:', tile_metadata['source'].value_counts())
+print('TROPOMI by date', tropomi_metadata['date'].value_counts())
+print('OCO2 by date', oco2_metadata['date'].value_counts())
 
-# # For each row, determine whether it's in a train, val, or test large grid region
-# tile_metadata['split'] = tile_metadata.apply(lambda row: determine_split(large_grid_areas, row), axis=1)
-# tile_metadata['split'] = tile_metadata.apply(lambda row: determine_split_random(row, FRACTION_VAL, FRACTION_TEST), axis=1)
+# For each row, determine whether it's in a train, val, or test large grid region
+tile_metadata['split'] = tile_metadata.apply(lambda row: determine_split(large_grid_areas, row), axis=1)
+tile_metadata['split'] = tile_metadata.apply(lambda row: determine_split_random(row, FRACTION_VAL, FRACTION_TEST), axis=1)
 
-# split_metadata = {'train': tile_metadata[tile_metadata['split'] == 'train'],
-#                   'val': tile_metadata[tile_metadata['split'] == 'val'],
-#                   'test': tile_metadata[tile_metadata['split'] == 'test']}
+split_metadata = {'train': tile_metadata[tile_metadata['split'] == 'train'],
+                  'val': tile_metadata[tile_metadata['split'] == 'val'],
+                  'test': tile_metadata[tile_metadata['split'] == 'test']}
 
 # For each split, write the processed dataset to a file
 for split, metadata in split_metadata.items():
