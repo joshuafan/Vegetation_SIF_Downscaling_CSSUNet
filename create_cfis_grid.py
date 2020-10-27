@@ -86,7 +86,7 @@ BAND_STATISTICS_FILE = os.path.join(CFIS_DIR, 'cfis_band_statistics_train.csv')
 
 # Lat/lon bounds. Note: *region indices* refer to the pixel index relative to the
 # top left corner (TOP_BOUND, LEFT_BOUND). (0, 0) is the top-left pixel, and
-# each pixel has size "RES" (0.00026949458523585647) degrees. 
+# each pixel has size "RES" (0.00026949458523585647) degrees.
 LEFT_BOUND = -108
 RIGHT_BOUND = -82
 BOTTOM_BOUND = 38

@@ -39,22 +39,22 @@ from embedding_to_sif_model import EmbeddingToSIFModel
 
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset_cloudy")
+DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset")
 INFO_FILE_TRAIN = os.path.join(DATASET_DIR, "tile_info_train.csv")
 INFO_FILE_VAL = os.path.join(DATASET_DIR, "tile_info_val.csv")
-BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
+BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_pixels.csv")
 # SUBTILE_EMBEDDING_FILE_TRAIN = os.path.join(DATASET_DIR, "avg_embeddings_train.csv")
 # SUBTILE_EMBEDDING_FILE_VAL = os.path.join(DATASET_DIR, "avg_embeddings_val.csv")
-SUBTILE_EMBEDDING_FILE_TRAIN = os.path.join(DATASET_DIR, "cloudy_standardized_tiles_train.csv")
-SUBTILE_EMBEDDING_FILE_VAL = os.path.join(DATASET_DIR, "cloudy_standardized_tiles_val.csv")
+SUBTILE_EMBEDDING_FILE_TRAIN = os.path.join(DATASET_DIR, "standardized_tiles_train.csv")
+SUBTILE_EMBEDDING_FILE_VAL = os.path.join(DATASET_DIR, "standardized_tiles_val.csv")
 # SUBTILE_EMBEDDING_FILE_TRAIN = os.path.join(DATASET_DIR, "resized_tiles_train.csv")
 # SUBTILE_EMBEDDING_FILE_VAL = os.path.join(DATASET_DIR, "resized_tiles_val.csv")
 EMBEDDING_FILE_SUFFIX = '_avg_embeddings.npy'
-STANDARDIZED_TILE_FILE_SUFFIX = '_cloudy_standardized.npy'
-STANDARDIZED_SUBTILES_FILE_SUFFIX = '_cloudy_standardized_subtiles.npy'
+STANDARDIZED_TILE_FILE_SUFFIX = '_standardized.npy'
+STANDARDIZED_SUBTILES_FILE_SUFFIX = '_standardized_subtiles.npy'
 RESIZED_TILE_FILE_SUFFIX = '_resized_tile.npy'
 
-TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_august/TileNet.ckpt")
+# TILE2VEC_MODEL_FILE = os.path.join(DATA_DIR, "models/tile2vec_august/TileNet.ckpt")
 
 # If EMBEDDING_TYPE is 'average', the embedding is just the average of each band.
 # If it is 'tile2vec', we use the Tile2Vec model 
@@ -176,11 +176,11 @@ dataloaders = {x: torch.utils.data.DataLoader(datasets[x], batch_size=1,
                                                   shuffle=True, num_workers=NUM_WORKERS)
                    for x in ['train', 'val']}
 
-# Load pre-trained Tile2Vec embedding model
-tile2vec_model = make_tilenet(in_channels=INPUT_CHANNELS, z_dim=Z_DIM).to(device)
-tile2vec_model.load_state_dict(torch.load(TILE2VEC_MODEL_FILE, map_location=device))
-#tile2vec_model = None
-print('loaded tile2vec')
+# # Load pre-trained Tile2Vec embedding model
+# tile2vec_model = make_tilenet(in_channels=INPUT_CHANNELS, z_dim=Z_DIM).to(device)
+# tile2vec_model.load_state_dict(torch.load(TILE2VEC_MODEL_FILE, map_location=device))
+# #tile2vec_model = None
+# print('loaded tile2vec')
 
 # Obtain embeddings for all subtiles
 # train_tile_rows = compute_subtile_embeddings_to_sif_dataset(tile2vec_model, dataloaders['train'], SUBTILE_DIM, device) 

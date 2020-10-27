@@ -12,10 +12,16 @@ import sklearn.model_selection
 from sif_utils import plot_histogram, determine_split, determine_split_random
 import torch
 
+# Set random seed
+RANDOM_STATE = 5
+np.random.seed(RANDOM_STATE)
+random.seed(RANDOM_STATE)
+
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-DATES = ["2018-04-29", "2018-05-13", "2018-05-27", "2018-06-10", "2018-06-24",
-         "2018-07-08", "2018-07-22", "2018-08-05", "2018-08-19", "2018-09-02",
-         "2018-09-16"]
+# DATES = ["2018-04-29", "2018-05-13", "2018-05-27", "2018-06-10", "2018-06-24",
+#          "2018-07-08", "2018-07-22", "2018-08-05", "2018-08-19", "2018-09-02",
+#          "2018-09-16"]
+DATES = ["2018-07-08", "2018-07-22", "2018-08-05", "2018-08-19"]
 
 DATASET_DIRS = [os.path.join(DATA_DIR, "dataset_" + date) for date in DATES]
 UNFILTERED_TROPOMI_FILES = [os.path.join(dataset_dir, "reflectance_cover_to_sif.csv") for dataset_dir in DATASET_DIRS]
@@ -30,7 +36,7 @@ if not os.path.exists(PROCESSED_DATASET_DIR):
     os.makedirs(PROCESSED_DATASET_DIR)
 
 # Record the split of large grid areas between train/val/test
-TRAIN_VAL_TEST_SPLIT_FILE = os.path.join(PROCESSED_DATASET_DIR, "data_split_random.csv")
+TRAIN_VAL_TEST_SPLIT_FILE = os.path.join(PROCESSED_DATASET_DIR, "data_split.csv")
 
 # Resulting filtered csv files
 FILTERED_CSV_FILES = {"train": os.path.join(PROCESSED_DATASET_DIR, "tile_info_train.csv"),
@@ -60,19 +66,21 @@ CDL_COLUMNS = ['grassland_pasture', 'corn', 'soybean', 'shrubland',
                     'lentils']
 
 MIN_CDL_COVERAGE = 0.8
-MAX_LANDSAT_CLOUD_COVER = 0.5
+MAX_LANDSAT_CLOUD_COVER = 0.2
 MAX_TROPOMI_CLOUD_COVER = 0.2
 MIN_TROPOMI_NUM_SOUNDINGS = 3
 MIN_OCO2_NUM_SOUNDINGS = 3
-MIN_SIF = 0.2
-FRACTION_VAL = 0.2
-FRACTION_TEST = 0.2
+MIN_SIF = 0.1
+
+FRACTION_VAL = 0.25
+FRACTION_TEST = 0.25
+GRID_AREA_DEGREES = 1
 OCO2_SCALING_FACTOR = 1.69
 
 
 # Divide the region into 1x1 degree large grid areas. Split them between train/val/test
-LONS = list(range(-108, -82))  # These lat/lons are the UPPER LEFT corner of the large grid areas
-LATS = list(range(39, 50))
+LONS = list(range(-108, -82, GRID_AREA_DEGREES))  # These lat/lons are the UPPER LEFT corner of the large grid areas
+LATS = list(range(50, 38, -GRID_AREA_DEGREES))
 large_grid_areas = dict()
 for lon in LONS:
     for lat in LATS:
@@ -135,13 +143,12 @@ print('TROPOMI tiles after filtering low SIF:', len(tropomi_metadata))
 # Read OCO-2 files
 oco2_frames = []
 for info_file in UNFILTERED_OCO2_FILES:
-    oco2_frame = pd.read_csv(info_file) 
+    oco2_frame = pd.read_csv(info_file)
     oco2_frame['source'] = 'OCO2'
     oco2_frame['SIF'] *= OCO2_SCALING_FACTOR  # OCO-2 SIF needs to be scaled to match TROPOMI
     oco2_frames.append(oco2_frame)
 oco2_metadata = pd.concat(oco2_frames)
 print('=============================================================')
-print("OCO2 average SIF", oco2_metadata['SIF'].mean())
 print("OCO2 tiles before filter", len(oco2_metadata))
 
 # Remove tiles with little CDL coverage (for the crops we're interested in)
@@ -192,6 +199,8 @@ print('OCO2 tiles after filtering low SIF:', len(oco2_metadata))
 #                   'test': oco2_metadata[oco2_metadata['split'] == 'test']}
 
 # Combine OCO2 and TROPOMI tiles into a single dataframe
+print("TROPOMI average SIF", tropomi_metadata['SIF'].mean())
+print("OCO2 average SIF", oco2_metadata['SIF'].mean())
 tile_metadata = pd.concat([tropomi_metadata, oco2_metadata])
 tile_metadata.reset_index(drop=True, inplace=True)
 
@@ -202,8 +211,8 @@ print('TROPOMI by date', tropomi_metadata['date'].value_counts())
 print('OCO2 by date', oco2_metadata['date'].value_counts())
 
 # For each row, determine whether it's in a train, val, or test large grid region
-tile_metadata['split'] = tile_metadata.apply(lambda row: determine_split(large_grid_areas, row), axis=1)
-tile_metadata['split'] = tile_metadata.apply(lambda row: determine_split_random(row, FRACTION_VAL, FRACTION_TEST), axis=1)
+tile_metadata['split'] = tile_metadata.apply(lambda row: determine_split(large_grid_areas, row, GRID_AREA_DEGREES), axis=1)
+# tile_metadata['split'] = tile_metadata.apply(lambda row: determine_split_random(row, FRACTION_VAL, FRACTION_TEST), axis=1)
 
 split_metadata = {'train': tile_metadata[tile_metadata['split'] == 'train'],
                   'val': tile_metadata[tile_metadata['split'] == 'val'],
@@ -220,10 +229,15 @@ for split, metadata in split_metadata.items():
     pure_soybean = metadata.loc[(metadata['soybean'] > 0.6) & (metadata['source'] == 'OCO2')]
     pure_deciduous_forest = metadata.loc[(metadata['deciduous_forest'] > 0.6) & (metadata['source'] == 'OCO2')]
     print('===================== Split', split, '=====================')
+    print("Average SIF", metadata['SIF'].mean())
     print("OCO2 pure grassland/pasture", len(pure_grassland_pasture))
     print("OCO2 pure corn", len(pure_corn))
     print("OCO2 pure soybean", len(pure_soybean))
     print("OCO2 pure deciduous forest", len(pure_deciduous_forest))
+    print("Fraction grassland/pasture", metadata['grassland_pasture'].mean())
+    print("Fraction corn", metadata['corn'].mean())
+    print("Fraction soybean", metadata['soybean'].mean())
+    print("Fraction deciduous forest", metadata['deciduous_forest'].mean())
 
     # Compute averages for each band
     selected_columns = metadata[STATISTICS_COLUMNS]

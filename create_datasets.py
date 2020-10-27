@@ -95,7 +95,7 @@ APPEND = False
 #                pd.date_range(start="2018-07-22", end="2018-08-04"),
 #                pd.date_range(start="2018-08-05", end="2018-08-18"),
 #                pd.date_range(start="2018-08-19", end="2018-09-01"),
-DATE_RANGES = [pd.date_range(start="2018-09-02", end="2018-09-15")]
+#                pd.date_range(start="2018-09-02", end="2018-09-15"),
 #                pd.date_range(start="2018-09-16", end="2018-09-29")]
 
 # DATE_RANGES = [pd.date_range(start="2016-06-15", end="2016-06-29"),

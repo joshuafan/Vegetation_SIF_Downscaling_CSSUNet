@@ -23,7 +23,6 @@ OCO2_FILE = os.path.join(DATA_DIR, "OCO2/oco2_20180429_20180916_3km.nc")
 OUTPUT_CSV_FILENAME = "oco2_eval_subtiles.csv"
 # if not os.path.exists(OCO2_SUBTILES_DIR):
 #     os.makedirs(OCO2_SUBTILES_DIR)
-# DATES = ["2018-06-10", "2018-08-05"] #, "2018-09-02"]
 DATES = ["2018-04-29", "2018-05-13", "2018-05-27", "2018-06-10", "2018-06-24", "2018-07-08",
          "2018-07-22", "2018-08-05", "2018-08-19", "2018-09-02", "2018-09-16"]
 
