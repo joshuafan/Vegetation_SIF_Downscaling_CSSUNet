@@ -1,5 +1,5 @@
 """
-Evaluate a "subtile -> SIF" model on the OCO-2 dataset
+Evaluate a U-Net model on the OCO-2 dataset
 """
 import copy
 import math
@@ -24,6 +24,7 @@ import torchvision
 import torchvision.transforms as transforms
 import simple_cnn
 import small_resnet
+import random
 import resnet
 import torch.nn as nn
 import torch.optim as optim
@@ -32,17 +33,28 @@ sys.path.append('../')
 from tile2vec.src.tilenet import make_tilenet
 from unet.unet_model import UNet, UNetSmall, UNet2
 
+# Set random seed (SHOULD NOT BE NEEDED)
+torch.manual_seed(0)
+np.random.seed(0)
+random.seed(0)
 
+# Data files
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset_all_2")
-EVAL_FILE = os.path.join(DATASET_DIR, "tile_info_val.csv")
-BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
-METHOD = "7_unet2_clip_-6_8_batchnorm_dimred"
-# METHOD = "7_unet2_reflectance_only_aug"
-MODEL_TYPE = "unet2"
+PLOTS_DIR = os.path.join(DATA_DIR, "exploratory_plots")
+DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset")
+EVAL_FILE = os.path.join(DATASET_DIR, "tile_info_test.csv") # TODO standardized?
+BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_pixels.csv")
+
+# Method/model type
+METHOD = "2e_unet"
+MODEL_TYPE = "unet"
+
+# Model file
 TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/" + METHOD)
 print('trained model file', os.path.basename(TRAINED_MODEL_FILE))
-TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_OCO2_' + METHOD 
+
+# Results files/plots
+TRUE_VS_PREDICTED_PLOT = os.path.join(PLOTS_DIR, 'true_vs_predicted_sif_oco2_' + METHOD)
 RESULTS_CSV_FILE = os.path.join(DATASET_DIR, 'OCO2_results_' + METHOD + '.csv')
 
 COLUMN_NAMES = ['true', 'predicted',
@@ -68,70 +80,79 @@ COLUMN_NAMES = ['true', 'predicted',
 CROP_TYPES = ['grassland_pasture', 'corn', 'soybean', 'deciduous_forest']
 BANDS = list(range(0, 43))
 # BANDS = list(range(0, 12)) + list(range(12, 27)) + [28] + [42]  #list(range(0, 43))
-DATES = ["2018-04-29", "2018-05-13", "2018-05-27", "2018-06-10", "2018-06-24", 
-         "2018-07-08", "2018-07-22", "2018-08-05", "2018-08-19", "2018-09-02",
-         "2018-09-16"]
-SOURCES = ["OCO2"]
+RESIZED_DIM = 100 # Unused
 
 INPUT_CHANNELS = len(BANDS)
-REDUCED_CHANNELS = 15
+REDUCED_CHANNELS = 10
 DISCRETE_BANDS = list(range(12, 43))
 COVER_INDICES = list(range(12, 42))
 MISSING_REFLECTANCE_IDX = -1
 RESIZE = False
-MIN_SIF = None #0
-MAX_SIF = None #1.7
-MIN_INPUT = -6
-MAX_INPUT = 8
+MIN_SIF = None
+MAX_SIF = None
+MIN_SIF_CLIP = 0.1
+MIN_SIF_PLOT = 0
+MAX_SIF_PLOT = 2
+MIN_INPUT = -3
+MAX_INPUT = 3
 BATCH_SIZE = 16
 NUM_WORKERS = 8
 PURE_THRESHOLD = 0.6
+
+# Dates
+TEST_OCO2_DATES = ["2018-04-29", "2018-05-13", "2018-05-27", "2018-06-10", "2018-06-24", 
+         "2018-07-08", "2018-07-22", "2018-08-05", "2018-08-19", "2018-09-02",
+         "2018-09-16"]
+SOURCES = ["OCO2"]
 MIN_SOUNDINGS = 5
+MAX_CLOUD_COVER = 0.2
 
 # assert(BATCH_SIZE == 1)
 
 
 def eval_model(model, dataloader, dataset_size, criterion, device, sif_mean, sif_std):
-    model.train()   # Set model to evaluate mode
-    print('SIF mean', sif_mean)
-    print('SIF std', sif_std)
-    sif_mean = torch.tensor(sif_mean).to(device)
-    sif_std = torch.tensor(sif_std).to(device)
+    model.eval()   # Set model to evaluate mode
+    # sif_mean = torch.tensor(sif_mean).to(device)
+    # sif_std = torch.tensor(sif_std).to(device)
     results = [] #np.zeros((dataset_size, len(COLUMN_NAMES)))
     j = 0
 
     # Iterate over data.
     for sample in dataloader:
-        input_tiles_standardized = sample['tile'].to(device)
-        true_sifs_non_standardized = sample['SIF'].to(device)
-
-        # Binary mask for non-cloudy pixels. Since the tiles are passed through the
-        # StandardizeTile transform, 1 now represents non-cloudy (data present) and 0 represents
-        # cloudy (data missing).
-        non_cloudy_pixels = input_tiles_standardized[:, MISSING_REFLECTANCE_IDX, :, :]  # (batch size, H, W)
+        input_tiles_std = sample['tile'].to(device)
+        true_sifs = sample['SIF'].to(device)
 
         # print('Input tile shape', input_tiles_standardized.shape)
-        #print('=========================')
-        #print('Input band means')
-        #print(torch.mean(input_tiles_standardized, dim=(2,3)))
+        # print('=========================')
+        # print('Input band means')
+        # print(torch.mean(input_tiles_std[0], dim=(1, 2)))
 
         # Pass sub-tiles through network
         with torch.set_grad_enabled(False):
-            predictions = model(input_tiles_standardized[:, BANDS, :, :]) # predictions: (batch size, 1, H, W)
-            predictions = torch.squeeze(predictions, dim=1)  # (batch size, H, W)
-            predicted_sifs_standardized = sif_utils.masked_average(predictions, non_cloudy_pixels, dims_to_average=(1, 2)) # (batch size)
-            predicted_sifs_non_standardized = torch.tensor(predicted_sifs_standardized * sif_std + sif_mean, dtype=torch.float).to(device)
-            loss = criterion(predicted_sifs_non_standardized, true_sifs_non_standardized)
+            predicted_sifs_std = model(input_tiles_std[:, BANDS, :, :]) # predictions: (batch size, 1, H, W)
+            if type(predicted_sifs_std) == tuple:
+                predicted_sifs_std = predicted_sifs_std[0]
+            predicted_sifs_std = torch.squeeze(predicted_sifs_std, dim=1)  # (batch size, H, W)
+            # print('Predicted sifs std', predicted_sifs_std[0])
+            predicted_sifs = predicted_sifs_std * sif_std + sif_mean
+
+            # Binary mask for non-cloudy pixels. (Previously, MISSING_REFLECTANCE_IDX was 1 if the pixel
+            # was cloudy, and 0 otherwise; we flip it so that it is 1 if the pixel is valid/non-cloudy.)
+            non_cloudy_pixels = torch.logical_not(input_tiles_std[:, MISSING_REFLECTANCE_IDX, :, :]) # (batch size, H, W)
+            predicted_sifs = sif_utils.masked_average(predicted_sifs, non_cloudy_pixels, dims_to_average=(1, 2)) # (batch size)
+            predicted_sifs = torch.clamp(predicted_sifs, min=MIN_SIF_CLIP)
+            # print('Predicted', predicted_sifs[0], 'True', true_sifs[0])
+            # loss = criterion(predicted_sifs, true_sifs)
 
         # statistics
-        band_means = torch.mean(input_tiles_standardized, dim=(2, 3))
+        band_means = torch.mean(input_tiles_std, dim=(2, 3))
         # print('band means shape', band_means.shape)
-        for i in range(true_sifs_non_standardized.shape[0]):
-            row = [true_sifs_non_standardized[i].item(), predicted_sifs_non_standardized[i].item(), sample['lon'][i].item(),
+        for i in range(true_sifs.shape[0]):
+            row = [true_sifs[i].item(), predicted_sifs[i].item(), sample['lon'][i].item(),
                     sample['lat'][i].item(), sample['source'][i], sample['date'][i]] + band_means[i].cpu().tolist()
             results.append(row)
             j += 1
-        print(j)
+        # print(j)
  
     return results
 
@@ -145,11 +166,17 @@ else:
     device = "cpu"
 print("Device", device)
 
-# Read train/val tile metadata
+# Read eval tile metadata
 eval_metadata = pd.read_csv(EVAL_FILE)
+print('Before filtering eval samples:', len(eval_metadata))
 
 # Only look at OCO-2 this time
-eval_metadata = eval_metadata[eval_metadata['source'] == 'OCO2'] 
+eval_metadata = eval_metadata[(eval_metadata['source'] == 'OCO2') &
+                                (eval_metadata['num_soundings'] >= MIN_SOUNDINGS) &
+                                (eval_metadata['missing_reflectance'] <= MAX_CLOUD_COVER) &
+                                (eval_metadata['SIF'] >= MIN_SIF_CLIP) &
+                                (eval_metadata['date'].isin(TEST_OCO2_DATES))] 
+eval_metadata['SIF'] /= 1.03
 print("Eval samples:", len(eval_metadata))
 
 # Read mean/standard deviation for each band, for standardization purposes
@@ -190,6 +217,8 @@ dataloader = torch.utils.data.DataLoader(dataset, batch_size=BATCH_SIZE,
 # Load trained model from file
 if MODEL_TYPE == 'unet_small':
     model = UNetSmall(n_channels=INPUT_CHANNELS, n_classes=1, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)
+elif MODEL_TYPE == 'unet':
+    model = UNet(n_channels=INPUT_CHANNELS, n_classes=1, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)   
 elif MODEL_TYPE == 'unet2':
     model = UNet2(n_channels=INPUT_CHANNELS, n_classes=1, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)
 
@@ -208,34 +237,28 @@ results_df.to_csv(RESULTS_CSV_FILE)
 
 true = results_df['true'].tolist()
 predicted = results_df['predicted'].tolist()
-print('========== before clipping =========')
-print_stats(true, predicted, sif_mean)
-
-# Clip to be between 0.2 and 1.7
-predicted = np.clip(predicted, a_min=0.2, a_max=None)
 
 # Print statistics
-print('========== after clipping =========')
+print('========== Test OCO-2 results =========')
 print_stats(true, predicted, sif_mean, ax=plt.gca())
 
 # Scatter plot of true vs predicted (ALL POINTS)
-plt.title('True vs predicted SIF (OCO2):' + METHOD)
-plt.xlim(left=0, right=1.7)
-plt.ylim(bottom=0, top=1.7)
+plt.title('True vs predicted SIF (OCO-2 test):' + METHOD)
+plt.xlim(left=MIN_SIF_PLOT, right=MAX_SIF_PLOT)
+plt.ylim(bottom=MIN_SIF_PLOT, top=MAX_SIF_PLOT)
 plt.savefig(TRUE_VS_PREDICTED_PLOT + '.png')
 plt.close()
 
 # Plot scatterplots by source/date
-fig, axeslist = plt.subplots(ncols=len(SOURCES), nrows=len(DATES), figsize=(6*len(SOURCES), 6*len(DATES)))
-fig.suptitle('True vs predicted SIF, by date/source: ' + METHOD)
+fig, axeslist = plt.subplots(ncols=len(SOURCES), nrows=len(TEST_OCO2_DATES), figsize=(6*len(SOURCES), 6*len(TEST_OCO2_DATES)))
+fig.suptitle('True vs predicted SIF (OCO-2 test), by date/source: ' + METHOD)
 
 # Statistics by date and source
 idx = 0
-for date in DATES:
+for date in TEST_OCO2_DATES:
     for source in SOURCES:
         print('=================== Date ' + date + ', ' + source + ' ======================')
         rows = results_df.loc[(results_df['date'] == date) & (results_df['source'] == source)]
-        print('Number of rows', len(rows))
         if len(rows) < 2:
             idx += 1
             continue
@@ -243,8 +266,8 @@ for date in DATES:
         # Scatter plot of true vs predicted
         ax = axeslist.ravel()[idx]
         print_stats(rows['true'].to_numpy(), rows['predicted'].to_numpy(), sif_mean, ax=ax)
-        ax.set_xlim(left=0, right=1.7)
-        ax.set_ylim(bottom=0, top=1.7)
+        ax.set_xlim(left=MIN_SIF_PLOT, right=MAX_SIF_PLOT)
+        ax.set_ylim(bottom=MIN_SIF_PLOT, top=MAX_SIF_PLOT)
         ax.set_title(date + ', ' + source)
         idx += 1
 
@@ -287,8 +310,8 @@ for idx, crop_type in enumerate(CROP_TYPES):
     print('======================== Crop type', crop_type, '==========================')
     ax = axeslist.ravel()[idx]
     print_stats(crop_rows['true'].to_numpy(), crop_rows['predicted'].to_numpy(), sif_mean, ax=ax)
-    ax.set_xlim(left=0, right=1.7)
-    ax.set_ylim(bottom=0, top=1.7)
+    ax.set_xlim(left=MIN_SIF_PLOT, right=MAX_SIF_PLOT)
+    ax.set_ylim(bottom=MIN_SIF_PLOT, top=MAX_SIF_PLOT)
     ax.set_title(crop_type)
 
 

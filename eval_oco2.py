@@ -21,6 +21,7 @@ import time
 import torch
 import torchvision
 import torchvision.transforms as transforms
+import random
 import simple_cnn
 import small_resnet
 import resnet
@@ -30,33 +31,30 @@ import sys
 sys.path.append('../')
 from tile2vec.src.tilenet import make_tilenet
 
+# Set random seed (SHOULD NOT BE NEEDED)
+torch.manual_seed(0)
+np.random.seed(0)
+random.seed(0)
 
+# Data directories
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-# DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset_tropomi_train")
-DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset_all_2")
+PLOTS_DIR = os.path.join(DATA_DIR, "exploratory_plots")
+DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset")
 EVAL_FILE = os.path.join(DATASET_DIR, "tile_info_test.csv")
-# EVAL_DATASET_DIR = os.path.join(DATA_DIR, "dataset_2016-08-01")
-# EVAL_FILE = os.path.join(EVAL_DATASET_DIR, "eval_subtiles.csv") 
+BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_pixels.csv")
 
-#DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018-08-01") #"dataset_2018-07-16") #7-16") #07-16") #07-16")
-#OCO2_EVAL_FILE = os.path.join(DATASET_DIR, "oco2_eval_subtiles.csv")
-
-BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
-METHOD = 'all_1d_train_tropomi_subtile_resnet'
-# METHOD = '2d_train_both_subtile_resnet_100samples_3'
+# Method/model type
+# METHOD = '1d_train_tropomi_subtile_resnet'
+METHOD = '2d_train_both_subtile_resnet'
 # METHOD = '3d_train_oco2_subtile_resnet_100samples'
 MODEL_TYPE = 'resnet18'
-# TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/avg_embedding_to_sif")
+
+# Model file
 TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/" + METHOD)
 print('trained model file', os.path.basename(TRAINED_MODEL_FILE))
 EVAL_MODEL = True
 
-# METHOD = '4a_subtile_simple_cnn_small_v5' # oco2_only'  #'3_small_tile_simple' # '2_large_tile_resnet18'
-# MODEL_TYPE = 'simple_cnn_small_v5'
-# MODEL_TYPE = 'simple_cnn_small_3'
-# METHOD = '4b_avg_embedding'
-# MODEL_TYPE = 'avg_embedding'
-TRUE_VS_PREDICTED_PLOT = 'exploratory_plots/true_vs_predicted_sif_oco2_' + METHOD 
+TRUE_VS_PREDICTED_PLOT = os.path.join(PLOTS_DIR, 'true_vs_predicted_sif_oco2_' + METHOD)
 MODEL_SUBTILE_DIM = 100
 # MAX_SUBTILE_CLOUD_COVER = 0.2
 # CROP_TYPE_START_IDX = 12
@@ -98,34 +96,57 @@ REDUCED_CHANNELS = 15
 DISCRETE_BANDS = list(range(12, 43))
 COVER_INDICES = list(range(12, 42))
 RESIZE = False
-MIN_SIF = 0
-MAX_SIF = 1.7
-MIN_INPUT = -2
-MAX_INPUT = 2
-BATCH_SIZE = 1
+MIN_SIF = None
+MAX_SIF = None
+MIN_SIF_CLIP = 0.1
+MIN_SIF_PLOT = 0
+MAX_SIF_PLOT = 2
+MIN_INPUT = -3
+MAX_INPUT = 3
+BATCH_SIZE = 128
 NUM_WORKERS = 8
 PURE_THRESHOLD = 0.6
-# MIN_SOUNDINGS = 5
 
-assert(BATCH_SIZE == 1)
+# Dates
+TEST_OCO2_DATES = ["2018-04-29", "2018-05-13", "2018-05-27", "2018-06-10", "2018-06-24", 
+         "2018-07-08", "2018-07-22", "2018-08-05", "2018-08-19", "2018-09-02",
+         "2018-09-16"]
+SOURCES = ["OCO2"]
+MIN_SOUNDINGS = 5
+MAX_CLOUD_COVER = 0.2
+
 
 
 def eval_model(model, dataloader, dataset_size, criterion, device, sif_mean, sif_std):
     model.eval()   # Set model to evaluate mode
     print('SIF mean', sif_mean)
     print('SIF std', sif_std)
-    sif_mean = torch.tensor(sif_mean).to(device)
-    sif_std = torch.tensor(sif_std).to(device)
     results = [] #np.zeros((dataset_size, len(COLUMN_NAMES)))
     j = 0
 
     # Iterate over data.
     for sample in dataloader:
+        # oco2_tiles_std = sample['oco2_tile'].to(device)
+        # oco2_subtiles_std = get_subtiles_list(oco2_tiles_std[:, BANDS, , :])
+        # oco2_true_sifs = sample['oco2_sif'].to(device)
+        # assert(oco2_subtiles_std.shape[0] == oco2_true_sifs.shape[0])
+
+        # # Reshape into a batch of "sub-tiles"
+        # input_shape = oco2_subtiles_std.shape
+        # assert(input_shape[1] == 1)
+        # total_num_subtiles = input_shape[0] * input_shape[1]
+        # input_subtiles = oco2_subtiles_std.view((total_num_subtiles, input_shape[2], input_shape[3], input_shape[4]))
+
+        # with torch.set_grad_enabled(False):
+        #     oco2_predicted_sifs_std = model(input_subtiles).flatten()
+        #     oco2_predicted_sifs = oco2_predicted_sifs_std * sif_std + sif_mean
+        #     oco2_predicted_sifs = torch.clamp(oco2_predicted_sifs, min=MIN_SIF_CLIP)
+        #     print('Predicted', oco2_predicted_sifs, 'True', oco2_true_sifs)
+
         for i in range(len(sample['SIF'])):
             input_tile_standardized = sample['tile'][i].to(device)
-            true_sif_non_standardized = sample['SIF'][i].to(device)
-
-            #print('Input tile shape', input_tile_standardized.shape)
+            true_sif = sample['SIF'][i].to(device)
+            # print('Input tile shape', input_tile_standardized.shape)
             #print('=========================')
             # print('Input band means')
             # print(torch.mean(input_tile_standardized, dim=(1, 2)))
@@ -139,15 +160,14 @@ def eval_model(model, dataloader, dataset_size, criterion, device, sif_mean, sif
                     print('Subtile averages shape', subtile_averages.shape)
                     predicted_subtile_sifs = model(subtile_averages)
                 else:
-                    predicted_subtile_sifs = model(subtiles)
-                predicted_sif_standardized = torch.mean(predicted_subtile_sifs)
-                predicted_sif_non_standardized = torch.tensor(predicted_sif_standardized * sif_std + sif_mean, dtype=torch.float).to(device)
-                loss = criterion(predicted_sif_non_standardized, true_sif_non_standardized)
-                print('Predicted', predicted_sif_non_standardized, 'True', true_sif_non_standardized)
+                    predicted_subtile_sifs_std = model(subtiles)
+                predicted_sif_std = torch.mean(predicted_subtile_sifs_std)
+                predicted_sif = predicted_sif_std * sif_std + sif_mean
+                # print('Predicted', predicted_sif, 'True', true_sif)
 
             # statistics
             band_means = torch.mean(input_tile_standardized, dim=(1, 2))
-            row = [true_sif_non_standardized.item(), predicted_sif_non_standardized.item(), sample['tile_file'][i], sample['lon'][i].item(), 
+            row = [true_sif.item(), predicted_sif.item(), sample['tile_file'][i], sample['lon'][i].item(), 
                    sample['lat'][i].item(), sample['source'][i], sample['date'][i]] + band_means.cpu().tolist()
             results.append(row)
             # results[j, 0] = true_sif_non_standardized.item()
@@ -173,7 +193,11 @@ print("Device", device)
 
 # Read train/val tile metadata
 eval_metadata = pd.read_csv(EVAL_FILE)
-eval_metadata = eval_metadata.loc[eval_metadata['source'] == 'OCO2']
+eval_metadata = eval_metadata[(eval_metadata['source'] == 'OCO2') &
+                            (eval_metadata['num_soundings'] >= MIN_SOUNDINGS) &
+                            (eval_metadata['missing_reflectance'] <= MAX_CLOUD_COVER) &
+                            (eval_metadata['SIF'] >= MIN_SIF_CLIP) &
+                            (eval_metadata['date'].isin(TEST_OCO2_DATES))]
 print("Eval samples:", len(eval_metadata))
 
 # eval_metadata = eval_metadata.loc[eval_metadata['num_soundings'] >= MIN_SOUNDINGS]
@@ -202,10 +226,11 @@ else:
 
 # Set up image transforms
 transform_list = []
-# transform_list.append(tile_transforms.ShrinkTile())
-transform_list.append(tile_transforms.StandardizeTile(band_means, band_stds, min_input=MIN_INPUT, max_input=MAX_INPUT))
+standardize_transform = tile_transforms.StandardizeTile(band_means, band_stds) #, min_input=MIN_INPUT, max_input=MAX_INPUT)
+clip_transform = tile_transforms.ClipTile(min_input=MIN_INPUT, max_input=MAX_INPUT)
+transform_list = [standardize_transform, clip_transform]
 if RESIZE:
-    transform_list.append(tile_transforms.ResizeTile(target_dim=RESIZED_DIM, discrete_bands=DISCRETE_BANDS))
+    transform_list.append(tile_transforms.ResizeTile(target_dim=MODEL_SUBTILE_DIM, discrete_bands=DISCRETE_BANDS))
 transform = transforms.Compose(transform_list)
 
 # Set up Dataset and Dataloader

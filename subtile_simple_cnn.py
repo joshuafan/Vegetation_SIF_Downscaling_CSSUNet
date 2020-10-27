@@ -29,29 +29,33 @@ import tile_transforms
 # from embedding_to_sif_model import EmbeddingToSIFModel
 
 # Set random seed
-torch.manual_seed(0)
+RANDOM_STATE = 0
+np.random.seed(RANDOM_STATE)
+random.seed(RANDOM_STATE)
+torch.manual_seed(RANDOM_STATE)
 
 # Data directories
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset_all_2") #_landsat_0.1")
-INFO_FILE_TRAIN = os.path.join(DATASET_DIR, "standardized_tiles_train.csv")
-INFO_FILE_VAL = os.path.join(DATASET_DIR, "standardized_tiles_val.csv")
-# INFO_FILE_TRAIN = os.path.join(DATASET_DIR, "tile_info_train.csv")
-# INFO_FILE_VAL = os.path.join(DATASET_DIR, "tile_info_val.csv")
-BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
+DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset")
+# INFO_FILE_TRAIN = os.path.join(DATASET_DIR, "standardized_tiles_train.csv")
+# INFO_FILE_VAL = os.path.join(DATASET_DIR, "standardized_tiles_val.csv")
+INFO_FILE_TRAIN = os.path.join(DATASET_DIR, "tile_info_train.csv")
+INFO_FILE_VAL = os.path.join(DATASET_DIR, "tile_info_val.csv")
+INFO_FILE_TEST = os.path.join(DATASET_DIR, "tile_info_test.csv")
+BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_pixels.csv")
 
-# Method, optimizer, model type
-#METHOD = "all_1d_train_tropomi_subtile_resnet" #1d_train_tropomi_subtile_resnet_no_dimred"
+# Method/model type
+# METHOD = "1d_train_tropomi_subtile_resnet" #1d_train_tropomi_subtile_resnet_no_dimred"
 METHOD = "2d_train_both_subtile_resnet"
 # METHOD = "3d_train_oco2_subtile_resnet_500samples"
-OPTIMIZER_TYPE = "Adam"
 MODEL_TYPE = "resnet18"
 
 # Which sources to train on
 TRAIN_SOURCES = ["TROPOMI", "OCO2"]
-VAL_SOURCES = ["TROPOMI", "OCO2"]
-NUM_TRAIN_OCO2_SAMPLES = 467 #500 #100
-OCO2_UPDATES_PER_TROPOMI = 1 #0.5
+VAL_SOURCES = ["OCO2"]
+NUM_TROPOMI_SAMPLES_TRAIN = 1000
+NUM_OCO2_SAMPLES_TRAIN = 1000
+OCO2_UPDATES_PER_TROPOMI = 1
 
 # Model files
 PRETRAINED_SUBTILE_SIF_MODEL_FILE = os.path.join(DATA_DIR, "models/" + METHOD)
@@ -64,19 +68,25 @@ if not os.path.exists(LOSS_PLOTS_DIR):
 TRAINING_PLOT_FILE = os.path.join(LOSS_PLOTS_DIR, 'losses_' + METHOD + '.png')
 
 # Hyperparameters
+OPTIMIZER_TYPE = "Adam"
 SUBTILE_DIM = 100
 LEARNING_RATE = 1e-4
-WEIGHT_DECAY = 1e-4
+WEIGHT_DECAY = 1e-3
 NUM_EPOCHS = 50
-BATCH_SIZE = 128  # Change
+BATCH_SIZE = 64  # Change
 NUM_WORKERS = 8  # Change
 AUGMENT = True  # Change
 FROM_PRETRAINED = False #True
 MIN_SIF = None
 MAX_SIF = None
+MIN_SIF_CLIP = 0.1
 MIN_INPUT = -3
 MAX_INPUT = 3
-NOISE = 0.1
+NOISE = 0.05
+# If we do dimensionality reduction
+# REDUCED_CHANNELS = 15
+# CROP_TYPE_EMBEDDING_DIM = 10
+# CROP_TYPE_START_IDX = 12
 
 # Which bands to use
 #BANDS = list(range(0, 9)) + [42] #  12)) + list(range(12, 27)) + [28] + [42] 
@@ -85,10 +95,21 @@ NOISE = 0.1
 BANDS = list(range(0, 43))
 INPUT_CHANNELS = len(BANDS)
 
-# If we do dimensionality reduction
-# REDUCED_CHANNELS = 15
-# CROP_TYPE_EMBEDDING_DIM = 10
-# CROP_TYPE_START_IDX = 12
+# Dates
+# TRAIN_TROPOMI_DATES = ["2018-04-29", "2018-05-13", "2018-05-27", "2018-06-10", "2018-06-24", 
+#                        "2018-07-08", "2018-07-22", "2018-08-05", "2018-08-19", "2018-09-02",
+#                        "2018-09-16"]
+# TRAIN_OCO2_DATES = ["2018-04-29", "2018-05-13", "2018-05-27", "2018-06-10", "2018-06-24", 
+#                     "2018-07-08", "2018-07-22", "2018-08-05", "2018-08-19", "2018-09-02",
+#                     "2018-09-16"]
+# TEST_DATES = ["2018-04-29", "2018-05-13", "2018-05-27", "2018-06-10", "2018-06-24", 
+#               "2018-07-08", "2018-07-22", "2018-08-05", "2018-08-19", "2018-09-02",
+#               "2018-09-16"]
+TRAIN_TROPOMI_DATES = ["2018-07-08", "2018-07-22", "2018-08-05", "2018-08-19"]
+TRAIN_OCO2_DATES = ["2018-07-08", "2018-07-22", "2018-08-05", "2018-08-19"]
+TEST_DATES = ["2018-07-08", "2018-07-22", "2018-08-05", "2018-08-19"]
+MIN_SOUNDINGS = 5
+MAX_CLOUD_COVER = 0.2
 
 # Print params for reference
 print("=========================== PARAMS ===========================")
@@ -96,7 +117,7 @@ print("Train sources:", TRAIN_SOURCES)
 print("Method:", METHOD)
 print("Dataset: ", os.path.basename(DATASET_DIR))
 if 'OCO2' in TRAIN_SOURCES:
-    print('Num OCO2 samples:', NUM_TRAIN_OCO2_SAMPLES)
+    print('Num OCO2 samples:', NUM_OCO2_SAMPLES_TRAIN)
     print('OCO2 updates per TROPOMI:', OCO2_UPDATES_PER_TROPOMI)
 if FROM_PRETRAINED:
     print("From pretrained model", os.path.basename(PRETRAINED_SUBTILE_SIF_MODEL_FILE))
@@ -109,10 +130,12 @@ print("Model:", MODEL_TYPE)
 print("Optimizer:", OPTIMIZER_TYPE)
 print("Learning rate:", LEARNING_RATE)
 print("Weight decay:", WEIGHT_DECAY)
+print("Num workers:", NUM_WORKERS)
 print("Batch size:", BATCH_SIZE)
 print("Num epochs:", NUM_EPOCHS)
 print("Augment:", AUGMENT)
-print("Gaussian noise (std deviation):", NOISE)
+if AUGMENT:
+    print("Gaussian noise (std deviation):", NOISE)
 # print("Crop type embedding dim:", CROP_TYPE_EMBEDDING_DIM)
 # print("Reduced channels:", REDUCED_CHANNELS)
 print("Subtile dim:", SUBTILE_DIM)
@@ -123,17 +146,16 @@ print("==============================================================")
 
 
 # TODO should there be 2 separate models?
-def train_model(subtile_sif_model, dataloaders, criterion, optimizer, device, 
+def train_model(model, dataloaders, criterion, optimizer, device, 
                 sif_mean, sif_std, subtile_dim, num_epochs=25):
     since = time.time()
-    best_model_wts = copy.deepcopy(subtile_sif_model.state_dict())
-    best_loss = float('inf')
+    best_model_wts = copy.deepcopy(model.state_dict())
+    best_tropomi_loss = float('inf')
+    best_oco2_loss = float('inf')
     train_tropomi_losses = []
     train_oco2_losses = []
     val_tropomi_losses = []
     val_oco2_losses = []
-    sif_mean = torch.tensor(sif_mean).to(device)
-    sif_std = torch.tensor(sif_std).to(device)
 
     for epoch in range(num_epochs):
         print('Epoch {}/{}'.format(epoch, num_epochs - 1))
@@ -143,36 +165,34 @@ def train_model(subtile_sif_model, dataloaders, criterion, optimizer, device,
         # Each epoch has a training and validation phase
         for phase in ['train', 'val']:
             if phase == 'train':
-                subtile_sif_model.train()
+                model.train()
             else:
-                subtile_sif_model.eval()
+                model.eval()
 
             running_tropomi_loss = 0.0
             running_oco2_loss = 0.0
             num_tropomi_points = 0
             num_oco2_points = 0
-            tropomi_batch_idx = 0
-            oco2_batch_idx = 0
+            all_true_tropomi_sifs = []
+            all_predicted_tropomi_sifs = []
+            all_true_oco2_sifs = []
+            all_predicted_oco2_sifs = []
 
             # Iterate over data.
             for sample in dataloaders[phase]:
-                if 'tropomi_tile' not in sample and 'oco2_tile' not in sample:
+                if 'tropomi_subtiles' not in sample and 'oco2_subtiles' not in sample:
                     print('Dataloader sample contained neither tropomi_subtiles nor oco2_subtiles :(')
                     print(sample)
                     exit(1)
 
-                if 'tropomi_tile' in sample:
-                    # after_get_sample = time.time()
-
+                if 'tropomi_subtiles' in sample:
                     # Read TROPOMI tile and SIF from dataloader
-                    tropomi_subtiles_std = sample['tropomi_tile'].to(device)  # (batch size, num sub-tiles, num channels, H, W)
+                    tropomi_subtiles_std = sample['tropomi_subtiles'].to(device)  # (batch size, num sub-tiles, num channels, H, W)
                     tropomi_true_sifs = sample['tropomi_sif'].to(device)  # (batch_size)
                     # print('TROPOMI subtiles shape', tropomi_subtiles_std.shape)
+                    # exit(0)
                     assert(tropomi_subtiles_std.shape[0] == tropomi_true_sifs.shape[0])
-
-                    # Standardize SIF
-                    tropomi_true_sifs_std = ((tropomi_true_sifs - sif_mean) / sif_std).to(device)
-
+                    # print('TROPOMI Subtiles shape', tropomi_subtiles_std.shape)
                     # Reshape into a batch of "sub-tiles"
                     input_shape = tropomi_subtiles_std.shape
                     total_num_subtiles = input_shape[0] * input_shape[1]
@@ -183,23 +203,24 @@ def train_model(subtile_sif_model, dataloaders, criterion, optimizer, device,
                     # sif_utils.plot_tile(input_subtiles[32+5].detach().numpy(), tile_description + '_subtile_5.png', title=title)
 
                     with torch.set_grad_enabled(phase == 'train'):
-                        # before_model = time.time()
-                        predicted_subtile_sifs = subtile_sif_model(input_subtiles)
-                        # after_forward_pass = time.time()
+                        predicted_subtile_sifs_std = model(input_subtiles)
 
+                        # Re-group subtiles into corresponding large tiles
                         # print('Subtile SIFs shape', predicted_subtile_sifs.shape)
-                        predicted_subtile_sifs = predicted_subtile_sifs.view((input_shape[0], input_shape[1]))
+                        predicted_subtile_sifs_std = predicted_subtile_sifs_std.view((input_shape[0], input_shape[1]))
                         # print('Reshaped subtile SIFs', predicted_subtile_sifs.shape)
-                        tropomi_predicted_sifs_std = torch.mean(predicted_subtile_sifs, dim=1)
+                        tropomi_predicted_sifs_std = torch.mean(predicted_subtile_sifs_std, dim=1)
+                        tropomi_predicted_sifs = tropomi_predicted_sifs_std * sif_std + sif_mean
+                        # tropomi_predicted_sifs = torch.clamp(tropomi_predicted_sifs, min=MIN_SIF_CLIP)
+
                         # print('Predicted SIFs (mean)', tropomi_predicted_sifs_std.shape)
 
                         # Compute loss: predicted vs true SIF (standardized)
-                        loss = criterion(tropomi_predicted_sifs_std, tropomi_true_sifs_std)
+                        loss = criterion(tropomi_predicted_sifs, tropomi_true_sifs)
                         if phase == 'train':
                             optimizer.zero_grad()
                             loss.backward()
                             optimizer.step()
-                            # after_step = time.time()
 
                     # print('======= Model timing =======')
                     # print('Get batch', after_get_sample - before_start)
@@ -208,27 +229,17 @@ def train_model(subtile_sif_model, dataloaders, criterion, optimizer, device,
 
                     with torch.set_grad_enabled(False):
                         # statistics
-                        tropomi_predicted_sifs = torch.tensor(tropomi_predicted_sifs_std * sif_std + sif_mean, dtype=torch.float).to(device)
-                        non_standardized_loss = criterion(tropomi_predicted_sifs, tropomi_true_sifs)
-                        tropomi_batch_idx += 1
-                        # if tropomi_batch_idx % 100 == 1:
-                        #     print('========================')
-                        #     print('*** >>> (TROPOMI) predicted subtile sifs for 0-4th', predicted_subtile_sifs.flatten()[0:5] * sif_std + sif_mean)
-                        #     print('*** Predicted', tropomi_predicted_sifs[0:20])
-                        #     print('*** True', tropomi_true_sifs[0:20])
-                        #     print('*** batch loss', (math.sqrt(non_standardized_loss.item()) / sif_mean).item())
-                        running_tropomi_loss += non_standardized_loss.item() * len(sample['tropomi_sif'])
+                        running_tropomi_loss += loss.item() * len(sample['tropomi_sif'])
                         num_tropomi_points += len(sample['tropomi_sif'])
+                        all_true_tropomi_sifs.append(tropomi_true_sifs.cpu().detach().numpy())
+                        all_predicted_tropomi_sifs.append(tropomi_predicted_sifs.cpu().detach().numpy())
 
-                if 'oco2_tile' in sample:
+                if 'oco2_subtiles' in sample:
                     if (phase == 'val') or (phase == 'train' and random.random() < OCO2_UPDATES_PER_TROPOMI):
                         # Read TROPOMI tile and SIF from dataloader
-                        oco2_subtiles_std = sample['oco2_tile'].to(device)  # (batch size, num sub-tiles, num channels, H, W)
+                        oco2_subtiles_std = sample['oco2_subtiles'].to(device)  # (batch size, num sub-tiles, num channels, H, W)
                         oco2_true_sifs = sample['oco2_sif'].to(device)  # (batch_size)
                         assert(oco2_subtiles_std.shape[0] == oco2_true_sifs.shape[0])
-
-                        # Standardize SIF
-                        oco2_true_sifs_std = ((oco2_true_sifs - sif_mean) / sif_std).to(device)
  
                         # Reshape into a batch of "sub-tiles"
                         input_shape = oco2_subtiles_std.shape
@@ -236,31 +247,25 @@ def train_model(subtile_sif_model, dataloaders, criterion, optimizer, device,
                         total_num_subtiles = input_shape[0] * input_shape[1]
                         input_subtiles = oco2_subtiles_std.view((total_num_subtiles, input_shape[2], input_shape[3], input_shape[4]))
 
-                        # Zero out gradients
                         with torch.set_grad_enabled(phase == 'train'):
-                            oco2_predicted_sifs_std = subtile_sif_model(input_subtiles).flatten()
+                            oco2_predicted_sifs_std = model(input_subtiles).flatten()
+                            oco2_predicted_sifs = oco2_predicted_sifs_std * sif_std + sif_mean
+                            # oco2_predicted_sifs = torch.clamp(oco2_predicted_sifs, min=MIN_SIF_CLIP)
 
                             # Compute loss: predicted vs true SIF (standardized)
-                            loss = criterion(oco2_predicted_sifs_std, oco2_true_sifs_std)
+                            loss = criterion(oco2_predicted_sifs, oco2_true_sifs)
                             if phase == 'train':
                                 optimizer.zero_grad()
                                 loss.backward()
-                                optimizer.step() 
+                                optimizer.step()
 
                         with torch.set_grad_enabled(False):
                             # statistics
-                            oco2_predicted_sifs = torch.tensor(oco2_predicted_sifs_std * sif_std + sif_mean, dtype=torch.float).to(device)
-                            oco2_predicted_sifs = torch.clamp(oco2_predicted_sifs, min=0.2, max=1.7)
-                            non_standardized_loss = criterion(oco2_predicted_sifs, oco2_true_sifs)
-                            oco2_batch_idx += 1
-                            # if oco2_batch_idx % 20 == 1:
-                            #     print('========================')
-                            #     print('*** (OCO-2) Predicted', oco2_predicted_sifs[0:20])
-                            #     print('*** True', oco2_true_sifs[0:20])
-                            #     print('*** batch loss', (math.sqrt(non_standardized_loss.item()) / sif_mean).item())
-                            running_oco2_loss += non_standardized_loss.item() * len(sample['oco2_sif'])
+                            running_oco2_loss += loss.item() * len(sample['oco2_sif'])
                             num_oco2_points += len(sample['oco2_sif'])
-                
+                            all_true_oco2_sifs.append(oco2_true_sifs.cpu().detach().numpy())
+                            all_predicted_oco2_sifs.append(oco2_predicted_sifs.cpu().detach().numpy())
+
 
                 # # Read batch from dataloader
                 # batch_loss = 0.0
@@ -339,32 +344,38 @@ def train_model(subtile_sif_model, dataloaders, criterion, optimizer, device,
                 #         print('*** True', true_sifs_non_standardized[0:20])
                 #         print('*** batch loss', (math.sqrt(non_standardized_loss.item()) / sif_mean).item())
                 #     running_loss += non_standardized_loss.item() * len(sample['SIF'])
-
+           # Compute NRMSE on entire TROPOMI and OCO-2 datasets
             if num_tropomi_points > 0:
-                epoch_tropomi_loss = math.sqrt(running_tropomi_loss / num_tropomi_points) / sif_mean
-                print('{} Loss - TROPOMI: {:.3f}'.format(
-                    phase, epoch_tropomi_loss))
+                epoch_tropomi_nrmse = (math.sqrt(running_tropomi_loss / num_tropomi_points) / sif_mean).item()            
+                true_tropomi = np.concatenate(all_true_tropomi_sifs)
+                predicted_tropomi = np.concatenate(all_predicted_tropomi_sifs)
+                print('======', phase, 'TROPOMI stats ======')
+                sif_utils.print_stats(true_tropomi, predicted_tropomi, sif_mean)
                 if phase == 'train':
-                    train_tropomi_losses.append(epoch_tropomi_loss)
+                    train_tropomi_losses.append(epoch_tropomi_nrmse)
                 else:
-                    val_tropomi_losses.append(epoch_tropomi_loss)
+                    val_tropomi_losses.append(epoch_tropomi_nrmse)
 
             if num_oco2_points > 0:
-                epoch_oco2_loss = math.sqrt(running_oco2_loss / num_oco2_points) / sif_mean
-                print('{} Loss - OCO-2: {:.3f}'.format(
-                    phase, epoch_oco2_loss))
+                epoch_oco2_nrmse = (math.sqrt(running_oco2_loss / num_oco2_points) / sif_mean).item()
+                true_oco2 = np.concatenate(all_true_oco2_sifs)
+                predicted_oco2 = np.concatenate(all_predicted_oco2_sifs)
+                print('======', phase, 'OCO-2 stats ======')
+                sif_utils.print_stats(true_oco2, predicted_oco2, sif_mean)
                 if phase == 'train':
-                    train_oco2_losses.append(epoch_oco2_loss)
+                    train_oco2_losses.append(epoch_oco2_nrmse)
                 else:
-                    val_oco2_losses.append(epoch_oco2_loss)
+                    val_oco2_losses.append(epoch_oco2_nrmse)
 
             # deep copy the model
-            if phase == 'val' and epoch_oco2_loss < best_loss:
-                best_loss = epoch_oco2_loss
-                best_model_wts = copy.deepcopy(subtile_sif_model.state_dict())
-                torch.save(subtile_sif_model.state_dict(), SUBTILE_SIF_MODEL_FILE)
-                # torch.save(subtile_sif_model.state_dict(), SUBTILE_SIF_MODEL_FILE + "_epoch" + str(epoch))
-        
+            if phase == 'val' and epoch_tropomi_nrmse < best_tropomi_loss:
+                best_tropomi_loss = epoch_tropomi_nrmse
+            if phase == 'val' and epoch_oco2_nrmse < best_oco2_loss:
+                best_oco2_loss = epoch_oco2_nrmse
+                best_model_wts = copy.deepcopy(model.state_dict())
+                torch.save(model.state_dict(), SUBTILE_SIF_MODEL_FILE)
+
+
         # Print elapsed time per epoch
         epoch_time = time.time() - epoch_start
         print('Epoch time: {:.0f}m {:.0f}s'.format(
@@ -374,11 +385,11 @@ def train_model(subtile_sif_model, dataloaders, criterion, optimizer, device,
     time_elapsed = time.time() - since
     print('Training complete in {:.0f}m {:.0f}s'.format(
         time_elapsed // 60, time_elapsed % 60))
-    print('Best val loss: {:3f}'.format(best_loss))
+    print('Best OCO-2 val loss: {:3f}'.format(best_oco2_loss))
 
     # load best model weights
-    subtile_sif_model.load_state_dict(best_model_wts)
-    return subtile_sif_model, train_tropomi_losses, train_oco2_losses, val_tropomi_losses, val_oco2_losses, best_loss
+    model.load_state_dict(best_model_wts)
+    return model, train_tropomi_losses, train_oco2_losses, val_tropomi_losses, val_oco2_losses, best_oco2_loss
 
 
 def main():
@@ -391,8 +402,63 @@ def main():
         device = "cpu"
     print("Device", device)
 
+    # Read train/val tile metadata
+    train_set = pd.read_csv(INFO_FILE_TRAIN)
+    val_set = pd.read_csv(INFO_FILE_VAL)
+    test_set = pd.read_csv(INFO_FILE_TEST)
 
+    # Filter. Note that most of these filters are redundant with create_filtered_dataset.py
+    train_tropomi_set = train_set[(train_set['source'] == 'TROPOMI') &
+                                (train_set['num_soundings'] >= MIN_SOUNDINGS) &
+                                (train_set['missing_reflectance'] <= MAX_CLOUD_COVER) &
+                                (train_set['SIF'] >= MIN_SIF_CLIP) &
+                                (train_set['date'].isin(TRAIN_TROPOMI_DATES))].copy()
+    train_oco2_set = train_set[(train_set['source'] == 'OCO2') &
+                                (train_set['num_soundings'] >= MIN_SOUNDINGS) &
+                                (train_set['missing_reflectance'] <= MAX_CLOUD_COVER) &
+                                (train_set['SIF'] >= MIN_SIF_CLIP) &
+                                (train_set['date'].isin(TRAIN_OCO2_DATES))].copy()
+    val_tropomi_set = val_set[(val_set['source'] == 'TROPOMI') &
+                                (val_set['num_soundings'] >= MIN_SOUNDINGS) &
+                                (val_set['missing_reflectance'] <= MAX_CLOUD_COVER) &
+                                (val_set['SIF'] >= MIN_SIF_CLIP) &
+                                (val_set['date'].isin(TRAIN_TROPOMI_DATES))].copy()
+    val_oco2_set = val_set[(val_set['source'] == 'OCO2') &
+                                (val_set['num_soundings'] >= MIN_SOUNDINGS) &
+                                (val_set['missing_reflectance'] <= MAX_CLOUD_COVER) &
+                                (val_set['SIF'] >= MIN_SIF_CLIP) &
+                                (val_set['date'].isin(TRAIN_OCO2_DATES))].copy()
+    test_tropomi_set = test_set[(test_set['source'] == 'TROPOMI') &
+                                (test_set['num_soundings'] >= MIN_SOUNDINGS) &
+                                (test_set['missing_reflectance'] <= MAX_CLOUD_COVER) &
+                                (test_set['SIF'] >= MIN_SIF_CLIP) &
+                                (test_set['date'].isin(TRAIN_TROPOMI_DATES))].copy()
+    test_oco2_set = test_set[(test_set['source'] == 'OCO2') &
+                                (test_set['num_soundings'] >= MIN_SOUNDINGS) &
+                                (test_set['missing_reflectance'] <= MAX_CLOUD_COVER) &
+                                (test_set['SIF'] >= MIN_SIF_CLIP) &
+                                (test_set['date'].isin(TEST_DATES))].copy()
+    train_oco2_set['SIF'] /= 1.03
+    val_oco2_set['SIF'] /= 1.03
+    test_oco2_set['SIF'] /= 1.03
 
+    # Create shuffled train sets
+    # combined_tropomi_set = pd.concat([train_tropomi_set, val_tropomi_set, test_tropomi_set])
+    shuffled_tropomi_set = train_tropomi_set.sample(frac=1, random_state=RANDOM_STATE).reset_index(drop=True) #.iloc[0:NUM_TROPOMI_SAMPLES_TRAIN]
+    shuffled_oco2_set = train_oco2_set.sample(frac=1, random_state=RANDOM_STATE).reset_index(drop=True) #.iloc[0:NUM_OCO2_SAMPLES_TRAIN]
+
+    # Extract TROPOMI and OCO-2 rows, if applicable
+    if 'TROPOMI' in TRAIN_SOURCES:
+        train_tropomi_metadata = shuffled_tropomi_set
+        print('Train TROPOMI samples', len(train_tropomi_metadata))
+    else:
+        train_tropomi_metadata = None
+
+    if 'OCO2' in TRAIN_SOURCES:
+        train_oco2_metadata = shuffled_oco2_set
+        print('Train OCO2 samples', len(train_oco2_metadata))
+    else:
+        train_oco2_metadata = None
 
     # Read mean/standard deviation for each band, for standardization purposes
     train_statistics = pd.read_csv(BAND_STATISTICS_FILE)
@@ -405,8 +471,6 @@ def main():
     band_stds = train_stds[:-1]
     sif_std = train_stds[-1]
 
-
-
     # Constrain predicted SIF to be between 0.2 and 1.7 (unstandardized)
     # Don't forget to standardize
     if MIN_SIF is not None and MAX_SIF is not None:
@@ -416,71 +480,26 @@ def main():
         min_output = None
         max_output = None
 
-    # Read train/val tile metadata
-    train_metadata = pd.read_csv(INFO_FILE_TRAIN)
-    val_metadata = pd.read_csv(INFO_FILE_VAL)
 
-    # Extract TROPOMI and OCO-2 rows, if applicable
-    if 'TROPOMI' in TRAIN_SOURCES:
-        train_tropomi_metadata = train_metadata[train_metadata['source'] == 'TROPOMI'].iloc[0:1000]
-        print('Train TROPOMI samples', len(train_tropomi_metadata))
-    else:
-        train_tropomi_metadata = None
+    # Set up image transforms / augmentations
+    standardize_transform = tile_transforms.StandardizeTile(band_means, band_stds) #, min_input=MIN_INPUT, max_input=MAX_INPUT)
+    clip_transform = tile_transforms.ClipTile(min_input=MIN_INPUT, max_input=MAX_INPUT)
+    noise_transform = tile_transforms.GaussianNoise(continuous_bands=list(range(0, 9)), standard_deviation=NOISE)
+    flip_and_rotate_transform = tile_transforms.RandomFlipAndRotate()
 
-    if 'OCO2' in TRAIN_SOURCES:
-        train_oco2_metadata = train_metadata[train_metadata['source'] == 'OCO2'].iloc[0:NUM_TRAIN_OCO2_SAMPLES]
-        print('Train OCO2 samples', len(train_oco2_metadata))
-    else:
-        train_oco2_metadata = None
-
-    if 'TROPOMI' in VAL_SOURCES:
-        val_tropomi_metadata = val_metadata[val_metadata['source'] == 'TROPOMI']
-        print('Val TROPOMI samples', len(val_tropomi_metadata))
-    else:
-        val_tropomi_metadata = None
-
-    if 'OCO2' in VAL_SOURCES:
-        val_oco2_metadata = val_metadata[val_metadata['source'] == 'OCO2']
-        print('Val OCO2 samples', len(val_oco2_metadata))
-    else:
-        val_oco2_metadata = None
-
-    # NOTE For technical reasons, ensure that TROPOMI and OCO2 validation data have the same length
-    # (so that OCO2 points are not repeated)
-    val_tropomi_metadata = val_tropomi_metadata.iloc[0:len(val_oco2_metadata)]
-
-
-    # Add copies of OCO-2 tiles - NOT NEEDED NOW
-    # train_oco2_repeated = pd.concat([train_oco2_metadata]*4)
-    # train_metadata = pd.concat([train_metadata, train_oco2_repeated])
-    # val_oco2_repeated = pd.concat([val_oco2_metadata]*4)
-    # val_metadata = pd.concat([val_metadata, val_oco2_repeated])
-
-    # Set up image transforms
-    # standardize_transform = tile_transforms.StandardizeTile(band_means, band_stds, min_input=MIN_INPUT, max_input=MAX_INPUT)
-    # noise_transform = tile_transforms.GaussianNoise(continuous_bands=list(range(0, 12)), standard_deviation=NOISE)
-    # flip_and_rotate_transform = tile_transforms.RandomFlipAndRotate()
-
-    # transform_list_train = [standardize_transform, noise_transform] #, noise_transform]
-    # transform_list_val = [standardize_transform]
-    # if AUGMENT:
-    #     transform_list_train.append(flip_and_rotate_transform)
-
+    transform_list_train = [standardize_transform, clip_transform]
+    transform_list_val = [standardize_transform, clip_transform]
     if AUGMENT:
-        noise_transform = tile_transforms.GaussianNoiseSubtiles(continuous_bands=list(range(0, 9)), standard_deviation=NOISE)
-        flip_and_rotate_transform = tile_transforms.RandomFlipAndRotateSubtiles()
-        transform_list_train = [noise_transform, flip_and_rotate_transform] #, noise_transform]
-        transform_train = transforms.Compose(transform_list_train)
-    else:
-        transform_train = None
-    transform_val = None #transforms.Compose(transform_list_val)
+        transform_list_train += [flip_and_rotate_transform, noise_transform]
+    train_transform = transforms.Compose(transform_list_train)
+    val_transform = transforms.Compose(transform_list_val)
 
-    datasets = {'train': CombinedDataset(train_tropomi_metadata, train_oco2_metadata, transform_train, return_subtiles=False, 
-                                         subtile_dim=SUBTILE_DIM, # tile_file_column='tile_file'),
-                                         tile_file_column='standardized_subtiles_file'),
-                'val': CombinedDataset(val_tropomi_metadata, val_oco2_metadata, transform_val, return_subtiles=False,
-                                       subtile_dim=SUBTILE_DIM, #tile_file_column='tile_file')}  
-                                       tile_file_column='standardized_subtiles_file')}  # Only validate on OCO-2
+    datasets = {'train': CombinedDataset(train_tropomi_metadata, train_oco2_metadata, train_transform, return_subtiles=True,
+                                         subtile_dim=SUBTILE_DIM, tile_file_column='tile_file'), #'standardized_subtiles_file'),
+                                         #tile_file_column='tile_file'),
+                'val': CombinedDataset(None, val_oco2_set, val_transform, return_subtiles=True,
+                                       subtile_dim=SUBTILE_DIM, tile_file_column='tile_file')} #standardized_subtiles_file')}  
+                                       #tile_file_column='tile_file')}  # Only validate on OCO-2
     dataloaders = {x: torch.utils.data.DataLoader(datasets[x], batch_size=BATCH_SIZE,
                                                 shuffle=True, num_workers=NUM_WORKERS)
                 for x in ['train', 'val']}
@@ -529,9 +548,9 @@ def main():
         print("Optimizer not supported")
         exit(1)
 
-    subtile_sif_model, train_tropomi_losses, train_oco2_losses, val_tropomi_losses, val_oco2_losses, best_loss =  train_model(subtile_sif_model, dataloaders, criterion, optimizer, device, sif_mean, sif_std, subtile_dim=SUBTILE_DIM, num_epochs=NUM_EPOCHS)
-
+    subtile_sif_model, train_tropomi_losses, train_oco2_losses, val_tropomi_losses, val_oco2_losses, best_loss = train_model(subtile_sif_model, dataloaders, criterion, optimizer, device, sif_mean, sif_std, subtile_dim=SUBTILE_DIM, num_epochs=NUM_EPOCHS)
     torch.save(subtile_sif_model.state_dict(), SUBTILE_SIF_MODEL_FILE)
+    print('Best OCO2 loss', best_loss)
 
     # Plot loss curves
     epoch_list = range(NUM_EPOCHS)

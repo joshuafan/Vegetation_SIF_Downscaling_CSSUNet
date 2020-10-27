@@ -304,7 +304,9 @@ class CombinedDataset(Dataset):
                 sample['tropomi_tile'] = torch.tensor(tropomi_tile, dtype=torch.float)
             sample['tropomi_sif'] = tropomi_tile_info.loc['SIF']
             sample['tropomi_description'] = tile_description
-
+            sample['tropomi_lon'] = tropomi_tile_info.loc['lon']
+            sample['tropomi_lat'] = tropomi_tile_info.loc['lat']
+            sample['tropomi_date'] = tropomi_tile_info.loc['date']
 
             # print('Upper left pixel', tropomi_subtiles[0, :, 0, 0])
             # print('Upper right pixel', tropomi_subtiles[3, :, 0, 99])

@@ -20,18 +20,35 @@ from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_squared_error, r2_score
 
 
-
+def remove_pure_tiles(df, threshold=0.5):
+    CROP_TYPES = ['grassland_pasture', 'corn', 'soybean', 'shrubland',
+                    'deciduous_forest', 'evergreen_forest', 'spring_wheat', 'developed_open_space',
+                    'other_hay_non_alfalfa', 'winter_wheat', 'herbaceous_wetlands',
+                    'woody_wetlands', 'open_water', 'alfalfa', 'fallow_idle_cropland',
+                    'sorghum', 'developed_low_intensity', 'barren', 'durum_wheat',
+                    'canola', 'sunflower', 'dry_beans', 'developed_med_intensity',
+                    'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
+                    'lentils']
+    mixed_pixels = df[CROP_TYPES[0]] < threshold
+    # print('Total tiles', len(df))
+    for idx in range(1, len(CROP_TYPES)):
+        print('Num tiles with a lot of ', CROP_TYPES[idx], len(df[df[CROP_TYPES[idx]] > threshold]))
+        mixed_pixels = mixed_pixels & (df[CROP_TYPES[idx]] < threshold)
+    df = df[mixed_pixels]
+    # print('Mixed (non-pure) tiles', len(df))
+    return df
+    
 # Returns the upper-left corner of the large (1x1 degree) grid area
-def get_large_grid_area_coordinates(lon, lat):
-    return (math.floor(lon), math.ceil(lat))
+def get_large_grid_area_coordinates(lon, lat, grid_area_degrees):
+    return (round_down(lon, grid_area_degrees), round_down(lat, grid_area_degrees) + grid_area_degrees)
 
 # Round down to the next-lower multiple of "divisor".
 # Code from https://stackoverflow.com/questions/13082698/rounding-down-integers-to-nearest-multiple
 def round_down(num, divisor):
     return num - (num%divisor)
 
-def determine_split(large_grid_areas, row):
-    grid_area_coordinates = get_large_grid_area_coordinates(row['lon'], row['lat'])
+def determine_split(large_grid_areas, row, grid_area_degrees):
+    grid_area_coordinates = get_large_grid_area_coordinates(row['lon'], row['lat'], grid_area_degrees)
     if grid_area_coordinates in large_grid_areas:
         return large_grid_areas[grid_area_coordinates]
     else:

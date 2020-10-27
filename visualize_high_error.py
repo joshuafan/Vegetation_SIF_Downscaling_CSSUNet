@@ -1,3 +1,8 @@
+"""
+Out of date! See eval_unet.py
+"""
+
+
 import math
 import matplotlib.pyplot as plt
 import numpy as np
@@ -16,8 +21,13 @@ from sif_utils import plot_histogram
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
 
-TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset_all_2") #"dataset_2018-07-16")
-
+TRAIN_DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset") #"dataset_2018-07-16")
+RES = (0.00026949458523585647, 0.00026949458523585647)
+EVAL_RES = (RES[0] * FINE_PIXELS_PER_EVAL, RES[1] * FINE_PIXELS_PER_EVAL)
+TILE_PIXELS = 100
+TILE_SIZE_DEGREES = RES[0] * TILE_PIXELS
+METHOD = "2e_unet2"
+MODEL_TYPE = "unet2"
 # RESULTS_FILE = os.path.join(TRAIN_DATASET_DIR, "OCO2_results_2d_train_both_subtile_resnet_100samples_3.csv")
 # TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/2d_train_both_subtile_resnet_100samples_3")
 
@@ -61,7 +71,22 @@ min_output = (MIN_SIF - sif_mean) / sif_std
 max_output = (MAX_SIF - sif_mean) / sif_std
 
 # Load sub-tile model
-# subtile_sif_model = simple_cnn.SimpleCNNSmall5(input_channels=INPUT_CHANNELS_SIMPLE, output_dim=1, min_output=min_output, max_output=max_output).to(device)
+# Load model
+if MODEL_TYPE == 'unet_small':
+    model = UNetSmall(n_channels=INPUT_CHANNELS, n_classes=1, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)
+elif MODEL_TYPE == 'pixel_nn':
+    model = simple_cnn.PixelNN(input_channels=INPUT_CHANNELS, output_dim=1, min_output=min_output, max_output=max_output).to(device)
+elif MODEL_TYPE == 'unet2':
+    model = UNet2(n_channels=INPUT_CHANNELS, n_classes=1, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)
+elif MODEL_TYPE == 'unet2_pixel_embedding':
+    model = UNet2PixelEmbedding(n_channels=INPUT_CHANNELS, n_classes=1, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)
+elif MODEL_TYPE == 'unet':
+    model = UNet(n_channels=INPUT_CHANNELS, n_classes=1, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)   
+elif MODEL_TYPE == 'simple_cnn_5':
+    model = simple_cnn.SimpleCNNSmall5(input_channels=INPUT_CHANNELS_SIMPLE, output_dim=1, min_output=min_output, max_output=max_output).to(device)
+else:
+    print('Model type not supported')
+    exit(1)
 subtile_sif_model = resnet.resnet18(input_channels=INPUT_CHANNELS, reduced_channels=REDUCED_CHANNELS,
                                     crop_type_embedding_dim=CROP_TYPE_EMBEDDING_DIM, num_classes=1,
                                     min_output=min_output, max_output=max_output).to(device)
@@ -91,8 +116,8 @@ for high_error_idx in high_error_indices:
     title += ('\n(True SIF: ' + str(round(row['true'], 3)) + ', Predicted SIF: ' + str(round(row['predicted'], 3)) + ')')
     print('Tile:', tile_description)
     print('header:', title)
-    sif_utils.plot_tile(high_error_tile, tile_description, title=title)
-
+    plot_tile(high_error_tile, None, None, None, None, row['lon'], row['lat'], row['date'], tile_size_degrees,
+              res,
     # # Feed each sub-tile through the model
     # input_tile_standardized = torch.tensor(high_error_tile, dtype=torch.float) 
     # subtiles_standardized = sif_utils.get_subtiles_list(input_tile_standardized, SUBTILE_DIM) #, device, max_subtile_cloud_cover=None)  # (batch x num subtiles x bands x subtile_dim x subtile_dim)
