@@ -30,25 +30,24 @@ RESOLUTION_METERS = 30
 FINE_PIXELS_PER_EVAL = int(RESOLUTION_METERS / 30)
 OCO2_METADATA_TRAIN_FILE = os.path.join(OCO2_DIR, 'oco2_metadata_train.csv')
 EVAL_AVERAGES_TRAIN_FILE = os.path.join(CFIS_DIR, 'cfis_averages_' + str(RESOLUTION_METERS) + 'm_train.csv')
-EVAL_AVERAGES_VAL_FILE = os.path.join(CFIS_DIR, 'cfis_averages_' + str(RESOLUTION_METERS) + 'm_train.csv')
-# EVAL_AVERAGES_VAL_FILE = os.path.join(CFIS_DIR, 'cfis_averages_' + str(RESOLUTION_METERS) + 'm_val.csv')
+EVAL_AVERAGES_TEST_FILE = os.path.join(CFIS_DIR, 'cfis_averages_' + str(RESOLUTION_METERS) + 'm_test.csv')
 COARSE_AVERAGES_TRAIN_FILE = os.path.join(CFIS_DIR, 'cfis_coarse_averages_train.csv')
-COARSE_AVERAGES_VAL_FILE = os.path.join(CFIS_DIR, 'cfis_coarse_averages_train.csv')
-# COARSE_AVERAGES_VAL_FILE = os.path.join(CFIS_DIR, 'cfis_coarse_averages_val.csv')
-
+COARSE_AVERAGES_TEST_FILE = os.path.join(CFIS_DIR, 'cfis_coarse_averages_test.csv')
 BAND_STATISTICS_FILE = os.path.join(CFIS_DIR, 'cfis_band_statistics_train.csv')
 
 
 # METHOD = "10e_unet2_contrastive"
 # MODEL_TYPE = "unet2_pixel_embedding"
-METHOD = "9e_unet2_contrastive"
-MODEL_TYPE = "unet2_pixel_embedding"
-# METHOD = "9d_unet2_fully_supervised"
-# MODEL_TYPE = "unet2"
+# METHOD = "9e_unet2_contrastive"
+# METHOD = "9e_unet2_contrastive"
+# METHOD = "9e_unet2_pixel_embedding"
+# MODEL_TYPE = "unet2_pixel_embedding"
+METHOD = "9d_unet2"
+MODEL_TYPE = "unet2"
 COMPUTE_RESULTS = True
 PLOT = True
-COARSE_CFIS_RESULTS_CSV_FILE = os.path.join(CFIS_DIR, 'cfis_results_' + METHOD + '_train_coarse.csv')
-EVAL_CFIS_RESULTS_CSV_FILE = os.path.join(CFIS_DIR, 'cfis_results_' + METHOD + '_' + str(RESOLUTION_METERS) + 'm_train_fine.csv')
+COARSE_CFIS_RESULTS_CSV_FILE = os.path.join(CFIS_DIR, 'cfis_results_' + METHOD + '_test_coarse.csv')
+EVAL_CFIS_RESULTS_CSV_FILE = os.path.join(CFIS_DIR, 'cfis_results_' + METHOD + '_' + str(RESOLUTION_METERS) + 'm_test_fine.csv')
 
 # CFIS filtering
 MIN_EVAL_CFIS_SOUNDINGS = 10
@@ -61,17 +60,17 @@ MIN_COARSE_FRACTION_VALID_PIXELS = 0.1
 
 # Dates
 TRAIN_DATES = ['2016-06-15', '2016-08-01']
-VAL_DATES = ['2016-06-15', '2016-08-01']
+TEST_DATES = ['2016-06-15', '2016-08-01']
 
 CFIS_TRUE_VS_PREDICTED_PLOT = os.path.join(DATA_DIR, "exploratory_plots/true_vs_predicted_sif_cfis_" + METHOD)
 MODEL_FILE = os.path.join(DATA_DIR, "models/" + METHOD)
-BATCH_SIZE = 128
+BATCH_SIZE = 64
 NUM_WORKERS = 8
 MIN_SIF = None
 MAX_SIF = None
-MIN_INPUT = -3 #-3
-MAX_INPUT = 3 #3
-
+MIN_INPUT = -3
+MAX_INPUT = 3
+MIN_SIF_CLIP = 0.1
 MIN_SIF_PLOT = 0
 MAX_SIF_PLOT = 2
 BANDS = list(range(0, 43))
@@ -118,126 +117,93 @@ COVER_COLUMN_NAMES = ['grassland_pasture', 'corn', 'soybean', 'deciduous_forest'
 
 DATES = ["2016-06-15", "2016-08-01"]
 
-# Check if any CUDA devices are visible. If so, pick a default visible device.
-# If not, use CPU.
-if 'CUDA_VISIBLE_DEVICES' in os.environ:
-    print('CUDA_VISIBLE_DEVICES:', os.environ['CUDA_VISIBLE_DEVICES'])
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-else:
-    device = "cpu"
-print("Device", device)
+
+"""
+Quickly computes true vs predicted loss of U-Net on fine CFIS dataset
+"""
+def eval_unet_fast(model, dataloader, criterion, device, sif_mean, sif_std, fine_pixels_per_eval, min_eval_cfis_soundings):
+    running_coarse_loss = 0
+    running_eval_loss = 0
+    num_coarse_datapoints = 0
+    num_eval_datapoints = 0
+    all_true_coarse_sifs = []
+    all_true_eval_sifs = []
+    all_predicted_coarse_sifs = []
+    all_predicted_eval_sifs = []
+
+    # Set model to eval mode
+    model.eval()
+
+    # Iterate over data. TODO this is redundant with compare_unet_to_others()
+    for sample in dataloader:
+        with torch.set_grad_enabled(False):
+            # Read input tile
+            input_tiles_std = sample['cfis_input_tile'][:, BANDS, :, :].to(device)
+
+            # Read coarse-resolution SIF label
+            true_coarse_sifs = sample['cfis_coarse_sif'].to(device)
+
+            # Read fine-resolution SIF labels
+            true_fine_sifs = sample['cfis_fine_sif'].to(device)
+            valid_fine_sif_mask = torch.logical_not(sample['cfis_fine_sif_mask']).to(device)
+            fine_soundings = sample['cfis_fine_soundings'].to(device)
+
+            # Predict fine-resolution SIF using model
+            predicted_fine_sifs_std = model(input_tiles_std)  # predicted_fine_sifs_std: (batch size, 1, H, W)
+            if type(predicted_fine_sifs_std) == tuple:
+                predicted_fine_sifs_std = predicted_fine_sifs_std[0]
+            predicted_fine_sifs_std = torch.squeeze(predicted_fine_sifs_std, dim=1)
+            predicted_fine_sifs = predicted_fine_sifs_std * sif_std + sif_mean
+
+            # For each tile, take the average SIF over all valid pixels
+            predicted_coarse_sifs = sif_utils.masked_average(predicted_fine_sifs, valid_fine_sif_mask, dims_to_average=(1, 2)) # (batch size)
+
+            # Compute loss (predicted vs true coarse SIF)
+            coarse_loss = criterion(true_coarse_sifs, predicted_coarse_sifs)
+
+            # Scale predicted/true to desired eval resolution
+            predicted_eval_sifs, _, _ = sif_utils.downsample_sif(predicted_fine_sifs, valid_fine_sif_mask, fine_soundings, fine_pixels_per_eval)
+            true_eval_sifs, eval_fraction_valid, eval_soundings = sif_utils.downsample_sif(true_fine_sifs, valid_fine_sif_mask, fine_soundings, fine_pixels_per_eval)
+
+            # Filter noisy coarse tiles
+            non_noisy_mask = (eval_soundings >= min_eval_cfis_soundings) & (true_eval_sifs >= MIN_SIF_CLIP) & (eval_fraction_valid >= MIN_EVAL_FRACTION_VALID)
+            non_noisy_mask_flat = non_noisy_mask.flatten()
+            true_eval_sifs_filtered = true_eval_sifs.flatten()[non_noisy_mask_flat]
+            predicted_eval_sifs_filtered = predicted_eval_sifs.flatten()[non_noisy_mask_flat]
+            predicted_eval_sifs_filtered = torch.clamp(predicted_eval_sifs_filtered, min=MIN_SIF_CLIP)
+            eval_loss = criterion(true_eval_sifs_filtered, predicted_eval_sifs_filtered)
+
+            # Record stats
+            running_coarse_loss += coarse_loss.item() * len(true_coarse_sifs)
+            num_coarse_datapoints += len(true_coarse_sifs)
+            running_eval_loss += eval_loss.item() * len(true_eval_sifs_filtered)
+            num_eval_datapoints += len(true_eval_sifs_filtered)
+            all_true_coarse_sifs.append(true_coarse_sifs.cpu().detach().numpy())
+            all_true_eval_sifs.append(true_eval_sifs_filtered.cpu().detach().numpy())
+            all_predicted_coarse_sifs.append(predicted_coarse_sifs.cpu().detach().numpy())
+            all_predicted_eval_sifs.append(predicted_eval_sifs_filtered.cpu().detach().numpy())
+
+    true_coarse = np.concatenate(all_true_coarse_sifs)
+    true_eval = np.concatenate(all_true_eval_sifs)
+    predicted_coarse = np.concatenate(all_predicted_coarse_sifs)
+    predicted_eval = np.concatenate(all_predicted_eval_sifs)
+    print('================== Coarse CFIS stats ======================')
+    sif_utils.print_stats(true_coarse, predicted_coarse, sif_mean, ax=None)
+    print('================== Eval CFIS stats ======================')
+    sif_utils.print_stats(true_eval, predicted_eval, sif_mean, ax=None)
+
+    return true_coarse, predicted_coarse, true_eval, predicted_eval
 
 
-# Read mean/standard deviation for each band, for standardization purposes
-train_statistics = pd.read_csv(BAND_STATISTICS_FILE)
-train_means = train_statistics['mean'].values
-train_stds = train_statistics['std'].values
-print("Means", train_means)
-print("Stds", train_stds)
-band_means = train_means[:-1]
-sif_mean = train_means[-1]
-band_stds = train_stds[:-1]
-sif_std = train_stds[-1]
-
-# Constrain predicted SIF to be between certain values (unstandardized), if desired
-# Don't forget to standardize
-if MIN_SIF is not None and MAX_SIF is not None:
-    min_output = (MIN_SIF - sif_mean) / sif_std
-    max_output = (MAX_SIF - sif_mean) / sif_std
-else:
-    min_output = None
-    max_output = None
-
-# Read coarse/fine pixel averages
-coarse_train_set = pd.read_csv(COARSE_AVERAGES_TRAIN_FILE)
-eval_train_set = pd.read_csv(EVAL_AVERAGES_TRAIN_FILE)
-coarse_val_set = pd.read_csv(COARSE_AVERAGES_VAL_FILE)
-eval_val_set = pd.read_csv(EVAL_AVERAGES_VAL_FILE)
-
-# Filter coarse CFIS
-coarse_train_set = coarse_train_set[(coarse_train_set['fraction_valid'] >= MIN_COARSE_FRACTION_VALID_PIXELS) &
-                                    (coarse_train_set['SIF'] >= MIN_SIF_CLIP) &
-                                    (coarse_train_set['date'].isin(TRAIN_DATES))]
-coarse_val_set = coarse_val_set[(coarse_val_set['fraction_valid'] >= MIN_COARSE_FRACTION_VALID_PIXELS) &
-                                (coarse_val_set['SIF'] >= MIN_SIF_CLIP) &
-                                (coarse_val_set['date'].isin(VAL_DATES))]
-print('Coarse val set', len(coarse_val_set))
-
-# Filter fine CFIS (note: more filtering happens with eval_results_df)
-eval_train_set = eval_train_set[(eval_train_set['SIF'] >= MIN_SIF_CLIP) &
-                                (eval_train_set['date'].isin(VAL_DATES)) &
-                                (eval_train_set['tile_file'].isin(set(coarse_train_set['tile_file'])))]
-eval_val_set = eval_val_set[(eval_val_set['SIF'] >= MIN_SIF_CLIP) &
-                                (eval_val_set['date'].isin(VAL_DATES)) &
-                                (eval_val_set['tile_file'].isin(set(coarse_val_set['tile_file'])))]
-# Standardize data
-for idx, column in enumerate(COLUMNS_TO_STANDARDIZE):
-    coarse_train_set[column] = np.clip((coarse_train_set[column] - band_means[idx]) / band_stds[idx], a_min=MIN_INPUT, a_max=MAX_INPUT)
-    eval_train_set[column] = np.clip((eval_train_set[column] - band_means[idx]) / band_stds[idx], a_min=MIN_INPUT, a_max=MAX_INPUT)
-    coarse_val_set[column] = np.clip((coarse_val_set[column] - band_means[idx]) / band_stds[idx], a_min=MIN_INPUT, a_max=MAX_INPUT)
-    eval_val_set[column] = np.clip((eval_val_set[column] - band_means[idx]) / band_stds[idx], a_min=MIN_INPUT, a_max=MAX_INPUT)
-
-
-
-# Set up image transforms / augmentations
-standardize_transform = tile_transforms.StandardizeTile(band_means, band_stds)
-clip_transform = tile_transforms.ClipTile(min_input=MIN_INPUT, max_input=MAX_INPUT)
-transform_list_val = [standardize_transform, clip_transform]
-val_transform = transforms.Compose(transform_list_val)
-
-# Create dataset/dataloader
-dataset = CombinedCfisOco2Dataset(coarse_val_set, None, val_transform, MIN_EVAL_CFIS_SOUNDINGS)
-dataloader = torch.utils.data.DataLoader(dataset, batch_size=BATCH_SIZE,
-                                         shuffle=False, num_workers=NUM_WORKERS)
-
-
-X_eval_train = eval_train_set[INPUT_COLUMNS]
-Y_eval_train = eval_train_set[OUTPUT_COLUMN].values.ravel()
-X_eval_val = eval_val_set[INPUT_COLUMNS]
-Y_eval_val = eval_val_set[OUTPUT_COLUMN].values.ravel()
-X_coarse_train = coarse_train_set[INPUT_COLUMNS]
-Y_coarse_train = coarse_train_set[OUTPUT_COLUMN].values.ravel()
-X_coarse_val = coarse_val_set[INPUT_COLUMNS]
-Y_coarse_val = coarse_val_set[OUTPUT_COLUMN].values.ravel()
-
-
-if COMPUTE_RESULTS:
-
-    # Train averages models - TODO change parameters
-    linear_model = Ridge(alpha=0.01).fit(X_coarse_train, Y_coarse_train)
-    mlp_model = MLPRegressor(hidden_layer_sizes=(100, 100, 100), learning_rate_init=1e-2, max_iter=10000).fit(X_coarse_train, Y_coarse_train) 
-
-    # Initialize model
-    if MODEL_TYPE == 'unet_small':
-        model = UNetSmall(n_channels=INPUT_CHANNELS, n_classes=1, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)
-    elif MODEL_TYPE == 'pixel_nn':
-        model = simple_cnn.PixelNN(input_channels=INPUT_CHANNELS, output_dim=1, min_output=min_output, max_output=max_output).to(device)
-    elif MODEL_TYPE == 'unet2':
-        model = UNet2(n_channels=INPUT_CHANNELS, n_classes=1, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)
-    elif MODEL_TYPE == 'unet2_pixel_embedding':
-        model = UNet2PixelEmbedding(n_channels=INPUT_CHANNELS, n_classes=1, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)
-    elif MODEL_TYPE == 'unet':
-        model = UNet(n_channels=INPUT_CHANNELS, n_classes=1, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)   
-    else:
-        print('Model type not supported')
-        exit(1)
-
-    model.load_state_dict(torch.load(MODEL_FILE, map_location=device))
-
-    # Initialize loss and optimizer
-    criterion = nn.MSELoss(reduction='mean')
-
+"""
+Compute detailed results. For each fine pixel, record metadata and compute predictions from
+U-Net and baseline methods. If "plot" is True, also plots visualizations.
+"""
+def compare_unet_to_others(model, dataloader, device, sif_mean, sif_std, fine_pixels_per_eval, min_eval_cfis_soundings, 
+                           coarse_test_set, eval_test_set, linear_model, mlp_model, plot):
     # Store results
     coarse_results = []
     eval_results = []
-    running_coarse_loss = 0
-    num_coarse_datapoints = 0
-    running_eval_loss = 0
-    num_eval_datapoints = 0
-    all_true_eval_sifs = []
-    all_true_coarse_sifs = []
-    all_predicted_eval_sifs = []
-    all_predicted_coarse_sifs = []
 
     # Set model to eval mode
     model.eval()
@@ -257,20 +223,21 @@ if COMPUTE_RESULTS:
             fine_soundings = sample['cfis_fine_soundings'].to(device)
 
             # Predict fine-resolution SIF using model
-            predicted_fine_sifs_std, _ = model(input_tiles_std)  # predicted_fine_sifs_std: (batch size, 1, H, W)
+            # Predict fine-resolution SIF using model
+            predicted_fine_sifs_std = model(input_tiles_std)  # predicted_fine_sifs_std: (batch size, 1, H, W)
+            if type(predicted_fine_sifs_std) == tuple:
+                predicted_fine_sifs_std = predicted_fine_sifs_std[0]
             predicted_fine_sifs_std = torch.squeeze(predicted_fine_sifs_std, dim=1)
             predicted_fine_sifs = predicted_fine_sifs_std * sif_std + sif_mean
 
-            # For each tile, take the average SIF over all valid pixels
+            # For each tile, compute coarse SIF as the average SIF over all valid pixels
             predicted_coarse_sifs = sif_utils.masked_average(predicted_fine_sifs, valid_fine_sif_mask, dims_to_average=(1, 2)) # (batch size)
 
-            # Compute loss (predicted vs true coarse SIF)
-            coarse_loss = criterion(true_coarse_sifs, predicted_coarse_sifs)
-
             # Scale predicted/true to desired eval resolution
-            predicted_eval_sifs, _, _ = sif_utils.downsample_sif(predicted_fine_sifs, valid_fine_sif_mask, fine_soundings, FINE_PIXELS_PER_EVAL)
+            predicted_eval_sifs, _, _ = sif_utils.downsample_sif(predicted_fine_sifs, valid_fine_sif_mask, fine_soundings, fine_pixels_per_eval)
             # before = time.time()
-            true_eval_sifs, eval_fraction_valid, eval_soundings = sif_utils.downsample_sif(true_fine_sifs, valid_fine_sif_mask, fine_soundings, FINE_PIXELS_PER_EVAL)
+            true_eval_sifs, eval_fraction_valid, eval_soundings = sif_utils.downsample_sif(true_fine_sifs, valid_fine_sif_mask, fine_soundings, fine_pixels_per_eval)
+            
             # print('Avgpool time', time.time() - before)
             # before = time.time()
             # true_eval_sifs, eval_fraction_valid, eval_soundings = sif_utils.downsample_sif_for_loop(true_fine_sifs, valid_fine_sif_mask, fine_soundings, FINE_PIXELS_PER_EVAL)
@@ -278,23 +245,11 @@ if COMPUTE_RESULTS:
             # print('Predicted eval sifs', predicted_eval_sifs.shape)
 
             # Filter noisy coarse tiles
-            
-            non_noisy_mask = (eval_soundings >= MIN_EVAL_CFIS_SOUNDINGS) & (true_eval_sifs >= MIN_SIF_CLIP) & (eval_fraction_valid >= MIN_EVAL_FRACTION_VALID)
+            non_noisy_mask = (eval_soundings >= min_eval_cfis_soundings) & (true_eval_sifs >= MIN_SIF_CLIP) & (eval_fraction_valid >= MIN_EVAL_FRACTION_VALID)
             non_noisy_mask_flat = non_noisy_mask.flatten()
             true_eval_sifs_filtered = true_eval_sifs.flatten()[non_noisy_mask_flat]
             predicted_eval_sifs_filtered = predicted_eval_sifs.flatten()[non_noisy_mask_flat]
             predicted_eval_sifs_filtered = torch.clamp(predicted_eval_sifs_filtered, min=MIN_SIF_CLIP)
-            eval_loss = criterion(true_eval_sifs_filtered, predicted_eval_sifs_filtered)
-
-            # Record stats
-            running_coarse_loss += coarse_loss.item() * len(true_coarse_sifs)
-            num_coarse_datapoints += len(true_coarse_sifs)
-            running_eval_loss += eval_loss.item() * len(true_eval_sifs_filtered)
-            num_eval_datapoints += len(true_eval_sifs_filtered)
-            all_true_eval_sifs.append(true_eval_sifs_filtered.cpu().detach().numpy())
-            all_true_coarse_sifs.append(true_coarse_sifs.cpu().detach().numpy())
-            all_predicted_eval_sifs.append(predicted_eval_sifs_filtered.cpu().detach().numpy())
-            all_predicted_coarse_sifs.append(predicted_coarse_sifs.cpu().detach().numpy())
 
             # Iterate through all examples in batch
             for i in range(input_tiles_std.shape[0]):
@@ -304,6 +259,7 @@ if COMPUTE_RESULTS:
                 date = sample['cfis_date'][i]
                 input_tile = input_tiles_std[i].cpu().detach().numpy()
                 valid_eval_sif_mask_tile = non_noisy_mask[i].cpu().detach().numpy()
+
                 true_coarse_sif_tile = true_coarse_sifs[i].cpu().detach().numpy()
                 true_eval_sifs_tile = true_eval_sifs[i].cpu().detach().numpy()
                 predicted_eval_sifs_linear = np.zeros(valid_eval_sif_mask_tile.shape)
@@ -311,14 +267,14 @@ if COMPUTE_RESULTS:
                 predicted_eval_sifs_unet = predicted_eval_sifs[i].cpu().detach().numpy()
                 fraction_valid = np.count_nonzero(valid_eval_sif_mask_tile) / true_eval_sifs_tile.size
 
-
                 # Get (pre-computed) averages of valid coarse/fine regions
-                tile_eval_averages = eval_val_set[eval_val_set['tile_file'] == large_tile_file]
+                tile_eval_averages = eval_test_set[eval_test_set['tile_file'] == large_tile_file]
                 # print('Tile fine averages', len(tile_eval_averages))
-                coarse_averages_pandas = coarse_val_set[coarse_val_set['tile_file'] == large_tile_file]
+                coarse_averages_pandas = coarse_test_set[coarse_test_set['tile_file'] == large_tile_file]
                 # print('Large tile file', large_tile_file)
                 # print('Coarse avg pandas', coarse_averages_pandas)
                 assert len(coarse_averages_pandas) == 1
+                assert len(tile_eval_averages) == np.count_nonzero(valid_eval_sif_mask_tile) 
                 pandas_row = coarse_averages_pandas.iloc[0]
                 coarse_averages = pandas_row[INPUT_COLUMNS].to_numpy(copy=True).reshape(1, -1)
                 true_sif = pandas_row['SIF']
@@ -349,7 +305,7 @@ if COMPUTE_RESULTS:
                 #         predicted_fine_sifs_linear[height_idx, width_idx] = linear_predicted_sif
                 #         predicted_fine_sifs_mlp[height_idx, width_idx] = mlp_predicted_sif                    
 
-                # Loop through all fine pixels, compute linear/MLP predictions, store results
+                # Loop through all *FINE* pixels, compute linear/MLP predictions, store results
                 for idx, row in tile_eval_averages.iterrows():
                     eval_averages = row[INPUT_COLUMNS].to_numpy(copy=True).reshape(1, -1)
 
@@ -391,7 +347,8 @@ if COMPUTE_RESULTS:
                     eval_results.append(result_row)
 
                 # Plot selected tiles
-                if PLOT: #and i % 10 == 0:
+                if plot and fraction_valid > 0.1:
+                    print('Plotting')
                     # Plot example tile
                     true_eval_sifs_tile[valid_eval_sif_mask_tile == 0] = 0
                     predicted_eval_sifs_linear[valid_eval_sif_mask_tile == 0] = 0
@@ -407,119 +364,230 @@ if COMPUTE_RESULTS:
                                                 valid_eval_sif_mask_tile, prediction_methods, 
                                                 large_tile_lon, large_tile_lat, date, TILE_SIZE_DEGREES,
                                                 RESOLUTION_METERS)
- 
-    # coarse_nrmse = math.sqrt(running_coarse_loss / num_coarse_datapoints) / sif_mean
-    # fine_nrmse = math.sqevaleval) / sif_mean
-    # print('Coarse NRMSE (calculated from running loss)', coarse_nrmse)
-    # print('Fine NRMSE (calculated from running loss)', fine_nrmse)
 
     coarse_results_df = pd.DataFrame(coarse_results, columns=COLUMN_NAMES)
-    # coarse_results_df[PREDICTION_COLUMNS] = coarse_results_df[PREDICTION_COLUMNS].clip(lower=MIN_SIF, upper=MAX_SIF)
     eval_results_df = pd.DataFrame(eval_results, columns=COLUMN_NAMES)
-    # fine_results_df[PREDICTION_COLUMNS] = fine_results_df[PREDICTION_COLUMNS].clip(lower=MIN_SIF, upper=MAX_SIF)    
 
+    # Clip low predictions to "MIN_SIF_CLIP"
     for result_column in ['predicted_sif_linear', 'predicted_sif_mlp', 'predicted_sif_unet']:
         eval_results_df[result_column] = np.clip(eval_results_df[result_column], a_min=MIN_SIF_CLIP, a_max=MAX_SIF_CLIP)
 
-    coarse_results_df.to_csv(COARSE_CFIS_RESULTS_CSV_FILE)
-    eval_results_df.to_csv(EVAL_CFIS_RESULTS_CSV_FILE)
+    return coarse_results_df, eval_results_df
 
-else:
-    coarse_results_df = pd.read_csv(COARSE_CFIS_RESULTS_CSV_FILE)
-    eval_results_df = pd.read_csv(EVAL_CFIS_RESULTS_CSV_FILE)
+def main():
+    # Check if any CUDA devices are visible. If so, pick a default visible device.
+    # If not, use CPU.
+    if 'CUDA_VISIBLE_DEVICES' in os.environ:
+        print('CUDA_VISIBLE_DEVICES:', os.environ['CUDA_VISIBLE_DEVICES'])
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    else:
+        device = "cpu"
+    print("Device", device)
+
+    # Read mean/standard deviation for each band, for standardization purposes
+    train_statistics = pd.read_csv(BAND_STATISTICS_FILE)
+    train_means = train_statistics['mean'].values
+    train_stds = train_statistics['std'].values
+    print("Means", train_means)
+    print("Stds", train_stds)
+    band_means = train_means[:-1]
+    sif_mean = train_means[-1]
+    band_stds = train_stds[:-1]
+    sif_std = train_stds[-1]
+
+    # Constrain predicted SIF to be between certain values (unstandardized), if desired
+    # Don't forget to standardize
+    if MIN_SIF is not None and MAX_SIF is not None:
+        min_output = (MIN_SIF - sif_mean) / sif_std
+        max_output = (MAX_SIF - sif_mean) / sif_std
+    else:
+        min_output = None
+        max_output = None
+
+    # Read coarse/fine pixel averages
+    coarse_train_set = pd.read_csv(COARSE_AVERAGES_TRAIN_FILE)
+    eval_train_set = pd.read_csv(EVAL_AVERAGES_TRAIN_FILE)
+    coarse_test_set = pd.read_csv(COARSE_AVERAGES_TEST_FILE)
+    eval_test_set = pd.read_csv(EVAL_AVERAGES_TEST_FILE)
+
+    # Filter coarse CFIS
+    coarse_train_set = coarse_train_set[(coarse_train_set['fraction_valid'] >= MIN_COARSE_FRACTION_VALID_PIXELS) &
+                                        (coarse_train_set['SIF'] >= MIN_SIF_CLIP) &
+                                        (coarse_train_set['date'].isin(TRAIN_DATES))]
+    coarse_test_set = coarse_test_set[(coarse_test_set['fraction_valid'] >= MIN_COARSE_FRACTION_VALID_PIXELS) &
+                                      (coarse_test_set['SIF'] >= MIN_SIF_CLIP) &
+                                      (coarse_test_set['date'].isin(TEST_DATES))]
+
+    # Filter fine CFIS (note: more filtering happens with eval_results_df)
+    eval_train_set = eval_train_set[(eval_train_set['SIF'] >= MIN_SIF_CLIP) &
+                                    (eval_train_set['date'].isin(TRAIN_DATES)) &
+                                    (eval_train_set['num_soundings'] >= MIN_EVAL_CFIS_SOUNDINGS) &
+                                    (eval_train_set['fraction_valid'] >= MIN_EVAL_FRACTION_VALID) &
+                                    (eval_train_set['tile_file'].isin(set(coarse_train_set['tile_file'])))]
+    eval_test_set = eval_test_set[(eval_test_set['SIF'] >= MIN_SIF_CLIP) &
+                                    (eval_test_set['date'].isin(TEST_DATES)) &
+                                    (eval_test_set['num_soundings'] >= MIN_EVAL_CFIS_SOUNDINGS) &
+                                    (eval_test_set['fraction_valid'] >= MIN_EVAL_FRACTION_VALID) &
+                                    (eval_test_set['tile_file'].isin(set(coarse_test_set['tile_file'])))]
+
+    # Standardize data
+    for idx, column in enumerate(COLUMNS_TO_STANDARDIZE):
+        coarse_train_set[column] = np.clip((coarse_train_set[column] - band_means[idx]) / band_stds[idx], a_min=MIN_INPUT, a_max=MAX_INPUT)
+        eval_train_set[column] = np.clip((eval_train_set[column] - band_means[idx]) / band_stds[idx], a_min=MIN_INPUT, a_max=MAX_INPUT)
+        coarse_test_set[column] = np.clip((coarse_test_set[column] - band_means[idx]) / band_stds[idx], a_min=MIN_INPUT, a_max=MAX_INPUT)
+        eval_test_set[column] = np.clip((eval_test_set[column] - band_means[idx]) / band_stds[idx], a_min=MIN_INPUT, a_max=MAX_INPUT)
+
+    # Set up image transforms / augmentations
+    standardize_transform = tile_transforms.StandardizeTile(band_means, band_stds)
+    clip_transform = tile_transforms.ClipTile(min_input=MIN_INPUT, max_input=MAX_INPUT)
+    transform_list_test = [standardize_transform, clip_transform]
+    test_transform = transforms.Compose(transform_list_test)
+
+    # Create dataset/dataloader
+    dataset = CombinedCfisOco2Dataset(coarse_test_set, None, test_transform, MIN_EVAL_CFIS_SOUNDINGS)
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=BATCH_SIZE,
+                                            shuffle=False, num_workers=NUM_WORKERS)
+
+    X_eval_train = eval_train_set[INPUT_COLUMNS]
+    Y_eval_train = eval_train_set[OUTPUT_COLUMN].values.ravel()
+    X_eval_test = eval_test_set[INPUT_COLUMNS]
+    Y_eval_test = eval_test_set[OUTPUT_COLUMN].values.ravel()
+    X_coarse_train = coarse_train_set[INPUT_COLUMNS]
+    Y_coarse_train = coarse_train_set[OUTPUT_COLUMN].values.ravel()
+    X_coarse_test = coarse_test_set[INPUT_COLUMNS]
+    Y_coarse_test = coarse_test_set[OUTPUT_COLUMN].values.ravel()
+
+    if COMPUTE_RESULTS:
+        # Train averages models - TODO change parameters
+        linear_model = Ridge(alpha=0.01).fit(X_coarse_train, Y_coarse_train)
+        mlp_model = MLPRegressor(hidden_layer_sizes=(100, 100, 100), learning_rate_init=1e-2, max_iter=10000).fit(X_coarse_train, Y_coarse_train) 
+
+        # Initialize model
+        if MODEL_TYPE == 'unet_small':
+            model = UNetSmall(n_channels=INPUT_CHANNELS, n_classes=1, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)
+        elif MODEL_TYPE == 'pixel_nn':
+            model = simple_cnn.PixelNN(input_channels=INPUT_CHANNELS, output_dim=1, min_output=min_output, max_output=max_output).to(device)
+        elif MODEL_TYPE == 'unet2':
+            model = UNet2(n_channels=INPUT_CHANNELS, n_classes=1, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)
+        elif MODEL_TYPE == 'unet2_pixel_embedding':
+            model = UNet2PixelEmbedding(n_channels=INPUT_CHANNELS, n_classes=1, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)
+        elif MODEL_TYPE == 'unet':
+            model = UNet(n_channels=INPUT_CHANNELS, n_classes=1, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)   
+        else:
+            print('Model type not supported')
+            exit(1)
+
+        model.load_state_dict(torch.load(MODEL_FILE, map_location=device))
+
+        # Initialize loss and optimizer
+        criterion = nn.MSELoss(reduction='mean')
+
+        # Quickly get summary statistics
+        eval_unet_fast(model, dataloader, criterion, device, sif_mean, sif_std, FINE_PIXELS_PER_EVAL, MIN_EVAL_CFIS_SOUNDINGS)
+
+        # Get detailed results (including metadata)
+        coarse_results_df, eval_results_df = compare_unet_to_others(model, dataloader, device, sif_mean, sif_std,
+                                                                    FINE_PIXELS_PER_EVAL, MIN_EVAL_CFIS_SOUNDINGS,
+                                                                    coarse_test_set, eval_test_set, linear_model,
+                                                                    mlp_model, plot=PLOT)
+        coarse_results_df.to_csv(COARSE_CFIS_RESULTS_CSV_FILE)
+        eval_results_df.to_csv(EVAL_CFIS_RESULTS_CSV_FILE)
+    else:
+        coarse_results_df = pd.read_csv(COARSE_CFIS_RESULTS_CSV_FILE)
+        eval_results_df = pd.read_csv(EVAL_CFIS_RESULTS_CSV_FILE)
 
 
-for min_eval_cfis_soundings in MIN_EVAL_CFIS_SOUNDINGS_EXPERIMENT:
-    for min_fraction_valid_pixels in MIN_EVAL_FRACTION_VALID_EXPERIMENT:
-        print('========================================== FILTER ================================================')
-        print('*** Resolution', RESOLUTION_METERS)
-        print('*** Min fine soundings', min_eval_cfis_soundings)
-        print('*** Min fine fraction valid pixels', min_fraction_valid_pixels)
-        print('==================================================================================================')
-        PLOT_PREFIX = CFIS_TRUE_VS_PREDICTED_PLOT + '_res' + str(RESOLUTION_METERS) + '_finesoundings' + str(min_eval_cfis_soundings) + '_finefractionvalid' + str(min_fraction_valid_pixels)
+    for min_eval_cfis_soundings in MIN_EVAL_CFIS_SOUNDINGS_EXPERIMENT:
+        for min_fraction_valid_pixels in MIN_EVAL_FRACTION_VALID_EXPERIMENT:
+            print('========================================== FILTER ================================================')
+            print('*** Resolution', RESOLUTION_METERS)
+            print('*** Min fine soundings', min_eval_cfis_soundings)
+            print('*** Min fine fraction valid pixels', min_fraction_valid_pixels)
+            print('==================================================================================================')
+            PLOT_PREFIX = CFIS_TRUE_VS_PREDICTED_PLOT + '_res' + str(RESOLUTION_METERS) + '_finesoundings' + str(min_eval_cfis_soundings) + '_finefractionvalid' + str(min_fraction_valid_pixels)
 
-        eval_results_df_filtered = eval_results_df[(eval_results_df['num_soundings'] >= min_eval_cfis_soundings) &
-                                                   (eval_results_df['fraction_valid'] >= min_fraction_valid_pixels)]
+            eval_results_df_filtered = eval_results_df[(eval_results_df['num_soundings'] >= min_eval_cfis_soundings) &
+                                                    (eval_results_df['fraction_valid'] >= min_fraction_valid_pixels)]
 
-        print('========= Fine pixels: True vs Linear predictions ==================')
-        sif_utils.print_stats(eval_results_df_filtered['true_sif'].values.ravel(), eval_results_df_filtered['predicted_sif_linear'].values.ravel(), sif_mean, ax=None) #plt.gca())
-        # plt.title('True vs predicted (Ridge regression)')
-        # plt.xlim(left=0, right=MAX_SIF_CLIP)
-        # plt.ylim(bottom=0, top=MAX_SIF_CLIP)
-        # plt.savefig(CFIS_TRUE_VS_PREDICTED_PLOT + '_linear.png')
-        # plt.close()
+            print('========= Fine pixels: True vs Linear predictions ==================')
+            sif_utils.print_stats(eval_results_df_filtered['true_sif'].values.ravel(), eval_results_df_filtered['predicted_sif_linear'].values.ravel(), sif_mean, ax=None) #plt.gca())
+            # plt.title('True vs predicted (Ridge regression)')
+            # plt.xlim(left=0, right=MAX_SIF_CLIP)
+            # plt.ylim(bottom=0, top=MAX_SIF_CLIP)
+            # plt.savefig(CFIS_TRUE_VS_PREDICTED_PLOT + '_linear.png')
+            # plt.close()
 
-        print('========= Fine pixels: True vs MLP predictions ==================')
-        sif_utils.print_stats(eval_results_df_filtered['true_sif'].values.ravel(), eval_results_df_filtered['predicted_sif_mlp'].values.ravel(), sif_mean, ax=None) #plt.gca())
-        # plt.title('True vs predicted (ANN)')
-        # plt.xlim(left=0, right=MAX_SIF_CLIP)
-        # plt.ylim(bottom=0, top=MAX_SIF_CLIP)
-        # plt.savefig(CFIS_TRUE_VS_PREDICTED_PLOT + '_mlp.png')
-        # plt.close()
+            print('========= Fine pixels: True vs MLP predictions ==================')
+            sif_utils.print_stats(eval_results_df_filtered['true_sif'].values.ravel(), eval_results_df_filtered['predicted_sif_mlp'].values.ravel(), sif_mean, ax=None) #plt.gca())
+            # plt.title('True vs predicted (ANN)')
+            # plt.xlim(left=0, right=MAX_SIF_CLIP)
+            # plt.ylim(bottom=0, top=MAX_SIF_CLIP)
+            # plt.savefig(CFIS_TRUE_VS_PREDICTED_PLOT + '_mlp.png')
+            # plt.close()
 
-        print('========= Fine pixels: True vs U-Net predictions ==================')
-        sif_utils.print_stats(eval_results_df_filtered['true_sif'].values.ravel(), eval_results_df_filtered['predicted_sif_unet'].values.ravel(), sif_mean, ax=plt.gca())
-        plt.title('True vs predicted (U-Net)')
-        plt.xlim(left=MIN_SIF_PLOT, right=MAX_SIF_PLOT)
-        plt.ylim(bottom=MIN_SIF_PLOT, top=MAX_SIF_PLOT)
-        plt.savefig(PLOT_PREFIX + '.png')
-        plt.close()
+            print('========= Fine pixels: True vs U-Net predictions ==================')
+            sif_utils.print_stats(eval_results_df_filtered['true_sif'].values.ravel(), eval_results_df_filtered['predicted_sif_unet'].values.ravel(), sif_mean, ax=plt.gca())
+            plt.title('True vs predicted (U-Net)')
+            plt.xlim(left=MIN_SIF_PLOT, right=MAX_SIF_PLOT)
+            plt.ylim(bottom=MIN_SIF_PLOT, top=MAX_SIF_PLOT)
+            plt.savefig(PLOT_PREFIX + '.png')
+            plt.close()
 
-        # Plot true vs. predicted for each crop on CFIS fine (for each crop)
-        predictions_fine_val = eval_results_df_filtered['predicted_sif_unet'].values.ravel()
-        Y_fine_val = eval_results_df_filtered['true_sif'].values.ravel()
-        fig, axeslist = plt.subplots(ncols=2, nrows=2, figsize=(12, 12))
-        fig.suptitle('True vs predicted SIF by crop: ' + METHOD)
-        for idx, crop_type in enumerate(COVER_COLUMN_NAMES):
-            predicted = predictions_fine_val[eval_results_df_filtered[crop_type] > PURE_THRESHOLD]
-            true = Y_fine_val[eval_results_df_filtered[crop_type] > PURE_THRESHOLD]
-            ax = axeslist.ravel()[idx]
-            print('======================= (CFIS fine) CROP: ', crop_type, '==============================')
-            print(len(predicted), 'pixels that are pure', crop_type)
-            if len(predicted) >= 2:
-                print(' ----- All crop regression ------')
+            # Plot true vs. predicted for each crop on CFIS fine (for each crop)
+            predictions_fine_val = eval_results_df_filtered['predicted_sif_unet'].values.ravel()
+            Y_fine_val = eval_results_df_filtered['true_sif'].values.ravel()
+            fig, axeslist = plt.subplots(ncols=2, nrows=2, figsize=(12, 12))
+            fig.suptitle('True vs predicted SIF by crop: ' + METHOD)
+            for idx, crop_type in enumerate(COVER_COLUMN_NAMES):
+                predicted = predictions_fine_val[eval_results_df_filtered[crop_type] > PURE_THRESHOLD]
+                true = Y_fine_val[eval_results_df_filtered[crop_type] > PURE_THRESHOLD]
+                ax = axeslist.ravel()[idx]
+                print('======================= (CFIS fine) CROP: ', crop_type, '==============================')
+                print(len(predicted), 'pixels that are pure', crop_type)
+                if len(predicted) >= 2:
+                    print(' ----- All crop regression ------')
+                    sif_utils.print_stats(true, predicted, sif_mean, ax=ax)
+                    ax.set_xlim(left=MIN_SIF_PLOT, right=MAX_SIF_PLOT)
+                    ax.set_ylim(bottom=MIN_SIF_PLOT, top=MAX_SIF_PLOT)
+                    ax.set_title(crop_type)
+
+            plt.tight_layout()
+            fig.subplots_adjust(top=0.92)
+            plt.savefig(PLOT_PREFIX + '_crop_types.png')
+            plt.close()
+
+            # Print statistics and plot by date
+            fig, axeslist = plt.subplots(ncols=1, nrows=len(DATES), figsize=(6, 6*len(DATES)))
+            fig.suptitle('True vs predicted SIF, by date: ' + METHOD)
+            idx = 0
+            for date in DATES:
+                # Obtain global model's predictions for data points with this date
+                predicted = predictions_fine_val[eval_results_df_filtered['date'] == date]
+                true = Y_fine_val[eval_results_df_filtered['date'] == date]
+                print('=================== Date ' + date + ' ======================')
+                print('Number of rows', len(predicted))
+                assert(len(predicted) == len(true))
+                if len(predicted) < 2:
+                    idx += 1
+                    continue
+
+                # Print stats (true vs predicted)
+                ax = axeslist.ravel()[idx]
                 sif_utils.print_stats(true, predicted, sif_mean, ax=ax)
+
                 ax.set_xlim(left=MIN_SIF_PLOT, right=MAX_SIF_PLOT)
                 ax.set_ylim(bottom=MIN_SIF_PLOT, top=MAX_SIF_PLOT)
-                ax.set_title(crop_type)
-
-        plt.tight_layout()
-        fig.subplots_adjust(top=0.92)
-        plt.savefig(PLOT_PREFIX + '_crop_types.png')
-        plt.close()
-
-        # Print statistics and plot by date
-        fig, axeslist = plt.subplots(ncols=1, nrows=len(DATES), figsize=(6, 6*len(DATES)))
-        fig.suptitle('True vs predicted SIF, by date: ' + METHOD)
-        idx = 0
-        for date in DATES:
-            # Obtain global model's predictions for data points with this date
-            predicted = predictions_fine_val[eval_results_df_filtered['date'] == date]
-            true = Y_fine_val[eval_results_df_filtered['date'] == date]
-            print('=================== Date ' + date + ' ======================')
-            print('Number of rows', len(predicted))
-            assert(len(predicted) == len(true))
-            if len(predicted) < 2:
+                ax.set_title(date)
                 idx += 1
-                continue
 
-            # Print stats (true vs predicted)
-            ax = axeslist.ravel()[idx]
-            sif_utils.print_stats(true, predicted, sif_mean, ax=ax)
-
-            ax.set_xlim(left=MIN_SIF_PLOT, right=MAX_SIF_PLOT)
-            ax.set_ylim(bottom=MIN_SIF_PLOT, top=MAX_SIF_PLOT)
-            ax.set_title(date)
-            idx += 1
-
-        plt.tight_layout()
-        fig.subplots_adjust(top=0.92)
-        plt.savefig(PLOT_PREFIX + '_dates.png')
-        plt.close()
+            plt.tight_layout()
+            fig.subplots_adjust(top=0.92)
+            plt.savefig(PLOT_PREFIX + '_dates.png')
+            plt.close()
 
 
-
-
+if __name__ == "__main__":
+    main()
 
 # ================================================ OLD CODE =================================================
                # exit(0)

@@ -7,6 +7,7 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import random
 from scipy.stats import pearsonr, spearmanr
 from sklearn.experimental import enable_hist_gradient_boosting 
 from sklearn.ensemble import HistGradientBoostingRegressor
@@ -20,15 +21,30 @@ from sif_utils import plot_histogram, print_stats
 
 # Set random seed
 np.random.seed(0)
+random.seed(0)
 
+# Directories
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
 CFIS_DIR = os.path.join(DATA_DIR, "CFIS")
 OCO2_DIR = os.path.join(DATA_DIR, "OCO2")
 PLOTS_DIR = os.path.join(DATA_DIR, "exploratory_plots")
 
+# Train files
+# FINE_AVERAGES_TRAIN_FILE = os.path.join(CFIS_DIR, 'cfis_fine_averages_train.csv')
+# FINE_AVERAGES_VAL_FILE = os.path.join(CFIS_DIR, 'cfis_fine_averages_val.csv')
+# FINE_AVERAGES_TEST_FILE = os.path.join(CFIS_DIR, 'cfis_fine_averages_test.csv')
+COARSE_AVERAGES_TRAIN_FILE = os.path.join(CFIS_DIR, 'cfis_coarse_averages_train.csv')
+COARSE_AVERAGES_VAL_FILE = os.path.join(CFIS_DIR, 'cfis_coarse_averages_val.csv')
+COARSE_AVERAGES_TEST_FILE = os.path.join(CFIS_DIR, 'cfis_coarse_averages_test.csv')
+OCO2_METADATA_TRAIN_FILE = os.path.join(OCO2_DIR, 'oco2_metadata_train.csv')
+OCO2_METADATA_VAL_FILE = os.path.join(OCO2_DIR, 'oco2_metadata_val.csv')
+OCO2_METADATA_TEST_FILE = os.path.join(OCO2_DIR, 'oco2_metadata_test.csv')
+BAND_STATISTICS_FILE = os.path.join(CFIS_DIR, 'cfis_band_statistics_train.csv')
+
+# Dates/sources
 DATES = ["2016-06-15", "2016-08-01"]
 TRAIN_DATES = ["2016-06-15", "2016-08-01"]
-VAL_DATES = ["2016-06-15", "2016-08-01"]
+TEST_DATES = ["2016-06-15", "2016-08-01"]
 # METHOD = "9a_Ridge_Regression_cfis" #_5soundings"
 # METHOD = "9b_Gradient_Boosting_Regressor_cfis" #_5soundings"
 METHOD = "9c_MLP_cfis" #_10soundings"
@@ -59,17 +75,6 @@ MIN_SIF_PLOT = 0
 MAX_SIF_PLOT = 2
 NUM_RUNS = 3
 
-# Train files
-# FINE_AVERAGES_TRAIN_FILE = os.path.join(CFIS_DIR, 'cfis_fine_averages_train.csv')
-# FINE_AVERAGES_VAL_FILE = os.path.join(CFIS_DIR, 'cfis_fine_averages_val.csv')
-# FINE_AVERAGES_TEST_FILE = os.path.join(CFIS_DIR, 'cfis_fine_averages_test.csv')
-COARSE_AVERAGES_TRAIN_FILE = os.path.join(CFIS_DIR, 'cfis_coarse_averages_train.csv')
-COARSE_AVERAGES_VAL_FILE = os.path.join(CFIS_DIR, 'cfis_coarse_averages_val.csv')
-COARSE_AVERAGES_TEST_FILE = os.path.join(CFIS_DIR, 'cfis_coarse_averages_test.csv')
-OCO2_METADATA_TRAIN_FILE = os.path.join(OCO2_DIR, 'oco2_metadata_train.csv')
-OCO2_METADATA_VAL_FILE = os.path.join(OCO2_DIR, 'oco2_metadata_val.csv')
-OCO2_METADATA_TEST_FILE = os.path.join(OCO2_DIR, 'oco2_metadata_test.csv')
-BAND_STATISTICS_CSV_FILE = os.path.join(CFIS_DIR, 'cfis_band_statistics_train.csv')
 
 # True vs predicted plot
 CFIS_TRUE_VS_PREDICTED_PLOT = os.path.join(PLOTS_DIR, 'true_vs_predicted_sif_cfis_' + METHOD)
@@ -90,11 +95,10 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
                                             (coarse_train_set['date'].isin(TRAIN_DATES))]
         coarse_val_set = coarse_val_set[(coarse_val_set['fraction_valid'] >= min_coarse_fraction_valid) &
                                         (coarse_val_set['SIF'] >= MIN_SIF_CLIP) &
-                                        (coarse_val_set['date'].isin(VAL_DATES))]
+                                        (coarse_val_set['date'].isin(TRAIN_DATES))]
         coarse_test_set = coarse_test_set[(coarse_test_set['fraction_valid'] >= min_coarse_fraction_valid) &
                                         (coarse_test_set['SIF'] >= MIN_SIF_CLIP) &
-                                        (coarse_test_set['date'].isin(VAL_DATES))]
-
+                                        (coarse_test_set['date'].isin(TEST_DATES))]
 
         # Filter OCO2 sets
         oco2_train_set = oco2_train_set[(oco2_train_set['num_soundings'] >= MIN_OCO2_SOUNDINGS) &
@@ -104,11 +108,11 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
         oco2_val_set = oco2_val_set[(oco2_val_set['num_soundings'] >= MIN_OCO2_SOUNDINGS) &
                                     (oco2_val_set['missing_reflectance'] <= MAX_OCO2_CLOUD_COVER) &
                                     (oco2_val_set['SIF'] >= MIN_SIF_CLIP) &
-                                    (oco2_val_set['date'].isin(VAL_DATES))]
+                                    (oco2_val_set['date'].isin(TRAIN_DATES))]
         oco2_test_set = oco2_test_set[(oco2_test_set['num_soundings'] >= MIN_OCO2_SOUNDINGS) &
                                     (oco2_test_set['missing_reflectance'] <= MAX_OCO2_CLOUD_COVER) &
                                     (oco2_test_set['SIF'] >= MIN_SIF_CLIP) &
-                                    (oco2_test_set['date'].isin(VAL_DATES))]
+                                    (oco2_test_set['date'].isin(TEST_DATES))]
         oco2_train_set['SIF'] = oco2_train_set['SIF'] * OCO2_SCALING_FACTOR
 
         # Read fine dataset at a particular resolution
@@ -118,14 +122,15 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
         fine_train_set = pd.read_csv(FINE_AVERAGES_TRAIN_FILE)
         fine_val_set = pd.read_csv(FINE_AVERAGES_VAL_FILE)
         fine_test_set = pd.read_csv(FINE_AVERAGES_TEST_FILE)
+
         fine_train_set = fine_train_set[(fine_train_set['SIF'] >= MIN_SIF_CLIP) &
                                         (fine_train_set['date'].isin(TRAIN_DATES)) &
                                         (fine_train_set['tile_file'].isin(set(coarse_train_set['tile_file'])))]
         fine_val_set = fine_val_set[(fine_val_set['SIF'] >= MIN_SIF_CLIP) &
-                                        (fine_val_set['date'].isin(VAL_DATES)) &
-                                        (fine_val_set['tile_file'].isin(set(coarse_val_set['tile_file'])))]
+                                        (fine_val_set['date'].isin(TRAIN_DATES)) &
+                                       (fine_val_set['tile_file'].isin(set(coarse_val_set['tile_file'])))]
         fine_test_set = fine_test_set[(fine_test_set['SIF'] >= MIN_SIF_CLIP) &
-                                        (fine_test_set['date'].isin(VAL_DATES)) &
+                                        (fine_test_set['date'].isin(TEST_DATES)) &
                                         (fine_test_set['tile_file'].isin(set(coarse_test_set['tile_file'])))]
         # fine_val_set = fine_val_set[(fine_val_set['num_soundings'] >= 10) &
         #                                         (fine_val_set['fraction_valid'] >= 0.2)]
@@ -156,7 +161,7 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
         print('Train set samples', len(train_set))
 
         # Read band statistics
-        train_statistics = pd.read_csv(BAND_STATISTICS_CSV_FILE)
+        train_statistics = pd.read_csv(BAND_STATISTICS_FILE)
         train_means = train_statistics['mean'].values
         train_stds = train_statistics['std'].values
         band_means = train_means[:-1]
@@ -228,8 +233,8 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
         Y_train = train_set[OUTPUT_COLUMN].values.ravel()
         X_coarse_val = coarse_val_set[INPUT_COLUMNS]
         Y_coarse_val = coarse_val_set[OUTPUT_COLUMN].values.ravel()
-        X_fine_val = fine_val_set[INPUT_COLUMNS]
-        Y_fine_val = fine_val_set[OUTPUT_COLUMN].values.ravel()
+        X_fine_test = fine_test_set[INPUT_COLUMNS]
+        Y_fine_test = fine_test_set[OUTPUT_COLUMN].values.ravel()
 
         # Fit models on band averages (with various hyperparam settings)
         regression_models = dict()
@@ -367,23 +372,22 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
                 print_stats(Y_fine_train_filtered, predictions_fine_train_filtered, sif_mean, fit_intercept=False)
 
                 print('============== Fine val set stats =====================')
-                print_stats(Y_fine_val_filtered, predictions_fine_val_filtered, sif_mean, ax=plt.gca(), fit_intercept=False)
-                plt.title('Fine val set: true vs predicted SIF (' + METHOD + ')')
+                print_stats(Y_fine_val_filtered, predictions_fine_val_filtered, sif_mean, fit_intercept=False)
+
+                print('============== Fine test set stats =====================')
+                print_stats(Y_fine_test_filtered, predictions_fine_test_filtered, sif_mean, ax=plt.gca())
+                plt.title('Fine test set: true vs predicted SIF (' + METHOD + ')')
                 plt.xlim(left=MIN_SIF_PLOT, right=MAX_SIF_PLOT)
                 plt.ylim(bottom=MIN_SIF_PLOT, top=MAX_SIF_PLOT)
-                plt.savefig(PLOT_PREFIX + '_fine_val.png')
+                plt.savefig(PLOT_PREFIX + '_fine_test.png')
                 plt.close()
-
-                # print('============== Fine test set stats =====================')
-                # print_stats(Y_fine_test, predictions_fine_test, sif_mean)
-
 
                 # Plot true vs. predicted for each crop on CFIS fine (for each crop)
                 fig, axeslist = plt.subplots(ncols=2, nrows=2, figsize=(12, 12))
                 fig.suptitle('True vs predicted SIF by crop: ' + METHOD)
                 for idx, crop_type in enumerate(COVER_COLUMN_NAMES):
-                    predicted = predictions_fine_val_filtered[fine_val_set_filtered[crop_type] > PURE_THRESHOLD]
-                    true = Y_fine_val_filtered[fine_val_set_filtered[crop_type] > PURE_THRESHOLD]
+                    predicted = predictions_fine_test_filtered[fine_test_set_filtered[crop_type] > PURE_THRESHOLD]
+                    true = Y_fine_test_filtered[fine_test_set_filtered[crop_type] > PURE_THRESHOLD]
                     ax = axeslist.ravel()[idx]
                     print('======================= (CFIS fine) CROP: ', crop_type, '==============================')
                     if len(predicted) >= 2:
@@ -418,8 +422,8 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
                 idx = 0
                 for date in DATES:
                     # Obtain global model's predictions for data points with this date
-                    predicted = predictions_fine_val_filtered[fine_val_set_filtered['date'] == date]
-                    true = Y_fine_val_filtered[fine_val_set_filtered['date'] == date]
+                    predicted = predictions_fine_test_filtered[fine_test_set_filtered['date'] == date]
+                    true = Y_fine_test_filtered[fine_test_set_filtered['date'] == date]
                     print('=================== Date ' + date + ' ======================')
                     assert(len(predicted) == len(true))
                     if len(predicted) < 2:
@@ -440,7 +444,7 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
                 plt.close()
 
                 # Trivial method: use surrounding coarse tile SIF
-                predictions_val_predict_coarse = np.clip(fine_val_set_filtered['coarse_sif'].to_numpy(), a_min=MIN_SIF_CLIP, a_max=MAX_SIF_CLIP)
+                predictions_test_predict_coarse = np.clip(fine_test_set_filtered['coarse_sif'].to_numpy(), a_min=MIN_SIF_CLIP, a_max=MAX_SIF_CLIP)
                 predictions_train_predict_coarse = np.clip(fine_train_set_filtered['coarse_sif'].to_numpy(), a_min=MIN_SIF_CLIP, a_max=MAX_SIF_CLIP)
 
                 print('============= Fine train set stats: just use surrounding coarse tile =============')
@@ -452,20 +456,20 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
                 plt.close()
 
 
-                print('============= Fine val set stats: just use surrounding coarse tile =============')
-                print_stats(Y_fine_val_filtered, predictions_val_predict_coarse, sif_mean, ax=plt.gca())
-                plt.title('Fine val set: true vs predicted SIF (predict coarse SIF)')
+                print('============= Fine test set stats: just use surrounding coarse tile =============')
+                print_stats(Y_fine_test_filtered, predictions_test_predict_coarse, sif_mean, ax=plt.gca())
+                plt.title('Fine test set: true vs predicted SIF (predict coarse SIF)')
                 plt.xlim(left=MIN_SIF_PLOT, right=MAX_SIF_PLOT)
                 plt.ylim(bottom=MIN_SIF_PLOT, top=MAX_SIF_PLOT)
-                plt.savefig(PLOT_PREFIX + '_fine_vs_coarse_val.png')
+                plt.savefig(PLOT_PREFIX + '_fine_vs_coarse_test.png')
                 plt.close()
 
                 # Plot fine vs coarse SIF for each crop on CFIS fine (for each crop)
                 fig, axeslist = plt.subplots(ncols=2, nrows=2, figsize=(12, 12))
                 fig.suptitle('True vs predicted SIF by crop: ' + METHOD)
                 for idx, crop_type in enumerate(COVER_COLUMN_NAMES):
-                    predicted = predictions_val_predict_coarse[fine_val_set_filtered[crop_type] > PURE_THRESHOLD]
-                    true = Y_fine_val_filtered[fine_val_set_filtered[crop_type] > PURE_THRESHOLD]
+                    predicted = predictions_test_predict_coarse[fine_test_set_filtered[crop_type] > PURE_THRESHOLD]
+                    true = Y_fine_test_filtered[fine_test_set_filtered[crop_type] > PURE_THRESHOLD]
                     ax = axeslist.ravel()[idx]
                     print('======================= (Predict coarse) CROP: ', crop_type, '==============================')
                     if len(predicted) >= 2:
