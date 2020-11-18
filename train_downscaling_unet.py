@@ -22,25 +22,42 @@ import tile_transforms
 import tqdm
 
 # Set random seed
-torch.manual_seed(0)
-np.random.seed(0)
-random.seed(0)
+RANDOM_STATE = 0
+np.random.seed(RANDOM_STATE)
+random.seed(RANDOM_STATE)
+torch.manual_seed(RANDOM_STATE)
+
+# Folds
+TRAIN_FOLDS = [1, 2, 3]
+VAL_FOLDS = [4]
+TEST_FOLDS = [5]
 
 # Data files
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
 CFIS_DIR = os.path.join(DATA_DIR, "CFIS")
 OCO2_DIR = os.path.join(DATA_DIR, "OCO2")
-CFIS_TILE_METADATA_TRAIN_FILE = os.path.join(CFIS_DIR, 'cfis_coarse_averages_train.csv')
-CFIS_TILE_METADATA_VAL_FILE = os.path.join(CFIS_DIR, 'cfis_coarse_averages_val.csv')
-CFIS_TILE_METADATA_TEST_FILE = os.path.join(CFIS_DIR, 'cfis_coarse_averages_test.csv')
-OCO2_TILE_METADATA_TRAIN_FILE = os.path.join(OCO2_DIR, 'oco2_metadata_train.csv')
+# CFIS_TILE_METADATA_TRAIN_FILE = os.path.join(CFIS_DIR, 'cfis_coarse_averages_train.csv')
+# CFIS_TILE_METADATA_VAL_FILE = os.path.join(CFIS_DIR, 'cfis_coarse_averages_val.csv')
+# CFIS_TILE_METADATA_TEST_FILE = os.path.join(CFIS_DIR, 'cfis_coarse_averages_test.csv')
+# OCO2_TILE_METADATA_TRAIN_FILE = os.path.join(OCO2_DIR, 'oco2_metadata_train.csv')
+CFIS_COARSE_METADATA_FILE = os.path.join(CFIS_DIR, 'cfis_coarse_metadata.csv')
+CFIS_FINE_METADATA_FILE = os.path.join(CFIS_DIR, 'cfis_fine_metadata.csv')
 BAND_STATISTICS_FILE = os.path.join(CFIS_DIR, 'cfis_band_statistics_train.csv')
+DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset_2degree_random0")
+OCO2_METADATA_FILE = os.path.join(DATASET_DIR, 'tile_info_train.csv')
+
+# Dataset resolution/scale
+RES = (0.00026949458523585647, 0.00026949458523585647)
+TILE_PIXELS = 100
+TILE_SIZE_DEGREES = RES[0] * TILE_PIXELS
 
 # Method/model type
-# METHOD = "9d_unet_fully_supervised"
+# METHOD = "9d_unet_contrastive"
 # MODEL_TYPE = "unet"
-METHOD = "9d_unet2"
-MODEL_TYPE = "unet2"
+# METHOD = "9d_unet2"
+# MODEL_TYPE = "unet2"
+# METHOD = "9d_unet2_contrastive"
+# MODEL_TYPE = "unet2_pixel_embedding"
 # METHOD = "9e_unet2_pixel_contrastive_3" #contrastive_2" #pixel_embedding"
 # MODEL_TYPE = "unet2_pixel_embedding"
 # METHOD = "9e_unet2_pixel_embedding"
@@ -51,7 +68,12 @@ MODEL_TYPE = "unet2"
 # MODEL_TYPE = "unet2"
 # METHOD = "10e_unet2_contrastive"
 # MODEL_TYPE = "unet2_pixel_embedding"
-TRAIN_SOURCES = ["CFIS"] #, "OCO2"]
+# METHOD = "11d_unet2"
+# MODEL_TYPE = "unet2"
+METHOD = "2d_unet2"
+MODEL_TYPE = "unet2"
+TRAIN_SOURCES = ["OCO2"] # ["CFIS"] #, "OCO2"]
+OCO2_UPDATES_PER_CFIS = 1
 
 # Model files
 PRETRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/" + METHOD) #9e_unet2_contrastive")
@@ -64,12 +86,11 @@ LOSS_PLOT = os.path.join(DATA_DIR, 'loss_plots/losses_' + METHOD)
 
 # Parameters
 OPTIMIZER_TYPE = "Adam"
-LEARNING_RATE = 1e-3
+LEARNING_RATE = 1e-4
 WEIGHT_DECAY = 1e-3
 NUM_EPOCHS = 50 # 100
-BATCH_SIZE = 64
+BATCH_SIZE = 16
 NUM_WORKERS = 8
-AUGMENT = True
 FROM_PRETRAINED = False
 PRETRAIN_CONTRASTIVE = False
 FREEZE_PIXEL_ENCODER = False
@@ -79,11 +100,7 @@ MIN_SIF_CLIP = 0.1
 MIN_INPUT = -3
 MAX_INPUT = 3
 REDUCED_CHANNELS = 10
-NOISE = 0.05
-RES = (0.00026949458523585647, 0.00026949458523585647)
-TILE_PIXELS = 100
-TILE_SIZE_DEGREES = RES[0] * TILE_PIXELS
-FRACTION_OUTPUTS_TO_AVERAGE = 0.2
+
 
 # Which bands
 BANDS = list(range(0, 43))
@@ -92,6 +109,12 @@ BANDS = list(range(0, 43))
 INPUT_CHANNELS = len(BANDS)
 CROP_TYPE_INDICES = list(range(12, 42))
 MISSING_REFLECTANCE_IDX = -1
+
+# Augmentations
+AUGMENTATIONS = ['flip_and_rotate', 'gaussian_noise', 'jigsaw']
+RESIZE_DIM = 100
+NOISE = 0.01
+FRACTION_OUTPUTS_TO_AVERAGE = 0.01
 
 # OCO-2 filtering
 MIN_OCO2_SOUNDINGS = 3
@@ -109,34 +132,37 @@ TEST_DATES = ['2016-06-15', '2016-08-01']
 # Contrastive training settings
 CONTRASTIVE_NUM_EPOCHS = 50
 CONTRASTIVE_LEARNING_RATE = 1e-3
+CONTRASTIVE_WEIGHT_DECAY = 1e-3
 CONTRASTIVE_TEMP = 0.2
 PIXEL_PAIRS_PER_IMAGE = 5
 CONTRASTIVE_BATCH_SIZE = BATCH_SIZE * PIXEL_PAIRS_PER_IMAGE
 
-# Print params for reference
-print("=========================== PARAMS ===========================")
-print("Method:", METHOD)
-if FROM_PRETRAINED:
-    print("From pretrained model", os.path.basename(PRETRAINED_MODEL_FILE))
-else:
-    print("Training from scratch")
-print("Output model:", os.path.basename(MODEL_FILE))
-print("Bands:", BANDS)
-print("---------------------------------")
-print("Model:", MODEL_TYPE)
-print("Optimizer:", OPTIMIZER_TYPE)
-print("Learning rate:", LEARNING_RATE)
-print("Weight decay:", WEIGHT_DECAY)
-print("Num workers:", NUM_WORKERS)
-print("Batch size:", BATCH_SIZE)
-print("Num epochs:", NUM_EPOCHS)
-print("Augment:", AUGMENT)
-if AUGMENT:
-    print("Gaussian noise (std deviation):", NOISE)
-print('Fraction of outputs averaged in training:', FRACTION_OUTPUTS_TO_AVERAGE)
-print("Input features clipped to", MIN_INPUT, "to", MAX_INPUT, "standard deviations from mean")
-print("SIF range:", MIN_SIF, "to", MAX_SIF)
-print("==============================================================")
+
+
+# # Print params for reference
+# print("=========================== PARAMS ===========================")
+# print("Method:", METHOD)
+# if FROM_PRETRAINED:
+#     print("From pretrained model", os.path.basename(PRETRAINED_MODEL_FILE))
+# else:
+#     print("Training from scratch")
+# print("Output model:", os.path.basename(MODEL_FILE))
+# print("Bands:", BANDS)
+# print("---------------------------------")
+# print("Model:", MODEL_TYPE)
+# print("Optimizer:", OPTIMIZER_TYPE)
+# print("Learning rate:", LEARNING_RATE)
+# print("Weight decay:", WEIGHT_DECAY)
+# print("Num workers:", NUM_WORKERS)
+# print("Batch size:", BATCH_SIZE)
+# print("Num epochs:", NUM_EPOCHS)
+# print("Augmentations:", AUGMENTATIONS)
+# if 'gaussian_noise' in AUGMENTATIONS:
+#     print("Gaussian noise (std deviation):", NOISE)
+# print('Fraction of outputs averaged in training:', FRACTION_OUTPUTS_TO_AVERAGE)
+# print("Input features clipped to", MIN_INPUT, "to", MAX_INPUT, "standard deviations from mean")
+# print("SIF range:", MIN_SIF, "to", MAX_SIF)
+# print("==============================================================")
 
 
 """
@@ -279,7 +305,7 @@ def train_model(model, dataloaders, criterion, optimizer, device, sif_mean, sif_
                     input_tiles_std = sample['cfis_input_tile'][:, BANDS, :, :].to(device)
 
                     # Read coarse-resolution SIF label
-                    true_coarse_sifs = sample['cfis_coarse_sif'].to(device)
+                    true_coarse_sifs = sample['cfis_coarse_sif'].to(device)              
 
                     # Read fine-resolution SIF labels
                     true_fine_sifs = sample['cfis_fine_sif'].to(device)
@@ -454,6 +480,7 @@ def train_model(model, dataloaders, criterion, optimizer, device, sif_mean, sif_
                 print('======', phase, 'OCO2 stats =====')
                 sif_utils.print_stats(true_oco2, predicted_oco2, sif_mean)
 
+
             if phase == 'train':
                 if num_coarse_datapoints > 0:
                     train_coarse_losses.append(epoch_coarse_nrmse)
@@ -469,8 +496,8 @@ def train_model(model, dataloaders, criterion, optimizer, device, sif_mean, sif_
             if phase == 'val' and epoch_coarse_nrmse < best_val_coarse_loss:
                 best_val_coarse_loss = epoch_coarse_nrmse
                 best_val_fine_loss = epoch_fine_nrmse
-                best_train_coarse_loss = train_coarse_losses[-1]
-                best_train_fine_loss = train_fine_losses[-1]
+                best_train_coarse_loss = train_coarse_losses[-1] if len(train_coarse_losses) > 0 else None
+                best_train_fine_loss = train_fine_losses[-1] if len(train_fine_losses) > 0 else None
 
                 best_model_wts = copy.deepcopy(model.state_dict())
                 torch.save(model.state_dict(), MODEL_FILE)
@@ -511,35 +538,133 @@ else:
 print("Device", device)
 
 
+# Filter OCO2 tiles
+oco2_metadata = pd.read_csv(OCO2_METADATA_FILE)
+oco2_metadata = oco2_metadata[(oco2_metadata['num_soundings'] >= MIN_OCO2_SOUNDINGS) &
+                                (oco2_metadata['missing_reflectance'] <= MAX_OCO2_CLOUD_COVER) &
+                                (oco2_metadata['SIF'] >= MIN_SIF_CLIP) &
+                                (oco2_metadata['source'] == 'TROPOMI')]
+
+cfis_coarse_metadata = pd.read_csv(CFIS_COARSE_METADATA_FILE)
+
+# Only include CFIS tiles with enough valid pixels
+cfis_coarse_metadata = cfis_coarse_metadata[(cfis_coarse_metadata['fraction_valid'] >= MIN_COARSE_FRACTION_VALID_PIXELS) &
+                                    (cfis_coarse_metadata['SIF'] >= MIN_SIF_CLIP)]
+
+# Read fine metadata at particular resolution
+cfis_fine_metadata = pd.read_csv(CFIS_FINE_METADATA_FILE)
+cfis_fine_metadata = cfis_fine_metadata[(cfis_fine_metadata['SIF'] >= MIN_SIF_CLIP) &
+                                (cfis_fine_metadata['tile_file'].isin(set(cfis_coarse_metadata['tile_file'])))]
+
+# Read dataset splits
+oco2_train_set = oco2_metadata[(oco2_metadata['fold'].isin(TRAIN_FOLDS)) &
+                                (oco2_metadata['date'].isin(TRAIN_DATES))].copy()
+oco2_val_set = oco2_metadata[(oco2_metadata['fold'].isin(VAL_FOLDS)) &
+                                (oco2_metadata['date'].isin(TRAIN_DATES))].copy()
+oco2_test_set = oco2_metadata[(oco2_metadata['fold'].isin(TEST_FOLDS)) &
+                                (oco2_metadata['date'].isin(TEST_DATES))].copy()
+coarse_train_set = cfis_coarse_metadata[(cfis_coarse_metadata['fold'].isin(TRAIN_FOLDS)) &
+                                        (cfis_coarse_metadata['date'].isin(TRAIN_DATES))].copy()
+coarse_val_set = cfis_coarse_metadata[(cfis_coarse_metadata['fold'].isin(VAL_FOLDS)) &
+                                        (cfis_coarse_metadata['date'].isin(TRAIN_DATES))].copy()
+coarse_test_set = cfis_coarse_metadata[(cfis_coarse_metadata['fold'].isin(TEST_FOLDS)) &
+                                        (cfis_coarse_metadata['date'].isin(TEST_DATES))].copy()
+fine_train_set = cfis_fine_metadata[(cfis_fine_metadata['fold'].isin(TRAIN_FOLDS)) &
+                                        (cfis_fine_metadata['date'].isin(TRAIN_DATES))].copy()
+fine_val_set = cfis_fine_metadata[(cfis_fine_metadata['fold'].isin(VAL_FOLDS)) &
+                                        (cfis_fine_metadata['date'].isin(TRAIN_DATES))].copy()
+fine_test_set = cfis_fine_metadata[(cfis_fine_metadata['fold'].isin(TEST_FOLDS)) &
+                                        (cfis_fine_metadata['date'].isin(TEST_DATES))].copy()
+
 # Read train/val tile metadata
 if 'CFIS' in TRAIN_SOURCES:
-    cfis_train_metadata = pd.read_csv(CFIS_TILE_METADATA_TRAIN_FILE)
+    cfis_train_metadata = coarse_train_set
 else:
     cfis_train_metadata = None
-
 if 'OCO2' in TRAIN_SOURCES:
-    oco2_train_metadata = pd.read_csv(OCO2_TILE_METADATA_TRAIN_FILE)
-    # Filter OCO2 sets
-    oco2_train_metadata = oco2_train_metadata[(oco2_train_metadata['num_soundings'] >= MIN_OCO2_SOUNDINGS) &
-                                              (oco2_train_metadata['missing_reflectance'] <= MAX_OCO2_CLOUD_COVER) &
-                                              (oco2_train_metadata['SIF'] >= MIN_SIF_CLIP) &
-                                              (oco2_train_metadata['date'].isin(TRAIN_DATES))]
-    oco2_train_metadata['SIF'] = oco2_train_metadata['SIF'] * OCO2_SCALING_FACTOR
-    print('Number of OCO2 train tiles', len(oco2_train_metadata))
+    oco2_train_metadata = oco2_train_set
 else:
     oco2_train_metadata = None
+cfis_val_metadata = coarse_val_set
 
-cfis_val_metadata = pd.read_csv(CFIS_TILE_METADATA_VAL_FILE)
 
-# Filter CFIS sets
-cfis_train_metadata = cfis_train_metadata[(cfis_train_metadata['fraction_valid'] >= MIN_COARSE_FRACTION_VALID_PIXELS) &
-                                          (cfis_train_metadata['SIF'] >= MIN_SIF_CLIP) &
-                                          (cfis_train_metadata['date'].isin(TRAIN_DATES))]
-cfis_val_metadata = cfis_val_metadata[(cfis_val_metadata['fraction_valid'] >= MIN_COARSE_FRACTION_VALID_PIXELS) &
-                                      (cfis_val_metadata['SIF'] >= MIN_SIF_CLIP) &
-                                      (cfis_val_metadata['date'].isin(TRAIN_DATES))]
-print('Number of CFIS train tiles', len(cfis_train_metadata))
-print('Number of CFIS val tiles', len(cfis_val_metadata))
+# if 'CFIS' in TRAIN_SOURCES:
+#     cfis_train_metadata = pd.read_csv(CFIS_TILE_METADATA_TRAIN_FILE)
+# else:
+#     cfis_train_metadata = None
+
+# if 'OCO2' in TRAIN_SOURCES:
+#     oco2_train_metadata = pd.read_csv(OCO2_TILE_METADATA_TRAIN_FILE)
+#     # Filter OCO2 sets
+#     oco2_train_metadata = oco2_train_metadata[(oco2_train_metadata['num_soundings'] >= MIN_OCO2_SOUNDINGS) &
+#                                               (oco2_train_metadata['missing_reflectance'] <= MAX_OCO2_CLOUD_COVER) &
+#                                               (oco2_train_metadata['SIF'] >= MIN_SIF_CLIP) &
+#                                               (oco2_train_metadata['date'].isin(TRAIN_DATES))]
+#     oco2_train_metadata['SIF'] = oco2_train_metadata['SIF'] * OCO2_SCALING_FACTOR
+#     print('Number of OCO2 train tiles', len(oco2_train_metadata))
+# else:
+#     oco2_train_metadata = None
+
+# cfis_val_metadata = pd.read_csv(CFIS_TILE_METADATA_VAL_FILE)
+
+# # Filter CFIS sets
+# cfis_train_metadata = cfis_train_metadata[(cfis_train_metadata['fraction_valid'] >= MIN_COARSE_FRACTION_VALID_PIXELS) &
+#                                           (cfis_train_metadata['SIF'] >= MIN_SIF_CLIP) &
+#                                           (cfis_train_metadata['date'].isin(TRAIN_DATES))]
+# cfis_val_metadata = cfis_val_metadata[(cfis_val_metadata['fraction_valid'] >= MIN_COARSE_FRACTION_VALID_PIXELS) &
+#                                       (cfis_val_metadata['SIF'] >= MIN_SIF_CLIP) &
+#                                       (cfis_val_metadata['date'].isin(TRAIN_DATES))]
+# print('Number of CFIS train tiles', len(cfis_train_metadata))
+# print('Number of CFIS val tiles', len(cfis_val_metadata))
+
+# Print params for reference
+print("=========================== PARAMS ===========================")
+PARAM_STRING = ''
+PARAM_STRING += '============= DATASET PARAMS =============\n'
+PARAM_STRING += ('CFIS Dataset dir: ' + CFIS_DIR + '\n')
+PARAM_STRING += ('Train sources: ' + str(TRAIN_SOURCES) + '\n')
+if 'CFIS' in TRAIN_SOURCES:
+    PARAM_STRING += ('Num CFIS tiles (train): ' + str(len(cfis_train_metadata)) + '\n')
+if 'OCO2' in TRAIN_SOURCES:
+    PARAM_STRING += ('Num OCO-2 tiles: ' + str(len(oco2_train_metadata)) + '; OCO-2 updates per CFIS: ' + str(OCO2_UPDATES_PER_CFIS) + '\n')
+PARAM_STRING += ('Train dates: ' + str(TRAIN_DATES) + '\n')
+PARAM_STRING += ('Test dates: ' + str(TEST_DATES) + '\n')
+PARAM_STRING += ('Min soundings (fine CFIS): ' + str(MIN_FINE_CFIS_SOUNDINGS) + '\n')
+PARAM_STRING += ('Min SIF clip: ' + str(MIN_SIF_CLIP) + '\n')
+PARAM_STRING += ('Min fraction valid pixels in CFIS tile: ' + str(MIN_COARSE_FRACTION_VALID_PIXELS) + '\n')
+PARAM_STRING += ('Train features: ' + str(BANDS) + '\n')
+PARAM_STRING += ("Clip input features: " + str(MIN_INPUT) + " to " + str(MAX_INPUT) + " standard deviations from mean\n")
+# if REMOVE_PURE_TRAIN:
+#     PARAM_STRING += ('Removing pure train tiles above ' + str(PURE_THRESHOLD_TRAIN) + '\n')
+PARAM_STRING += ('================= METHOD ===============\n')
+if FROM_PRETRAINED:
+    PARAM_STRING += ('From pretrained model: ' + os.path.basename(PRETRAINED_MODEL_FILE) + '\n')
+else:
+    PARAM_STRING += ("Training from scratch\n")
+PARAM_STRING += ("Model name: " + os.path.basename(MODEL_FILE) + '\n')
+PARAM_STRING += ("Model type: " + MODEL_TYPE + '\n')
+PARAM_STRING += ("Optimizer: " + OPTIMIZER_TYPE + '\n')
+PARAM_STRING += ("Learning rate: " + str(LEARNING_RATE) + '\n')
+PARAM_STRING += ("Weight decay: " + str(WEIGHT_DECAY) + '\n')
+PARAM_STRING += ("Num workers: " + str(NUM_WORKERS) + '\n')
+PARAM_STRING += ("Batch size: " + str(BATCH_SIZE) + '\n')
+PARAM_STRING += ("Num epochs: " + str(NUM_EPOCHS) + '\n')
+PARAM_STRING += ("Augmentations: " + str(AUGMENTATIONS) + '\n')
+if 'resize' in AUGMENTATIONS:
+    PARAM_STRING += ('Resize images to: ' + str(RESIZE_DIM) + '\n')
+if 'gaussian_noise' in AUGMENTATIONS:
+    PARAM_STRING += ("Gaussian noise (std deviation): " + str(NOISE) + '\n')
+PARAM_STRING += ("Fraction outputs to average: " + str(FRACTION_OUTPUTS_TO_AVERAGE) + '\n')
+PARAM_STRING += ("SIF range: " + str(MIN_SIF) + " to " + str(MAX_SIF) + '\n')
+if PRETRAIN_CONTRASTIVE:
+    PARAM_STRING += ('============ CONTRASTIVE PARAMS ===========\n')
+    PARAM_STRING += ("Learning rate: " + str(CONTRASTIVE_LEARNING_RATE) + '\n')
+    PARAM_STRING += ("Weight decay: " + str(CONTRASTIVE_WEIGHT_DECAY) + '\n')
+    PARAM_STRING += ("Batch size: " + str(CONTRASTIVE_BATCH_SIZE) + '\n')
+    PARAM_STRING += ("Num epochs: " + str(CONTRASTIVE_NUM_EPOCHS) + '\n')
+    PARAM_STRING += ("Temperature: " + str(CONTRASTIVE_TEMP) + '\n')
+PARAM_STRING += ("==============================================================\n")
+print(PARAM_STRING)
 
 # Read mean/standard deviation for each band, for standardization purposes
 train_statistics = pd.read_csv(BAND_STATISTICS_FILE)
@@ -562,18 +687,40 @@ else:
     max_output = None
 
 # Set up image transforms / augmentations
-standardize_transform = tile_transforms.StandardizeTile(band_means, band_stds)
+standardize_transform = tile_transforms.StandardizeTile(band_means, band_stds) #, min_input=MIN_INPUT, max_input=MAX_INPUT)
 clip_transform = tile_transforms.ClipTile(min_input=MIN_INPUT, max_input=MAX_INPUT)
 color_distortion_transform = tile_transforms.ColorDistortion(continuous_bands=list(range(0, 12)), standard_deviation=NOISE)
 noise_transform = tile_transforms.GaussianNoise(continuous_bands=list(range(0, 9)), standard_deviation=NOISE)
 flip_and_rotate_transform = tile_transforms.RandomFlipAndRotate()
+jigsaw_transform = tile_transforms.RandomJigsaw()
+resize_transform = tile_transforms.ResizeTile(target_dim=[RESIZE_DIM, RESIZE_DIM])
 
-transform_list_train = [standardize_transform, clip_transform]
-transform_list_val = [standardize_transform, clip_transform]
-if AUGMENT:
-    transform_list_train += [flip_and_rotate_transform, noise_transform]
+transform_list_train = [standardize_transform, clip_transform] # [standardize_transform, noise_transform]
+transform_list_val = [standardize_transform, clip_transform] #[standardize_transform]
+transform_list_cfis = [standardize_transform, clip_transform]
+if 'resize' in AUGMENTATIONS:
+    transform_list_train.append(resize_transform)
+if 'flip_and_rotate' in AUGMENTATIONS:
+    transform_list_train.append(flip_and_rotate_transform)
+if 'gaussian_noise' in AUGMENTATIONS:
+    transform_list_train.append(noise_transform)
+if 'jigsaw' in AUGMENTATIONS:
+    transform_list_train.append(jigsaw_transform)
 train_transform = transforms.Compose(transform_list_train)
 val_transform = transforms.Compose(transform_list_val)
+
+# # Set up image transforms / augmentations
+# standardize_transform = tile_transforms.StandardizeTile(band_means, band_stds)
+# clip_transform = tile_transforms.ClipTile(min_input=MIN_INPUT, max_input=MAX_INPUT)
+# noise_transform = tile_transforms.GaussianNoise(continuous_bands=list(range(0, 9)), standard_deviation=NOISE)
+# flip_and_rotate_transform = tile_transforms.RandomFlipAndRotate()
+
+# transform_list_train = [standardize_transform, clip_transform]
+# transform_list_val = [standardize_transform, clip_transform]
+# if AUGMENT:
+#     transform_list_train += [flip_and_rotate_transform, noise_transform]
+# train_transform = transforms.Compose(transform_list_train)
+# val_transform = transforms.Compose(transform_list_val)
 
 # Create dataset/dataloaders
 datasets = {'train': CombinedCfisOco2Dataset(cfis_train_metadata, oco2_train_metadata, train_transform, MIN_FINE_CFIS_SOUNDINGS),
@@ -611,7 +758,7 @@ else:
 
 if PRETRAIN_CONTRASTIVE:
     contrastive_loss = nt_xent.NTXentLoss(device, CONTRASTIVE_BATCH_SIZE, CONTRASTIVE_TEMP, True)
-    contrastive_optimizer = optim.Adam(unet_model.parameters(), lr=CONTRASTIVE_LEARNING_RATE, weight_decay=WEIGHT_DECAY)
+    contrastive_optimizer = optim.Adam(unet_model.parameters(), lr=CONTRASTIVE_LEARNING_RATE, weight_decay=CONTRASTIVE_WEIGHT_DECAY)
     contrastive_dataloader = torch.utils.data.DataLoader(datasets['train'], batch_size=BATCH_SIZE, 
                                                          shuffle=True, num_workers=NUM_WORKERS, drop_last=True)
     print('Contrastive training!')
@@ -621,8 +768,9 @@ if PRETRAIN_CONTRASTIVE:
 
 # Freeze pixel embedding layers
 if FREEZE_PIXEL_ENCODER:
-    unet_model.dimensionality_reduction_1.requires_grad = False
-    unet_model.dimensionality_reduction_2.requires_grad = False
+    unet_model.dimensionality_reduction.requires_grad = False
+    unet_model.inc.requires_grad = False
+    # unet_model.dimensionality_reduction_2.requires_grad = False
 
 # Train model to predict SIF
 unet_model, train_coarse_losses, val_coarse_losses, train_fine_losses, val_fine_losses, train_oco2_losses = train_model(unet_model, dataloaders, criterion, optimizer, device, sif_mean, sif_std, num_epochs=NUM_EPOCHS)

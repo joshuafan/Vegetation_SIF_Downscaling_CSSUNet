@@ -101,7 +101,7 @@ class CombinedCfisOco2Dataset(Dataset):
                     'cfis_fine_sif': torch.tensor(cfis_fine_sif_tile, dtype=torch.float),
                     'cfis_fine_sif_mask': torch.tensor(cfis_fine_sif_mask, dtype=torch.bool),
                     'cfis_fine_soundings': torch.tensor(cfis_fine_soundings_tile, dtype=torch.float),
-                    'cfis_coarse_sif': current_cfis_tile_info[self.cfis_coarse_sif_column],  #torch.tensor(cfis_coarse_sif, dtype=torch.float),
+                    'cfis_coarse_sif': torch.tensor(current_cfis_tile_info[self.cfis_coarse_sif_column], dtype=torch.float),  #torch.tensor(cfis_coarse_sif, dtype=torch.float),
                     'cfis_coarse_soundings': current_cfis_tile_info[self.cfis_coarse_soundings_column],
                     'cfis_tile_file': current_cfis_tile_info.loc[self.tile_file_column],
                     'cfis_lon': current_cfis_tile_info.loc['lon'],
@@ -127,7 +127,7 @@ class CombinedCfisOco2Dataset(Dataset):
             # print('Idx', idx, 'Band means after transform', np.mean(tile, axis=(1,2)))
  
             sample['oco2_input_tile'] = torch.tensor(oco2_input_tile, dtype=torch.float)
-            sample['oco2_sif'] = oco2_sif
+            sample['oco2_sif'] = torch.tensor(oco2_sif, dtype=torch.float)
             sample['oco2_soundings'] = oco2_soundings
             sample['oco2_lon'] = current_oco2_tile_info.loc['lon']
             sample['oco2_lat'] = current_oco2_tile_info.loc['lat']

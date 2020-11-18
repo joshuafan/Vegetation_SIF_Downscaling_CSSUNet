@@ -36,7 +36,7 @@ from embedding_to_sif_model import EmbeddingToSIFModel
 
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset")
+DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset_2degree_random0")
 INFO_FILE_TRAIN = os.path.join(DATASET_DIR, "tile_info_train.csv")
 BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_train.csv")
 PIXEL_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_pixels.csv")

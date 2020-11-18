@@ -13,6 +13,10 @@ import xarray as xr
 import visualization_utils
 import sif_utils
 
+# Set random seed
+RANDOM_STATE = 0
+np.random.seed(RANDOM_STATE)
+random.seed(RANDOM_STATE)
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
 CFIS_DIR = os.path.join(DATA_DIR, "CFIS")
@@ -32,16 +36,19 @@ FRACTION_TEST = 0.2
 # Scaling factors to correct for differing wavelengths
 OCO2_SCALING_FACTOR = 1.69 / 1.52
 
+# Number of folds
+NUM_FOLDS = 5
+TRAIN_FOLDS = [1, 2, 3]  # 1-indexed
+
 # OCO-2 tile datasets
-OCO2_METADATA_TRAIN_FILE = os.path.join(OCO2_DIR, 'oco2_metadata_train.csv')
-OCO2_METADATA_VAL_FILE = os.path.join(OCO2_DIR, 'oco2_metadata_val.csv')
-OCO2_METADATA_TEST_FILE = os.path.join(OCO2_DIR, 'oco2_metadata_test.csv')
-oco2_metadata_train = []
-oco2_metadata_val = []
-oco2_metadata_test = []
+OCO2_METADATA_FILE = os.path.join(OCO2_DIR, 'oco2_metadata.csv')
+oco2_metadata = []
+# OCO2_METADATA_TRAIN_FILE = os.path.join(OCO2_DIR, 'oco2_metadata_train.csv')
+# OCO2_METADATA_VAL_FILE = os.path.join(OCO2_DIR, 'oco2_metadata_val.csv')
+# OCO2_METADATA_TEST_FILE = os.path.join(OCO2_DIR, 'oco2_metadata_test.csv')
 
 # Columns for "band average" datasets, at both fine/coarse resolution
-BAND_AVERAGE_COLUMNS = ['lon', 'lat', 'date', 'tile_file', 'ref_1', 'ref_2', 'ref_3', 'ref_4',
+BAND_AVERAGE_COLUMNS = ['fold', 'lon', 'lat', 'date', 'tile_file', 'ref_1', 'ref_2', 'ref_3', 'ref_4',
                         'ref_5', 'ref_6', 'ref_7', 'ref_10', 'ref_11', 'Rainf_f_tavg',
                         'SWdown_f_tavg', 'Tair_f_tavg', 'grassland_pasture', 'corn',
                         'soybean', 'shrubland', 'deciduous_forest', 'evergreen_forest',
@@ -56,19 +63,23 @@ FINE_CFIS_AVERAGE_COLUMNS = BAND_AVERAGE_COLUMNS + ['coarse_sif']
 COARSE_CFIS_AVERAGE_COLUMNS = BAND_AVERAGE_COLUMNS + ['fraction_valid', 'fine_sif_file', 'fine_soundings_file']
 
 # CFIS coarse/fine averages
-FINE_AVERAGES_TRAIN_FILE = os.path.join(CFIS_DIR, 'cfis_fine_averages_train.csv')
-FINE_AVERAGES_VAL_FILE = os.path.join(CFIS_DIR, 'cfis_fine_averages_val.csv')
-FINE_AVERAGES_TEST_FILE = os.path.join(CFIS_DIR, 'cfis_fine_averages_test.csv')
-fine_averages_train = []
-fine_averages_val = []
-fine_averages_test = []
+CFIS_FINE_METADATA_FILE = os.path.join(CFIS_DIR, 'cfis_fine_metadata.csv')
+cfis_fine_metadata = []
+# FINE_AVERAGES_TRAIN_FILE = os.path.join(CFIS_DIR, 'cfis_fine_averages_train.csv')
+# FINE_AVERAGES_VAL_FILE = os.path.join(CFIS_DIR, 'cfis_fine_averages_val.csv')
+# FINE_AVERAGES_TEST_FILE = os.path.join(CFIS_DIR, 'cfis_fine_averages_test.csv')
+# fine_averages_folds = []
+# fine_averages_val = []
+# fine_averages_test = []
 
-COARSE_AVERAGES_TRAIN_FILE = os.path.join(CFIS_DIR, 'cfis_coarse_averages_train.csv')
-COARSE_AVERAGES_VAL_FILE = os.path.join(CFIS_DIR, 'cfis_coarse_averages_val.csv')
-COARSE_AVERAGES_TEST_FILE = os.path.join(CFIS_DIR, 'cfis_coarse_averages_test.csv')
-coarse_averages_train = []
-coarse_averages_val = []
-coarse_averages_test = []
+CFIS_COARSE_METADATA_FILE = os.path.join(CFIS_DIR, 'cfis_coarse_metadata.csv')
+cfis_coarse_metadata = []
+# COARSE_AVERAGES_TRAIN_FILE = os.path.join(CFIS_DIR, 'cfis_coarse_averages_train.csv')
+# COARSE_AVERAGES_VAL_FILE = os.path.join(CFIS_DIR, 'cfis_coarse_averages_val.csv')
+# COARSE_AVERAGES_TEST_FILE = os.path.join(CFIS_DIR, 'cfis_coarse_averages_test.csv')
+# coarse_averages_train = []
+# coarse_averages_val = []
+# coarse_averages_test = []
 
 # Columns to compute statistics for
 STATISTICS_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
@@ -250,14 +261,8 @@ for date_idx, DATE in enumerate(DATES):
     print('OCO2 tile indices', len(tile_to_oco2_sif))
     print('All tile indices', len(all_tile_indices))
     for tile_indices in all_tile_indices:
-        # Randomly assign this tile into train/val/test
-        random_number = random.random()
-        if random_number < 1 - FRACTION_VAL - FRACTION_TEST:
-            split = 'train'
-        elif random_number < 1 - FRACTION_TEST:
-            split = 'val'
-        else:
-            split = 'test'
+        # Randomly assign this tile into folds (numbered 1 through NUM_FOLDS)
+        fold_number = random.randint(1, NUM_FOLDS)
 
         # From region indices, compute lat/lon bounds on this tile
         tile_max_lat = TOP_BOUND - (tile_indices[0] * RES[0])
@@ -293,18 +298,9 @@ for date_idx, DATE in enumerate(DATES):
             oco2_sif = tile_to_oco2_sif[tile_indices]
             oco2_soundings = tile_to_oco2_soundings[tile_indices]
             average_input_features = sif_utils.compute_band_averages(input_tile, input_tile[MISSING_REFLECTANCE_IDX])
-            oco2_tile_metadata = [tile_center_lon, tile_center_lat, DATE, input_tile_filename] + \
+            oco2_tile_metadata = [fold_number, tile_center_lon, tile_center_lat, DATE, input_tile_filename] + \
                                   average_input_features.tolist() + [oco2_sif, oco2_soundings]
-
-            if split == 'train':
-                oco2_metadata_train.append(oco2_tile_metadata)
-            elif split == 'val':
-                oco2_metadata_val.append(oco2_tile_metadata)
-            elif split == 'test':
-                oco2_metadata_test.append(oco2_tile_metadata)
-            else:
-                print('Invalid split!!!', split)
-                exit(1)   
+            oco2_metadata.append(oco2_tile_metadata)
 
         # If there is CFIS data for this tile, get CFIS fine-resolution and coarse-resolution SIF
         if tile_indices in tile_to_avg_cfis_sif_array:
@@ -321,7 +317,8 @@ for date_idx, DATE in enumerate(DATES):
             if fraction_valid < MIN_FRACTION_VALID_PIXELS:
                 continue
 
-            # Compute the average SIF and total number of soundings for this subregion
+            # Compute the average SIF (over valid pixels with enough soundings and no cloud cover)
+            # and total number of soundings for this subregion
             tile_sif = fine_sif_array.mean()
             tile_soundings = fine_soundings_array.sum()
             average_input_features = sif_utils.compute_band_averages(input_tile, fine_sif_array.mask)
@@ -338,7 +335,8 @@ for date_idx, DATE in enumerate(DATES):
             # cdl_utils.plot_tile(input_tile, coarse_sif_array_masked, fine_sif_array, center_lon, center_lat, TILE_SIZE_DEGREES, tile_description)
 
             # Create row: reflectance/crop cover tile, fine SIF, coarse SIF.
-            tile_metadata = [tile_center_lon, tile_center_lat, DATE, input_tile_filename] + average_input_features.tolist() + \
+            tile_metadata = [fold_number, tile_center_lon, tile_center_lat, DATE, input_tile_filename] + \
+                            average_input_features.tolist() + \
                             [tile_sif, tile_soundings, fraction_valid, fine_sif_filename, fine_soundings_filename]
 
             # For each *valid* fine-resolution SIF pixel, extract features, and add to dataset.
@@ -359,52 +357,51 @@ for date_idx, DATE in enumerate(DATES):
                     pixel_sif_sum += pixel_sif
                     pixel_soundings = fine_soundings_array[i, j]
                     assert pixel_soundings >= MIN_SOUNDINGS_FINE
-                    fine_sif_points.append([pixel_lon, pixel_lat, DATE, input_tile_filename] + input_features.tolist() + [pixel_sif, pixel_soundings, tile_sif])
+                    fine_sif_points.append([fold_number, pixel_lon, pixel_lat, DATE, input_tile_filename] + input_features.tolist() + [pixel_sif, pixel_soundings, tile_sif])
 
             print('===============================')
             print('Avg Pixel SIF', pixel_sif_sum / len(fine_sif_points))
             print('Tile SIF', tile_sif)
 
-            if split == 'train':
-                coarse_averages_train.append(tile_metadata)
-                fine_averages_train.extend(fine_sif_points)
-            elif split == 'val':
-                coarse_averages_val.append(tile_metadata)
-                fine_averages_val.extend(fine_sif_points)
-            elif split == 'test':
-                coarse_averages_test.append(tile_metadata)
-                fine_averages_test.extend(fine_sif_points)
-            else:
-                print('Invalid split!!!', split)
-                exit(1)
+            cfis_coarse_metadata.append(tile_metadata)
+            cfis_fine_metadata.extend(fine_sif_points)
 
 
-print('Number of fine SIF points (train/val/test)', len(fine_averages_train), len(fine_averages_val), len(fine_averages_test))
-print('Number of coarse SIF points (train/val/test)', len(coarse_averages_train), len(coarse_averages_val), len(coarse_averages_test))
+print('Number of coarse SIF points:', len(cfis_coarse_metadata))
+print('Number of fine SIF points:', len(cfis_fine_metadata))
 
 # Construct DataFrames
-oco2_metadata_train_df = pd.DataFrame(oco2_metadata_train, columns=BAND_AVERAGE_COLUMNS)
-oco2_metadata_val_df = pd.DataFrame(oco2_metadata_val, columns=BAND_AVERAGE_COLUMNS)
-oco2_metadata_test_df = pd.DataFrame(oco2_metadata_test, columns=BAND_AVERAGE_COLUMNS)
-fine_averages_train_df = pd.DataFrame(fine_averages_train, columns=FINE_CFIS_AVERAGE_COLUMNS)
-fine_averages_val_df = pd.DataFrame(fine_averages_val, columns=FINE_CFIS_AVERAGE_COLUMNS)
-fine_averages_test_df = pd.DataFrame(fine_averages_test, columns=FINE_CFIS_AVERAGE_COLUMNS)
-coarse_averages_train_df = pd.DataFrame(coarse_averages_train, columns=COARSE_CFIS_AVERAGE_COLUMNS)
-coarse_averages_val_df = pd.DataFrame(coarse_averages_val, columns=COARSE_CFIS_AVERAGE_COLUMNS)
-coarse_averages_test_df = pd.DataFrame(coarse_averages_test, columns=COARSE_CFIS_AVERAGE_COLUMNS)
+oco2_metadata_df = pd.DataFrame(oco2_metadata, columns=BAND_AVERAGE_COLUMNS)
+oco2_metadata_df.to_csv(OCO2_METADATA_FILE)
+cfis_fine_metadata_df = pd.DataFrame(cfis_fine_metadata, columns=FINE_CFIS_AVERAGE_COLUMNS)
+cfis_fine_metadata_df.to_csv(CFIS_FINE_METADATA_FILE)
+cfis_coarse_metadata_df = pd.DataFrame(cfis_coarse_metadata, columns=COARSE_CFIS_AVERAGE_COLUMNS)
+cfis_coarse_metadata_df.to_csv(CFIS_COARSE_METADATA_FILE)
 
-# Write DataFrames to files
-oco2_metadata_train_df.to_csv(OCO2_METADATA_TRAIN_FILE)
-oco2_metadata_val_df.to_csv(OCO2_METADATA_VAL_FILE)
-oco2_metadata_test_df.to_csv(OCO2_METADATA_TEST_FILE)
-fine_averages_train_df.to_csv(FINE_AVERAGES_TRAIN_FILE)
-fine_averages_val_df.to_csv(FINE_AVERAGES_VAL_FILE)
-fine_averages_test_df.to_csv(FINE_AVERAGES_TEST_FILE)
-coarse_averages_train_df.to_csv(COARSE_AVERAGES_TRAIN_FILE)
-coarse_averages_val_df.to_csv(COARSE_AVERAGES_VAL_FILE)
-coarse_averages_test_df.to_csv(COARSE_AVERAGES_TEST_FILE)
+
+# oco2_metadata_train_df = pd.DataFrame(oco2_metadata_train, columns=BAND_AVERAGE_COLUMNS)
+# oco2_metadata_val_df = pd.DataFrame(oco2_metadata_val, columns=BAND_AVERAGE_COLUMNS)
+# oco2_metadata_test_df = pd.DataFrame(oco2_metadata_test, columns=BAND_AVERAGE_COLUMNS)
+# fine_averages_train_df = pd.DataFrame(fine_averages_train, columns=FINE_CFIS_AVERAGE_COLUMNS)
+# fine_averages_val_df = pd.DataFrame(fine_averages_val, columns=FINE_CFIS_AVERAGE_COLUMNS)
+# fine_averages_test_df = pd.DataFrame(fine_averages_test, columns=FINE_CFIS_AVERAGE_COLUMNS)
+# coarse_averages_train_df = pd.DataFrame(coarse_averages_train, columns=COARSE_CFIS_AVERAGE_COLUMNS)
+# coarse_averages_val_df = pd.DataFrame(coarse_averages_val, columns=COARSE_CFIS_AVERAGE_COLUMNS)
+# coarse_averages_test_df = pd.DataFrame(coarse_averages_test, columns=COARSE_CFIS_AVERAGE_COLUMNS)
+
+# # Write DataFrames to files
+# oco2_metadata_train_df.to_csv(OCO2_METADATA_TRAIN_FILE)
+# oco2_metadata_val_df.to_csv(OCO2_METADATA_VAL_FILE)
+# oco2_metadata_test_df.to_csv(OCO2_METADATA_TEST_FILE)
+# fine_averages_train_df.to_csv(FINE_AVERAGES_TRAIN_FILE)
+# fine_averages_val_df.to_csv(FINE_AVERAGES_VAL_FILE)
+# fine_averages_test_df.to_csv(FINE_AVERAGES_TEST_FILE)
+# coarse_averages_train_df.to_csv(COARSE_AVERAGES_TRAIN_FILE)
+# coarse_averages_val_df.to_csv(COARSE_AVERAGES_VAL_FILE)
+# coarse_averages_test_df.to_csv(COARSE_AVERAGES_TEST_FILE)
 
 # Compute averages for each band
+fine_averages_train_df = cfis_fine_metadata_df[cfis_fine_metadata_df['fold'].isin(TRAIN_FOLDS)]
 selected_columns = fine_averages_train_df[STATISTICS_COLUMNS]
 print("Band values ARRAY shape", selected_columns.shape)
 band_means = selected_columns.mean(axis=0)

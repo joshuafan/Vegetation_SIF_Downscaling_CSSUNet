@@ -1,4 +1,5 @@
 import numpy as np
+import random
 import torch
 import torch.nn.functional as F
 from skimage.transform import resize
@@ -105,6 +106,27 @@ class GaussianNoiseSubtiles(object):
         return subtiles
 
 
+class RandomJigsaw(object):
+    def __call__(self, tile):
+        new_tile = np.copy(tile)
+
+        # Randomly re-arrange horizontally
+        if np.random.rand() < 0.5:
+            width = tile.shape[2]
+            horizontal_idx = np.random.randint(1, width)
+            new_tile[:, :, width-horizontal_idx:width] = tile[:, :, 0:horizontal_idx]
+            new_tile[:, :, 0:width-horizontal_idx] = tile[:, :, horizontal_idx:width]
+
+        # Randomly re-arrange vertically
+        if np.random.rand() < 0.5:
+            height = tile.shape[1]
+            vertical_idx = np.random.randint(1, height)
+            new_tile[:, height-vertical_idx:height, :] = tile[:, 0:vertical_idx, :]
+            new_tile[:, 0:height-vertical_idx, :] = tile[:, vertical_idx:height, :]
+
+        return new_tile
+
+
 class RandomFlipAndRotate(object):
     """
     Code taken from Tile2Vec.
@@ -165,6 +187,10 @@ class ResizeTile(object):
         self.discrete_bands = discrete_bands
 
     def __call__(self, tile):
+        # If tile is already of the desired size, do nothing
+        if tile.shape[1] == self.target_dim[0] and tile.shape[2] == self.target_dim[1]:
+            return tile
+
         # Convert tile into Scikit learn order (channels as last dimension, not first)
         tile_numpy = np.moveaxis(tile, 0, -1)
         #print('Numpy tile shape', tile_numpy.shape)
@@ -181,6 +207,25 @@ class ResizeTile(object):
 
         #resized_tile = F.interpolate(tile, size=self.target_dim, mode='bilinear')
         #resized_tile[self.discrete_bands, :, :] = torch.round(resized_tile[self.discrete_bands, :, :])
+        return resized_tile
+
+class ResizeTileRandom(object):
+    def __init__(self, small_dim=50, large_dim=300, discrete_bands=list(range(12, 43))):
+        self.small_dim = small_dim
+        self.large_dim = large_dim
+        self.discrete_bands = discrete_bands
+
+    def __call__(self, tile):
+        target_dim = random.randint(self.small_dim, self.large_dim)
+
+        # Convert tile into Scikit learn order (channels as last dimension, not first)
+        tile_numpy = np.moveaxis(tile, 0, -1)
+        print('Numpy tile shape', tile_numpy.shape)
+        resized_tile = resize(tile_numpy, [target_dim, target_dim], mode='edge')
+        print('After reize', resized_tile.shape)
+        resized_tile = np.moveaxis(resized_tile, -1, 0)
+        print('Resized tile shape', resized_tile.shape)
+        resized_tile[self.discrete_bands, :, :] = np.round(resized_tile[self.discrete_bands, :, :])
         return resized_tile
 
 

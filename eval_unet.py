@@ -17,6 +17,7 @@ from eval_subtile_dataset import EvalSubtileDataset #EvalOCO2Dataset
 
 from sif_utils import print_stats, get_subtiles_list
 import sif_utils
+import visualization_utils
 import tile_transforms
 import time
 import torch
@@ -41,13 +42,18 @@ random.seed(0)
 # Data files
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
 PLOTS_DIR = os.path.join(DATA_DIR, "exploratory_plots")
-DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset")
+DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset_2degree_random0")
 EVAL_FILE = os.path.join(DATASET_DIR, "tile_info_test.csv") # TODO standardized?
 BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_pixels.csv")
+RES = (0.00026949458523585647, 0.00026949458523585647)
+TILE_PIXELS = 100
+TILE_SIZE_DEGREES = RES[0] * TILE_PIXELS
 
 # Method/model type
-METHOD = "2e_unet"
-MODEL_TYPE = "unet"
+METHOD = "2e_unet2"
+MODEL_TYPE = "unet2"
+# METHOD = "2f_pixel_nn"
+# MODEL_TYPE = "pixel_nn"
 
 # Model file
 TRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/" + METHOD)
@@ -57,7 +63,7 @@ print('trained model file', os.path.basename(TRAINED_MODEL_FILE))
 TRUE_VS_PREDICTED_PLOT = os.path.join(PLOTS_DIR, 'true_vs_predicted_sif_oco2_' + METHOD)
 RESULTS_CSV_FILE = os.path.join(DATASET_DIR, 'OCO2_results_' + METHOD + '.csv')
 
-COLUMN_NAMES = ['true', 'predicted',
+COLUMN_NAMES = ['tile_file', 'true', 'predicted',
                     'lon', 'lat', 'source', 'date',
                     'ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
                     'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg', 
@@ -100,9 +106,10 @@ NUM_WORKERS = 8
 PURE_THRESHOLD = 0.6
 
 # Dates
-TEST_OCO2_DATES = ["2018-04-29", "2018-05-13", "2018-05-27", "2018-06-10", "2018-06-24", 
-         "2018-07-08", "2018-07-22", "2018-08-05", "2018-08-19", "2018-09-02",
-         "2018-09-16"]
+# TEST_OCO2_DATES = ["2018-04-29", "2018-05-13", "2018-05-27", "2018-06-10", "2018-06-24",
+#          "2018-07-08", "2018-07-22", "2018-08-05", "2018-08-19", "2018-09-02",
+#          "2018-09-16"]
+TEST_OCO2_DATES = ["2018-07-08", "2018-07-22", "2018-08-05", "2018-08-19"]
 SOURCES = ["OCO2"]
 MIN_SOUNDINGS = 5
 MAX_CLOUD_COVER = 0.2
@@ -148,7 +155,7 @@ def eval_model(model, dataloader, dataset_size, criterion, device, sif_mean, sif
         band_means = torch.mean(input_tiles_std, dim=(2, 3))
         # print('band means shape', band_means.shape)
         for i in range(true_sifs.shape[0]):
-            row = [true_sifs[i].item(), predicted_sifs[i].item(), sample['lon'][i].item(),
+            row = [sample['tile_file'][i], true_sifs[i].item(), predicted_sifs[i].item(), sample['lon'][i].item(),
                     sample['lat'][i].item(), sample['source'][i], sample['date'][i]] + band_means[i].cpu().tolist()
             results.append(row)
             j += 1
@@ -176,7 +183,7 @@ eval_metadata = eval_metadata[(eval_metadata['source'] == 'OCO2') &
                                 (eval_metadata['missing_reflectance'] <= MAX_CLOUD_COVER) &
                                 (eval_metadata['SIF'] >= MIN_SIF_CLIP) &
                                 (eval_metadata['date'].isin(TEST_OCO2_DATES))] 
-eval_metadata['SIF'] /= 1.03
+eval_metadata['SIF'] /= 1.04
 print("Eval samples:", len(eval_metadata))
 
 # Read mean/standard deviation for each band, for standardization purposes
@@ -221,6 +228,8 @@ elif MODEL_TYPE == 'unet':
     model = UNet(n_channels=INPUT_CHANNELS, n_classes=1, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)   
 elif MODEL_TYPE == 'unet2':
     model = UNet2(n_channels=INPUT_CHANNELS, n_classes=1, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)
+elif MODEL_TYPE == 'pixel_nn':
+    model = simple_cnn.PixelNN(input_channels=INPUT_CHANNELS, output_dim=1, min_output=min_output, max_output=max_output).to(device)
 
 else:
     print('Model type not supported')
@@ -320,3 +329,35 @@ fig.subplots_adjust(top=0.92)
 plt.savefig(TRUE_VS_PREDICTED_PLOT + '_crop_types.png')
 plt.close()
 
+# Plot high error points
+NUM_TILES = 10
+errors = np.abs(results_df['true'] - results_df['predicted'])
+sorted_indices = errors.argsort()  # Ascending order of distance
+high_error_indices = sorted_indices[-NUM_TILES:][::-1]
+
+# Set up image transforms
+transform_list = []
+transform_list.append(tile_transforms.StandardizeTile(band_means, band_stds))
+transform_list.append(tile_transforms.ClipTile(min_input=MIN_INPUT, max_input=MAX_INPUT))
+transform = transforms.Compose(transform_list)
+
+for high_error_idx in high_error_indices:
+    row = results_df.iloc[high_error_idx]
+    high_error_tile = transform(np.load(row['tile_file']))
+    valid_mask = np.logical_not(high_error_tile[-1, :, :])
+    high_error_tile_tensor = torch.tensor(high_error_tile).unsqueeze(0)
+    with torch.set_grad_enabled(False):
+        predicted_sif_tile_std = model(high_error_tile_tensor)[0, 0].detach().numpy()
+        predicted_sif_tile = predicted_sif_tile_std * sif_std + sif_mean
+
+    print('Prediction shape', predicted_sif_tile.shape)
+    tile_description = 'unet_high_error_' + os.path.basename(row['tile_file'])
+    title = 'Lat ' + str(round(row['lat'], 4)) + ', Lon ' + str(round(row['lon'], 4))
+    if 'date' in row:
+        title += (', Date ' + row['date'])
+    title += ('\n(True SIF: ' + str(round(row['true'], 3)) + ', Predicted SIF: ' + str(round(row['predicted'], 3)) + ')')
+    print('Tile:', tile_description)
+    print('header:', title)
+    tile_size_degrees = RES[0] * high_error_tile.shape[1]
+    visualization_utils.plot_tile_prediction_only(high_error_tile, predicted_sif_tile, valid_mask, row['lon'], row['lat'], row['date'],
+                                    tile_size_degrees, tile_description=tile_description, title=title)

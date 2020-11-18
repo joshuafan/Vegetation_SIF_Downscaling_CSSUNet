@@ -21,14 +21,14 @@ class UNet(nn.Module):
         self.crop_type_bands = list(range(crop_type_start_idx, n_channels - 1))
 
         # Embedding for each crop type's pixels
-        self.crop_type_embedding = nn.Conv2d(len(self.crop_type_bands), crop_type_embedding_dim, kernel_size=1, stride=1)
+        # self.crop_type_embedding = nn.Conv2d(len(self.crop_type_bands), crop_type_embedding_dim, kernel_size=1, stride=1)
 
-        # Number of channels after embedding crop type
-        channels_after_embedding = n_channels - len(self.crop_type_bands) + crop_type_embedding_dim  # Number of features after embedding crop type
-        self.dimensionality_reduction = nn.Conv2d(channels_after_embedding, reduced_channels, kernel_size=1, stride=1)
+        # # Number of channels after embedding crop type
+        # channels_after_embedding = n_channels - len(self.crop_type_bands) + crop_type_embedding_dim  # Number of features after embedding crop type
+        # self.dimensionality_reduction = nn.Conv2d(channels_after_embedding, reduced_channels, kernel_size=1, stride=1)
 
         # Try reducing dimensionality of the channels
-        # self.dimensionality_reduction = nn.Conv2d(n_channels, reduced_channels, kernel_size=1, stride=1)
+        self.dimensionality_reduction = nn.Conv2d(n_channels, reduced_channels, kernel_size=1, stride=1)
         self.inc = DoubleConv(reduced_channels, 64)
         self.down1 = Down(64, 128)
         self.down2 = Down(128, 256)
@@ -51,13 +51,13 @@ class UNet(nn.Module):
 
 
     def forward(self, x):
-        crop_masks = x[:, self.crop_type_bands, :, :]
-        crop_embeddings = self.crop_type_embedding(crop_masks)
-        # print('crop embeddings', crop_embeddings.shape)
+        # crop_masks = x[:, self.crop_type_bands, :, :]
+        # crop_embeddings = self.crop_type_embedding(crop_masks)
+        # # print('crop embeddings', crop_embeddings.shape)
 
-        # Concatenate crop type embedding with other pixel features
-        x = torch.cat([x[:, self.non_crop_type_bands, :, :], crop_embeddings], dim=1)
-        # print('Combined crop type and other features', x.shape)
+        # # Concatenate crop type embedding with other pixel features
+        # x = torch.cat([x[:, self.non_crop_type_bands, :, :], crop_embeddings], dim=1)
+        # # print('Combined crop type and other features', x.shape)
 
         # Embed each pixel. Each pixel's vector should contain semantic information about
         # the crop type + reflectance + other features
@@ -77,7 +77,7 @@ class UNet(nn.Module):
         # Addition: restrict output 
         if self.restrict_output:
             logits = (self.tanh(logits) * self.scale_factor) + self.mean_output
-        return logits
+        return logits, x1
 
 
 class UNetSmall(nn.Module):
@@ -167,8 +167,8 @@ class UNet2PixelEmbedding(nn.Module):
         self.n_classes = n_classes
 
         # Try reducing dimensionality of the channels
-        self.dimensionality_reduction_1 = nn.Conv2d(n_channels, n_channels, kernel_size=1, stride=1)
-        self.dimensionality_reduction_2 = nn.Conv2d(n_channels, reduced_channels, kernel_size=1, stride=1)
+        self.dimensionality_reduction_1 = nn.Conv2d(n_channels, reduced_channels, kernel_size=1, stride=1)
+        # self.dimensionality_reduction_2 = nn.Conv2d(n_channels, reduced_channels, kernel_size=1, stride=1)
         # self.relu = nn.ReLU(inplace=True)
         # self.inc = DoubleConv(reduced_channels, 32)
         # self.down1 = Down(32, 64)
@@ -196,9 +196,9 @@ class UNet2PixelEmbedding(nn.Module):
     def forward(self, x):
         x = self.dimensionality_reduction_1(x)
         x = F.relu(x)
-        x = self.dimensionality_reduction_2(x)
-        pixel_embeddings = F.relu(x)
-        x1 = self.inc(pixel_embeddings)
+        # x = self.dimensionality_reduction_2(x)
+        # x = F.relu(x)
+        x1 = self.inc(x)
         x2 = self.down1(x1)
         x3 = self.down2(x2)
         x = self.up1(x3, x2)
@@ -208,4 +208,4 @@ class UNet2PixelEmbedding(nn.Module):
         # Addition: restrict output 
         if self.restrict_output:
             logits = (self.tanh(logits) * self.scale_factor) + self.mean_output
-        return logits, pixel_embeddings
+        return logits, x1

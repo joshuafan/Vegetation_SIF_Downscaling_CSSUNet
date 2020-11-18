@@ -486,11 +486,13 @@ def main():
     clip_transform = tile_transforms.ClipTile(min_input=MIN_INPUT, max_input=MAX_INPUT)
     noise_transform = tile_transforms.GaussianNoise(continuous_bands=list(range(0, 9)), standard_deviation=NOISE)
     flip_and_rotate_transform = tile_transforms.RandomFlipAndRotate()
+    jigsaw_transform = tile_transforms.RandomJigsaw()
+
 
     transform_list_train = [standardize_transform, clip_transform]
     transform_list_val = [standardize_transform, clip_transform]
     if AUGMENT:
-        transform_list_train += [flip_and_rotate_transform, noise_transform]
+        transform_list_train += [flip_and_rotate_transform, noise_transform, jigsaw_transform]
     train_transform = transforms.Compose(transform_list_train)
     val_transform = transforms.Compose(transform_list_val)
 

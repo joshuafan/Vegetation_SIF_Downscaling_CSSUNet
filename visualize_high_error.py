@@ -1,5 +1,5 @@
 """
-Out of date! See eval_unet.py
+Out of date! See bottom of sif_prediction_averages.py
 """
 
 
@@ -96,7 +96,8 @@ subtile_sif_model.eval()
 
 # Set up image transforms
 transform_list = []
-transform_list.append(tile_transforms.StandardizeTile(band_means, band_stds, min_input=MIN_INPUT, max_input=MAX_INPUT))
+transform_list.append(tile_transforms.StandardizeTile(band_means, band_stds))
+transform_list.append(tile_transforms.ClipTile(min_input=MIN_INPUT, max_input=MAX_INPUT))
 transform = transforms.Compose(transform_list)
 
 results = pd.read_csv(RESULTS_FILE)
@@ -117,7 +118,7 @@ for high_error_idx in high_error_indices:
     print('Tile:', tile_description)
     print('header:', title)
     plot_tile(high_error_tile, None, None, None, None, row['lon'], row['lat'], row['date'], tile_size_degrees,
-              res,
+              res)
     # # Feed each sub-tile through the model
     # input_tile_standardized = torch.tensor(high_error_tile, dtype=torch.float) 
     # subtiles_standardized = sif_utils.get_subtiles_list(input_tile_standardized, SUBTILE_DIM) #, device, max_subtile_cloud_cover=None)  # (batch x num subtiles x bands x subtile_dim x subtile_dim)

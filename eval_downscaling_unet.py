@@ -23,17 +23,24 @@ from sklearn.neural_network import MLPRegressor
 torch.manual_seed(0)
 np.random.seed(0)
 
+# Folds
+TRAIN_FOLDS = [1, 2, 3]
+VAL_FOLDS = [4]
+TEST_FOLDS = [5]
+
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
 CFIS_DIR = os.path.join(DATA_DIR, "CFIS")
 OCO2_DIR = os.path.join(DATA_DIR, "OCO2")
 RESOLUTION_METERS = 30
 FINE_PIXELS_PER_EVAL = int(RESOLUTION_METERS / 30)
-OCO2_METADATA_TRAIN_FILE = os.path.join(OCO2_DIR, 'oco2_metadata_train.csv')
-EVAL_AVERAGES_TRAIN_FILE = os.path.join(CFIS_DIR, 'cfis_averages_' + str(RESOLUTION_METERS) + 'm_train.csv')
-EVAL_AVERAGES_TEST_FILE = os.path.join(CFIS_DIR, 'cfis_averages_' + str(RESOLUTION_METERS) + 'm_test.csv')
-COARSE_AVERAGES_TRAIN_FILE = os.path.join(CFIS_DIR, 'cfis_coarse_averages_train.csv')
-COARSE_AVERAGES_TEST_FILE = os.path.join(CFIS_DIR, 'cfis_coarse_averages_test.csv')
+CFIS_COARSE_METADATA_FILE = os.path.join(CFIS_DIR, 'cfis_coarse_metadata.csv')
+CFIS_EVAL_METADATA_FILE = os.path.join(CFIS_DIR, 'cfis_metadata_' + str(RESOLUTION_METERS) + 'm.csv')
+OCO2_METADATA_FILE = os.path.join(OCO2_DIR, 'oco2_metadata.csv')
 BAND_STATISTICS_FILE = os.path.join(CFIS_DIR, 'cfis_band_statistics_train.csv')
+# DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset_2degree_random0")
+# BAND_STATISTICS_FILE = os.path.join(DATASET_DIR, "band_statistics_pixels.csv") #"band_statistics_train.csv")
+
+SCALE_PREDICTIONS_BY = 1 #0.64
 
 
 # METHOD = "10e_unet2_contrastive"
@@ -42,10 +49,16 @@ BAND_STATISTICS_FILE = os.path.join(CFIS_DIR, 'cfis_band_statistics_train.csv')
 # METHOD = "9e_unet2_contrastive"
 # METHOD = "9e_unet2_pixel_embedding"
 # MODEL_TYPE = "unet2_pixel_embedding"
-METHOD = "9d_unet2"
+METHOD = "10d_unet2"
 MODEL_TYPE = "unet2"
+# METHOD = "2e_unet2"
+# MODEL_TYPE = "unet2"
+# METHOD = "9d_unet2_contrastive"
+# MODEL_TYPE = "unet2_pixel_embedding"
+# METHOD = "11d_unet2"
+# MODEL_TYPE = "unet2"
 COMPUTE_RESULTS = True
-PLOT = True
+PLOT = False
 COARSE_CFIS_RESULTS_CSV_FILE = os.path.join(CFIS_DIR, 'cfis_results_' + METHOD + '_test_coarse.csv')
 EVAL_CFIS_RESULTS_CSV_FILE = os.path.join(CFIS_DIR, 'cfis_results_' + METHOD + '_' + str(RESOLUTION_METERS) + 'm_test_fine.csv')
 
@@ -73,6 +86,7 @@ MAX_INPUT = 3
 MIN_SIF_CLIP = 0.1
 MIN_SIF_PLOT = 0
 MAX_SIF_PLOT = 2
+# BANDS = list(range(0, 9)) + list(range(12, 27)) + [28] + [42] 
 BANDS = list(range(0, 43))
 INPUT_CHANNELS = len(BANDS)
 MISSING_REFLECTANCE_IDX = -1
@@ -81,7 +95,6 @@ RES = (0.00026949458523585647, 0.00026949458523585647)
 EVAL_RES = (RES[0] * FINE_PIXELS_PER_EVAL, RES[1] * FINE_PIXELS_PER_EVAL)
 TILE_PIXELS = 100
 TILE_SIZE_DEGREES = RES[0] * TILE_PIXELS
-
 PURE_THRESHOLD = 0.7
 
 COLUMN_NAMES = ['true_sif', 'predicted_sif_linear', 'predicted_sif_mlp', 'predicted_sif_unet',
@@ -154,6 +167,7 @@ def eval_unet_fast(model, dataloader, criterion, device, sif_mean, sif_std, fine
                 predicted_fine_sifs_std = predicted_fine_sifs_std[0]
             predicted_fine_sifs_std = torch.squeeze(predicted_fine_sifs_std, dim=1)
             predicted_fine_sifs = predicted_fine_sifs_std * sif_std + sif_mean
+            predicted_fine_sifs *= SCALE_PREDICTIONS_BY
 
             # For each tile, take the average SIF over all valid pixels
             predicted_coarse_sifs = sif_utils.masked_average(predicted_fine_sifs, valid_fine_sif_mask, dims_to_average=(1, 2)) # (batch size)
@@ -229,6 +243,7 @@ def compare_unet_to_others(model, dataloader, device, sif_mean, sif_std, fine_pi
                 predicted_fine_sifs_std = predicted_fine_sifs_std[0]
             predicted_fine_sifs_std = torch.squeeze(predicted_fine_sifs_std, dim=1)
             predicted_fine_sifs = predicted_fine_sifs_std * sif_std + sif_mean
+            predicted_fine_sifs = predicted_fine_sifs * SCALE_PREDICTIONS_BY
 
             # For each tile, compute coarse SIF as the average SIF over all valid pixels
             predicted_coarse_sifs = sif_utils.masked_average(predicted_fine_sifs, valid_fine_sif_mask, dims_to_average=(1, 2)) # (batch size)
@@ -347,7 +362,7 @@ def compare_unet_to_others(model, dataloader, device, sif_mean, sif_std, fine_pi
                     eval_results.append(result_row)
 
                 # Plot selected tiles
-                if plot and fraction_valid > 0.1:
+                if plot and fraction_valid > 0.2:
                     print('Plotting')
                     # Plot example tile
                     true_eval_sifs_tile[valid_eval_sif_mask_tile == 0] = 0
@@ -357,9 +372,9 @@ def compare_unet_to_others(model, dataloader, device, sif_mean, sif_std, fine_pi
                     predicted_sif_tiles = [predicted_eval_sifs_linear,
                                         predicted_eval_sifs_mlp,
                                         predicted_eval_sifs_unet]
-                    prediction_methods = ['Linear', 'ANN', 'U-Net']
+                    prediction_methods = ['Linear', 'ANN', 'U-Net (CFIS)']
                     average_sifs = []
-                    visualization_utils.plot_tile(input_tiles_std[i].cpu().detach().numpy(),
+                    visualization_utils.plot_tile_predictions(input_tiles_std[i].cpu().detach().numpy(),
                                                 true_eval_sifs_tile, predicted_sif_tiles,
                                                 valid_eval_sif_mask_tile, prediction_methods, 
                                                 large_tile_lon, large_tile_lat, date, TILE_SIZE_DEGREES,
@@ -404,31 +419,61 @@ def main():
         min_output = None
         max_output = None
 
-    # Read coarse/fine pixel averages
-    coarse_train_set = pd.read_csv(COARSE_AVERAGES_TRAIN_FILE)
-    eval_train_set = pd.read_csv(EVAL_AVERAGES_TRAIN_FILE)
-    coarse_test_set = pd.read_csv(COARSE_AVERAGES_TEST_FILE)
-    eval_test_set = pd.read_csv(EVAL_AVERAGES_TEST_FILE)
 
-    # Filter coarse CFIS
-    coarse_train_set = coarse_train_set[(coarse_train_set['fraction_valid'] >= MIN_COARSE_FRACTION_VALID_PIXELS) &
-                                        (coarse_train_set['SIF'] >= MIN_SIF_CLIP) &
-                                        (coarse_train_set['date'].isin(TRAIN_DATES))]
-    coarse_test_set = coarse_test_set[(coarse_test_set['fraction_valid'] >= MIN_COARSE_FRACTION_VALID_PIXELS) &
-                                      (coarse_test_set['SIF'] >= MIN_SIF_CLIP) &
-                                      (coarse_test_set['date'].isin(TEST_DATES))]
 
-    # Filter fine CFIS (note: more filtering happens with eval_results_df)
-    eval_train_set = eval_train_set[(eval_train_set['SIF'] >= MIN_SIF_CLIP) &
-                                    (eval_train_set['date'].isin(TRAIN_DATES)) &
-                                    (eval_train_set['num_soundings'] >= MIN_EVAL_CFIS_SOUNDINGS) &
-                                    (eval_train_set['fraction_valid'] >= MIN_EVAL_FRACTION_VALID) &
-                                    (eval_train_set['tile_file'].isin(set(coarse_train_set['tile_file'])))]
-    eval_test_set = eval_test_set[(eval_test_set['SIF'] >= MIN_SIF_CLIP) &
-                                    (eval_test_set['date'].isin(TEST_DATES)) &
-                                    (eval_test_set['num_soundings'] >= MIN_EVAL_CFIS_SOUNDINGS) &
-                                    (eval_test_set['fraction_valid'] >= MIN_EVAL_FRACTION_VALID) &
-                                    (eval_test_set['tile_file'].isin(set(coarse_test_set['tile_file'])))]
+    # Read CFIS coarse metadata
+    cfis_coarse_metadata = pd.read_csv(CFIS_COARSE_METADATA_FILE)
+
+    # Only include CFIS tiles with enough valid pixels
+    cfis_coarse_metadata = cfis_coarse_metadata[(cfis_coarse_metadata['fraction_valid'] >= MIN_COARSE_FRACTION_VALID_PIXELS) &
+                                        (cfis_coarse_metadata['SIF'] >= MIN_SIF_CLIP)]
+
+    # Read fine metadata at particular resolution
+    cfis_eval_metadata = pd.read_csv(CFIS_EVAL_METADATA_FILE)
+    cfis_eval_metadata = cfis_eval_metadata[(cfis_eval_metadata['SIF'] >= MIN_SIF_CLIP) &
+                                            (cfis_eval_metadata['num_soundings'] >= MIN_EVAL_CFIS_SOUNDINGS) &
+                                            (cfis_eval_metadata['fraction_valid'] >= MIN_EVAL_FRACTION_VALID) &
+                                            (cfis_eval_metadata['tile_file'].isin(set(cfis_coarse_metadata['tile_file'])))]
+
+    # Read dataset splits
+    coarse_train_set = cfis_coarse_metadata[(cfis_coarse_metadata['fold'].isin(TRAIN_FOLDS)) &
+                                            (cfis_coarse_metadata['date'].isin(TRAIN_DATES))].copy()
+    coarse_val_set = cfis_coarse_metadata[(cfis_coarse_metadata['fold'].isin(VAL_FOLDS)) &
+                                            (cfis_coarse_metadata['date'].isin(TRAIN_DATES))].copy()
+    coarse_test_set = cfis_coarse_metadata[(cfis_coarse_metadata['fold'].isin(TEST_FOLDS)) &
+                                            (cfis_coarse_metadata['date'].isin(TEST_DATES))].copy()
+    eval_train_set = cfis_eval_metadata[(cfis_eval_metadata['fold'].isin(TRAIN_FOLDS)) &
+                                            (cfis_eval_metadata['date'].isin(TRAIN_DATES))].copy()
+    eval_val_set = cfis_eval_metadata[(cfis_eval_metadata['fold'].isin(VAL_FOLDS)) &
+                                            (cfis_eval_metadata['date'].isin(TRAIN_DATES))].copy()
+    eval_test_set = cfis_eval_metadata[(cfis_eval_metadata['fold'].isin(TEST_FOLDS)) &
+                                            (cfis_eval_metadata['date'].isin(TEST_DATES))].copy()
+
+    # # Read coarse/fine pixel averages
+    # coarse_train_set = pd.read_csv(COARSE_AVERAGES_TRAIN_FILE)
+    # eval_train_set = pd.read_csv(EVAL_AVERAGES_TRAIN_FILE)
+    # coarse_test_set = pd.read_csv(COARSE_AVERAGES_TEST_FILE)
+    # eval_test_set = pd.read_csv(EVAL_AVERAGES_TEST_FILE)
+
+    # # Filter coarse CFIS
+    # coarse_train_set = coarse_train_set[(coarse_train_set['fraction_valid'] >= MIN_COARSE_FRACTION_VALID_PIXELS) &
+    #                                     (coarse_train_set['SIF'] >= MIN_SIF_CLIP) &
+    #                                     (coarse_train_set['date'].isin(TRAIN_DATES))]
+    # coarse_test_set = coarse_test_set[(coarse_test_set['fraction_valid'] >= MIN_COARSE_FRACTION_VALID_PIXELS) &
+    #                                   (coarse_test_set['SIF'] >= MIN_SIF_CLIP) &
+    #                                   (coarse_test_set['date'].isin(TEST_DATES))]
+
+    # # Filter fine CFIS (note: more filtering happens with eval_results_df)
+    # eval_train_set = eval_train_set[(eval_train_set['SIF'] >= MIN_SIF_CLIP) &
+    #                                 (eval_train_set['date'].isin(TRAIN_DATES)) &
+    #                                 (eval_train_set['num_soundings'] >= MIN_EVAL_CFIS_SOUNDINGS) &
+    #                                 (eval_train_set['fraction_valid'] >= MIN_EVAL_FRACTION_VALID) &
+    #                                 (eval_train_set['tile_file'].isin(set(coarse_train_set['tile_file'])))]
+    # eval_test_set = eval_test_set[(eval_test_set['SIF'] >= MIN_SIF_CLIP) &
+    #                                 (eval_test_set['date'].isin(TEST_DATES)) &
+    #                                 (eval_test_set['num_soundings'] >= MIN_EVAL_CFIS_SOUNDINGS) &
+    #                                 (eval_test_set['fraction_valid'] >= MIN_EVAL_FRACTION_VALID) &
+    #                                 (eval_test_set['tile_file'].isin(set(coarse_test_set['tile_file'])))]
 
     # Standardize data
     for idx, column in enumerate(COLUMNS_TO_STANDARDIZE):

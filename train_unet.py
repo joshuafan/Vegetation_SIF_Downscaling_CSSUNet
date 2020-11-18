@@ -35,7 +35,7 @@ torch.manual_seed(RANDOM_STATE)
 # Data files
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
 CFIS_DIR = os.path.join(DATA_DIR, "CFIS")
-DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset")
+DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset_2degree_random0")
 # INFO_FILE_TRAIN = os.path.join(DATASET_DIR, "standardized_tiles_train.csv")
 # INFO_FILE_VAL = os.path.join(DATASET_DIR, "standardized_tiles_val.csv")
 INFO_FILE_TRAIN = os.path.join(DATASET_DIR, "tile_info_train.csv")
@@ -58,17 +58,26 @@ CFIS_FILE = os.path.join(CFIS_DIR, 'cfis_coarse_averages_test.csv')
 # METHOD = "7_unet_small_both_10000samples" #_random_output_0.01"
 # METHOD = "7_unet2" #_1000samples"
 # METHOD = "7_unet2_reflectance_only_aug"
-METHOD = "2e_unet"
-MODEL_TYPE = "unet"
+# METHOD = "2e_unet_jigsaw"
+# MODEL_TYPE = "unet"
 # METHOD = "2f_pixel_nn"
 # MODEL_TYPE = "pixel_nn"
-
+METHOD = "2e_unet"
+MODEL_TYPE = "unet"
+# METHOD = "1e_unet"
+# MODEL_TYPE = "unet"
+# METHOD = "1e_unet2"
+# MODEL_TYPE = "unet2"
+# METHOD = "1f_pixel_nn"
+# MODEL_TYPE = "pixel_nn"
+# # METHOD = "1f_resnet18"
+# MODEL_TYPE = "resnet18"
 # Which sources to train on
 TRAIN_SOURCES = ['TROPOMI', 'OCO2'] #, 'OCO2']
 VAL_SOURCES = ['OCO2']
 NUM_TROPOMI_SAMPLES_TRAIN = 1000
 NUM_OCO2_SAMPLES_TRAIN = 1000
-OCO2_UPDATES_PER_TROPOMI = 1
+OCO2_UPDATES_PER_TROPOMI = 0.1
 
 # Model files
 PRETRAINED_UNET_MODEL_FILE = os.path.join(DATA_DIR, "models/" + METHOD)
@@ -81,28 +90,37 @@ LOSS_PLOT = 'loss_plots/losses_' + METHOD
 
 # Parameters
 OPTIMIZER_TYPE = "Adam"
-LEARNING_RATE = 3e-4
+LEARNING_RATE = 1e-4
 WEIGHT_DECAY = 1e-3
-NUM_EPOCHS = 40
+NUM_EPOCHS = 20
 BATCH_SIZE = 16
 NUM_WORKERS = 4
-AUGMENT = True
 FROM_PRETRAINED = False
-MIN_SIF = None
-MAX_SIF = None
+MIN_SIF = None # 0 #None
+MAX_SIF = None #1.5 #None
 MIN_SIF_CLIP = 0.1
-MIN_INPUT = -5
-MAX_INPUT = 5
+MIN_INPUT = -3
+MAX_INPUT = 3
+REMOVE_PURE_TRAIN = False #True
+PURE_THRESHOLD_TRAIN = 0.6
 REDUCED_CHANNELS = 10
-NOISE = 0.05
-FRACTION_OUTPUTS_TO_AVERAGE = 0.01
 
 # Which bands
-BANDS = list(range(0, 43))
+# BANDS = list(range(0, 43))
 #BANDS = list(range(0, 12)) + [12, 13, 14, 16] + [42]
-# BANDS = list(range(0, 12)) + list(range(12, 27)) + [28] + [42] 
+BANDS = list(range(0, 9)) + list(range(12, 27)) + [28] + [42] 
 INPUT_CHANNELS = len(BANDS)
 MISSING_REFLECTANCE_IDX = -1
+
+# Augmentations
+AUGMENTATIONS = ['flip_and_rotate', 'gaussian_noise', 'jigsaw']
+RESIZE_DIM = 100
+NOISE = 0.01
+FRACTION_OUTPUTS_TO_AVERAGE = 0.1
+
+# Filtering
+MIN_SOUNDINGS = 5
+MAX_CLOUD_COVER = 0.2
 
 # Dates
 # TRAIN_TROPOMI_DATES = ["2018-04-29", "2018-05-13", "2018-05-27", "2018-06-10", "2018-06-24", 
@@ -117,39 +135,10 @@ MISSING_REFLECTANCE_IDX = -1
 TRAIN_TROPOMI_DATES = ["2018-07-08", "2018-07-22", "2018-08-05", "2018-08-19"]
 TRAIN_OCO2_DATES = ["2018-07-08", "2018-07-22", "2018-08-05", "2018-08-19"]
 TEST_DATES = ["2018-07-08", "2018-07-22", "2018-08-05", "2018-08-19"]
-MIN_SOUNDINGS = 5
-MAX_CLOUD_COVER = 0.2
 
 
-# Print params for reference
-print("=========================== PARAMS ===========================")
-print("Train sources:", TRAIN_SOURCES)
-print("Method:", METHOD)
-print("Dataset: ", os.path.basename(DATASET_DIR))
-if 'OCO2' in TRAIN_SOURCES:
-    print('Num OCO2 samples:', NUM_OCO2_SAMPLES_TRAIN)
-    print('OCO2 updates per TROPOMI:', OCO2_UPDATES_PER_TROPOMI)
-if FROM_PRETRAINED:
-    print("From pretrained model", os.path.basename(PRETRAINED_UNET_MODEL_FILE))
-else:
-    print("Training from scratch")
-print("Output model:", os.path.basename(UNET_MODEL_FILE))
-print("Bands:", BANDS)
-print("---------------------------------")
-print("Model:", MODEL_TYPE)
-print("Optimizer:", OPTIMIZER_TYPE)
-print("Learning rate:", LEARNING_RATE)
-print("Weight decay:", WEIGHT_DECAY)
-print("Num workers:", NUM_WORKERS)
-print("Batch size:", BATCH_SIZE)
-print("Num epochs:", NUM_EPOCHS)
-print("Augment:", AUGMENT)
-if AUGMENT:
-    print("Gaussian noise (std deviation):", NOISE)
-print("Fraction outputs to average:", FRACTION_OUTPUTS_TO_AVERAGE)
-print("Input features clipped to", MIN_INPUT, "to", MAX_INPUT, "standard deviations from mean")
-print("SIF range:", MIN_SIF, "to", MAX_SIF)
-print("==============================================================")
+
+
 
 
 # TODO should there be 2 separate models?
@@ -203,7 +192,6 @@ def train_model(model, dataloaders, cfis_dataloader, criterion, optimizer, devic
                     tropomi_true_sifs = sample['tropomi_sif'].to(device)  # (batch_size)
                     assert(tropomi_tiles_std.shape[0] == tropomi_true_sifs.shape[0])
 
-
                     # tile_description = sample['tropomi_description'][1]
                     # title = tile_description + ' (SIF = ' + str(round(sample['tropomi_sif'][1].item(), 3)) + ')'
                     # sif_utils.plot_tile(tropomi_tiles_std[1].detach().numpy(), 'unet_input_' + tile_description + '.png', title=title)
@@ -214,26 +202,33 @@ def train_model(model, dataloaders, cfis_dataloader, criterion, optimizer, devic
                         # print('TROPOMI tile', tropomi_tiles_std[0, :, 20, 90])
                         # print('TROPOMI tile', tropomi_tiles_std[0, :, 50, 78])
                         optimizer.zero_grad()
-                        tropomi_predicted_pixel_sifs_std = model(tropomi_tiles_std)  # tropomi_predicted_sifs_std: (batch size, 1, H, W)
-                        if type(tropomi_predicted_pixel_sifs_std) == tuple:
-                            tropomi_predicted_pixel_sifs_std = tropomi_predicted_pixel_sifs_std[0]
-                        tropomi_predicted_pixel_sifs_std = torch.squeeze(tropomi_predicted_pixel_sifs_std, dim=1)
-                        tropomi_predicted_pixel_sifs = tropomi_predicted_pixel_sifs_std * sif_std + sif_mean
-                        # print('TROPOMI predicted sifs shape', tropomi_predicted_sifs.shape)
-                        # print('TROPOMI predicted sifs', tropomi_predicted_sifs)
 
-                        # Binary mask for non-cloudy pixels. (Previously, MISSING_REFLECTANCE_IDX was 1 if the pixel
-                        # was cloudy, and 0 otherwise; we flip it so that it is 1 if the pixel is valid/non-cloudy.)
-                        non_cloudy_pixels = torch.logical_not(tropomi_tiles_std[:, MISSING_REFLECTANCE_IDX, :, :])  # (batch size, H, W)
+                        if MODEL_TYPE == 'resnet18':
+                            tropomi_predicted_sifs_std = model(tropomi_tiles_std)
+                            tropomi_predicted_sifs = tropomi_predicted_sifs_std * sif_std + sif_mean
+                            # print('Predicted', tropomi_predicted_sifs)
+                            # print('True', tropomi_true_sifs)
+                        else:
+                            tropomi_predicted_pixel_sifs_std = model(tropomi_tiles_std)  # tropomi_predicted_sifs_std: (batch size, 1, H, W)
+                            if type(tropomi_predicted_pixel_sifs_std) == tuple:
+                                tropomi_predicted_pixel_sifs_std = tropomi_predicted_pixel_sifs_std[0]
+                            tropomi_predicted_pixel_sifs_std = torch.squeeze(tropomi_predicted_pixel_sifs_std, dim=1)
+                            tropomi_predicted_pixel_sifs = tropomi_predicted_pixel_sifs_std * sif_std + sif_mean
+                            # print('TROPOMI predicted sifs shape', tropomi_predicted_sifs.shape)
+                            # print('TROPOMI predicted sifs', tropomi_predicted_sifs)
 
-                        # As a regularization technique, randomly choose more pixels to ignore.
-                        if phase == 'train':
-                            pixels_to_include = torch.rand(non_cloudy_pixels.shape, device=device) > (1 - FRACTION_OUTPUTS_TO_AVERAGE)
-                            non_cloudy_pixels = non_cloudy_pixels * pixels_to_include
+                            # Binary mask for non-cloudy pixels. (Previously, MISSING_REFLECTANCE_IDX was 1 if the pixel
+                            # was cloudy, and 0 otherwise; we flip it so that it is 1 if the pixel is valid/non-cloudy.)
+                            non_cloudy_pixels = torch.logical_not(tropomi_tiles_std[:, MISSING_REFLECTANCE_IDX, :, :])  # (batch size, H, W)
 
-                        # For each tile, take the average SIF over all valid pixels
-                        tropomi_predicted_sifs = sif_utils.masked_average(tropomi_predicted_pixel_sifs, non_cloudy_pixels, dims_to_average=(1, 2)) # (batch size)
-                        # tropomi_predicted_sifs = torch.clamp(tropomi_predicted_sifs, min=MIN_SIF_CLIP)
+                            # As a regularization technique, randomly choose more pixels to ignore.
+                            if phase == 'train':
+                                pixels_to_include = torch.rand(non_cloudy_pixels.shape, device=device) > (1 - FRACTION_OUTPUTS_TO_AVERAGE)
+                                non_cloudy_pixels = non_cloudy_pixels * pixels_to_include
+
+                            # For each tile, take the average SIF over all valid pixels
+                            tropomi_predicted_sifs = sif_utils.masked_average(tropomi_predicted_pixel_sifs, non_cloudy_pixels, dims_to_average=(1, 2)) # (batch size)
+                            # tropomi_predicted_sifs = torch.clamp(tropomi_predicted_sifs, min=MIN_SIF_CLIP)
 
                         # Compute loss: predicted vs true SIF (standardized)
                         loss = criterion(tropomi_predicted_sifs, tropomi_true_sifs)
@@ -241,19 +236,19 @@ def train_model(model, dataloaders, cfis_dataloader, criterion, optimizer, devic
                             loss.backward()
                             optimizer.step()
 
-                    # visualization_utils.plot_tile(tropomi_tiles_std[0].cpu().detach().numpy(), np.zeros(tropomi_predicted_sifs[0].shape),
-                    #                               [tropomi_predicted_sifs[0].cpu().detach().numpy()],
-                    #                               non_cloudy_pixels[0].cpu().detach().numpy(), ['U-Net'], 
-                    #                               sample['tropomi_lon'][0].item(), sample['tropomi_lat'][0].item(), sample['tropomi_date'][0],
-                    #                               TILE_SIZE_DEGREES, RES_METERS)
+                    # visualization_utils.plot_tile(tropomi_tiles_std[0].cpu().detach().numpy(),
+                    #                               non_cloudy_pixels[0].cpu().detach().numpy(),
+                    #                               sample['tropomi_lon'][0].item(), sample['tropomi_lat'][0].item(),
+                    #                               sample['tropomi_date'][0], TILE_SIZE_DEGREES)
                     # exit(0)
+
                     with torch.set_grad_enabled(False):
                         # statistics
                         running_tropomi_loss += loss.item() * len(sample['tropomi_sif'])
                         num_tropomi_points += len(sample['tropomi_sif'])
                         all_true_tropomi_sifs.append(tropomi_true_sifs.cpu().detach().numpy())
                         all_predicted_tropomi_sifs.append(tropomi_predicted_sifs.cpu().detach().numpy())
-                    del(tropomi_tiles_std, tropomi_true_sifs, tropomi_predicted_sifs, tropomi_predicted_pixel_sifs, tropomi_predicted_pixel_sifs_std, non_cloudy_pixels, pixels_to_include)
+                    del(tropomi_tiles_std, tropomi_true_sifs, tropomi_predicted_sifs)
 
                 if 'oco2_tile' in sample:
                     if (phase == 'val') or (phase == 'train' and random.random() < OCO2_UPDATES_PER_TROPOMI):
@@ -267,25 +262,31 @@ def train_model(model, dataloaders, cfis_dataloader, criterion, optimizer, devic
 
                         with torch.set_grad_enabled(phase == 'train'):
                             optimizer.zero_grad()
-                            oco2_predicted_pixel_sifs_std = model(oco2_tiles_std)  # (batch size, 1, H, W)
-                            if type(oco2_predicted_pixel_sifs_std) == tuple:
-                                oco2_predicted_pixel_sifs_std = oco2_predicted_pixel_sifs_std[0]
-                            oco2_predicted_pixel_sifs_std = torch.squeeze(oco2_predicted_pixel_sifs_std, dim=1)
-                            oco2_predicted_pixel_sifs = oco2_predicted_pixel_sifs_std * sif_std + sif_mean
 
-                            # Binary mask for non-cloudy pixels
-                            non_cloudy_pixels = torch.logical_not(oco2_tiles_std[:, MISSING_REFLECTANCE_IDX, :, :])  # (batch size, H, W)
-                            # print('Fraction non-cloudy', torch.sum(non_cloudy_pixels).item() / torch.numel(non_cloudy_pixels))
+                            if MODEL_TYPE == 'resnet18':
+                                oco2_predicted_sifs_std = model(oco2_tiles_std)
+                                oco2_predicted_sifs = oco2_predicted_sifs_std * sif_std + sif_mean
+                            
+                            else:
+                                oco2_predicted_pixel_sifs_std = model(oco2_tiles_std)  # (batch size, 1, H, W)
+                                if type(oco2_predicted_pixel_sifs_std) == tuple:
+                                    oco2_predicted_pixel_sifs_std = oco2_predicted_pixel_sifs_std[0]
+                                oco2_predicted_pixel_sifs_std = torch.squeeze(oco2_predicted_pixel_sifs_std, dim=1)
+                                oco2_predicted_pixel_sifs = oco2_predicted_pixel_sifs_std * sif_std + sif_mean
 
-                            # As a regularization technique, randomly choose more pixels to ignore.
-                            if phase == 'train':
-                                pixels_to_include = torch.rand(non_cloudy_pixels.shape, device=device) > (1 - FRACTION_OUTPUTS_TO_AVERAGE)
-                                non_cloudy_pixels = non_cloudy_pixels * pixels_to_include
-                            # print('Non cloudy pixels', torch.sum(non_cloudy_pixels))
-                            oco2_predicted_sifs = sif_utils.masked_average(oco2_predicted_pixel_sifs, non_cloudy_pixels, dims_to_average=(1, 2)) # (batch size)
-                            # oco2_predicted_sifs = torch.clamp(oco2_predicted_sifs, min=MIN_SIF_CLIP)
-                            # print('OCO2 predicted', oco2_predicted_sifs)
-                            # print('OCO2 true', oco2_true_sifs)
+                                # Binary mask for non-cloudy pixels
+                                non_cloudy_pixels = torch.logical_not(oco2_tiles_std[:, MISSING_REFLECTANCE_IDX, :, :])  # (batch size, H, W)
+                                # print('Fraction non-cloudy', torch.sum(non_cloudy_pixels).item() / torch.numel(non_cloudy_pixels))
+
+                                # As a regularization technique, randomly choose more pixels to ignore.
+                                if phase == 'train':
+                                    pixels_to_include = torch.rand(non_cloudy_pixels.shape, device=device) > (1 - FRACTION_OUTPUTS_TO_AVERAGE)
+                                    non_cloudy_pixels = non_cloudy_pixels * pixels_to_include
+                                # print('Non cloudy pixels', torch.sum(non_cloudy_pixels))
+                                oco2_predicted_sifs = sif_utils.masked_average(oco2_predicted_pixel_sifs, non_cloudy_pixels, dims_to_average=(1, 2)) # (batch size)
+                                # oco2_predicted_sifs = torch.clamp(oco2_predicted_sifs, min=MIN_SIF_CLIP)
+                                # print('OCO2 predicted', oco2_predicted_sifs)
+                                # print('OCO2 true', oco2_true_sifs)
 
                             # Compute loss: predicted vs true SIF
                             loss = criterion(oco2_predicted_sifs, oco2_true_sifs)
@@ -300,7 +301,7 @@ def train_model(model, dataloaders, cfis_dataloader, criterion, optimizer, devic
                             num_oco2_points += len(sample['oco2_sif'])
                             all_true_oco2_sifs.append(oco2_true_sifs.cpu().detach().numpy())
                             all_predicted_oco2_sifs.append(oco2_predicted_sifs.cpu().detach().numpy())
-                        del(oco2_tiles_std, oco2_true_sifs, oco2_predicted_sifs, oco2_predicted_pixel_sifs, oco2_predicted_pixel_sifs_std, non_cloudy_pixels)
+                        del(oco2_tiles_std, oco2_true_sifs, oco2_predicted_sifs)
 
 
             # Compute NRMSE on entire TROPOMI and OCO-2 datasets
@@ -408,16 +409,19 @@ test_oco2_set = test_set[(test_set['source'] == 'OCO2') &
                               (test_set['missing_reflectance'] <= MAX_CLOUD_COVER) &
                               (test_set['SIF'] >= MIN_SIF_CLIP) &
                               (test_set['date'].isin(TEST_DATES))].copy()
-train_oco2_set['SIF'] /= 1.03
-val_oco2_set['SIF'] /= 1.03
-test_oco2_set['SIF'] /= 1.03
-train_tropomi_set = sif_utils.remove_pure_tiles(train_tropomi_set, threshold=0.5)
-train_oco2_set = sif_utils.remove_pure_tiles(train_oco2_set, threshold=0.5)
+train_oco2_set['SIF'] /= 1.04
+val_oco2_set['SIF'] /= 1.04
+test_oco2_set['SIF'] /= 1.04
+
+# Artificially remove pure tiles
+if REMOVE_PURE_TRAIN:
+    train_tropomi_set = sif_utils.remove_pure_tiles(train_tropomi_set, threshold=PURE_THRESHOLD_TRAIN)
+    train_oco2_set = sif_utils.remove_pure_tiles(train_oco2_set, threshold=PURE_THRESHOLD_TRAIN)
 
 # Create shuffled train sets
 # combined_tropomi_set = pd.concat([train_tropomi_set, val_tropomi_set, test_tropomi_set])
-shuffled_tropomi_set = train_tropomi_set.sample(frac=1, random_state=RANDOM_STATE).reset_index(drop=True).iloc[0:NUM_TROPOMI_SAMPLES_TRAIN]
-shuffled_oco2_set = train_oco2_set.sample(frac=1, random_state=RANDOM_STATE).reset_index(drop=True).iloc[0:NUM_OCO2_SAMPLES_TRAIN]
+shuffled_tropomi_set = train_tropomi_set.sample(frac=1, random_state=RANDOM_STATE).reset_index(drop=True) #.iloc[0:NUM_TROPOMI_SAMPLES_TRAIN]
+shuffled_oco2_set = train_oco2_set.sample(frac=1, random_state=RANDOM_STATE).reset_index(drop=True) #.iloc[0:NUM_OCO2_SAMPLES_TRAIN]
 
 # Extract TROPOMI and OCO-2 rows, if applicable
 if 'TROPOMI' in TRAIN_SOURCES:
@@ -432,6 +436,50 @@ if 'OCO2' in TRAIN_SOURCES:
 else:
     train_oco2_metadata = None
 
+
+
+# Print params for reference
+print("=========================== PARAMS ===========================")
+PARAM_STRING = ''
+PARAM_STRING += '============= DATASET PARAMS =============\n'
+PARAM_STRING += ('Dataset dir: ' + DATASET_DIR + '\n')
+PARAM_STRING += ('Train sources: ' + str(TRAIN_SOURCES) + '\n')
+if 'TROPOMI' in TRAIN_SOURCES:
+    PARAM_STRING += ('Train TROPOMI dates: ' + str(TRAIN_TROPOMI_DATES) + '\n')
+    PARAM_STRING += ('Num TROPOMI samples: ' + str(len(train_tropomi_metadata)) + '\n')
+if 'OCO2' in TRAIN_SOURCES:
+    PARAM_STRING += ('Train OCO-2 dates: ' + str(TRAIN_OCO2_DATES) + '\n')
+    PARAM_STRING += ('Num OCO-2 samples: ' + str(len(train_oco2_metadata)) + '; OCO-2 updates per TROPOMI: ' + str(OCO2_UPDATES_PER_TROPOMI) + '\n')
+PARAM_STRING += ('Test dates: ' + str(TEST_DATES) + '\n')
+PARAM_STRING += ('Min soundings: ' + str(MIN_SOUNDINGS) + '\n')
+PARAM_STRING += ('Min SIF clip: ' + str(MIN_SIF_CLIP) + '\n')
+PARAM_STRING += ('Max cloud cover: ' + str(MAX_CLOUD_COVER) + '\n')
+PARAM_STRING += ('Train features: ' + str(BANDS) + '\n')
+PARAM_STRING += ("Clip input features: " + str(MIN_INPUT) + " to " + str(MAX_INPUT) + " standard deviations from mean\n")
+if REMOVE_PURE_TRAIN:
+    PARAM_STRING += ('Removing pure train tiles above ' + str(PURE_THRESHOLD_TRAIN) + '\n')
+PARAM_STRING += ('================= METHOD ===============\n')
+if FROM_PRETRAINED:
+    PARAM_STRING += ('From pretrained model: ' + os.path.basename(PRETRAINED_UNET_MODEL_FILE) + '\n')
+else:
+    PARAM_STRING += ("Training from scratch\n")
+PARAM_STRING += ("Model name: " + os.path.basename(UNET_MODEL_FILE) + '\n')
+PARAM_STRING += ("Model type: " + MODEL_TYPE + '\n')
+PARAM_STRING += ("Optimizer: " + OPTIMIZER_TYPE + '\n')
+PARAM_STRING += ("Learning rate: " + str(LEARNING_RATE) + '\n')
+PARAM_STRING += ("Weight decay: " + str(WEIGHT_DECAY) + '\n')
+PARAM_STRING += ("Num workers: " + str(NUM_WORKERS) + '\n')
+PARAM_STRING += ("Batch size: " + str(BATCH_SIZE) + '\n')
+PARAM_STRING += ("Num epochs: " + str(NUM_EPOCHS) + '\n')
+PARAM_STRING += ("Augmentations: " + str(AUGMENTATIONS) + '\n')
+if 'resize' in AUGMENTATIONS:
+    PARAM_STRING += ('Resize images to: ' + str(RESIZE_DIM) + '\n')
+if 'gaussian_noise' in AUGMENTATIONS:
+    PARAM_STRING += ("Gaussian noise (std deviation): " + str(NOISE) + '\n')
+PARAM_STRING += ("Fraction outputs to average: " + str(FRACTION_OUTPUTS_TO_AVERAGE) + '\n')
+PARAM_STRING += ("SIF range: " + str(MIN_SIF) + " to " + str(MAX_SIF) + '\n')
+PARAM_STRING += ("==============================================================\n")
+print(PARAM_STRING)
 
 # if 'OCO2' in VAL_SOURCES:
 #     val_oco2_metadata = oco2_set[(oco2_set['source'] == 'OCO2') &
@@ -474,12 +522,20 @@ standardize_transform = tile_transforms.StandardizeTile(band_means, band_stds) #
 clip_transform = tile_transforms.ClipTile(min_input=MIN_INPUT, max_input=MAX_INPUT)
 noise_transform = tile_transforms.GaussianNoise(continuous_bands=list(range(0, 9)), standard_deviation=NOISE)
 flip_and_rotate_transform = tile_transforms.RandomFlipAndRotate()
+jigsaw_transform = tile_transforms.RandomJigsaw()
+resize_transform = tile_transforms.ResizeTile(target_dim=[RESIZE_DIM, RESIZE_DIM])
 
 transform_list_train = [standardize_transform, clip_transform] # [standardize_transform, noise_transform]
 transform_list_val = [standardize_transform, clip_transform] #[standardize_transform]
 transform_list_cfis = [standardize_transform, clip_transform]
-if AUGMENT:
-    transform_list_train += [flip_and_rotate_transform, noise_transform]
+if 'resize' in AUGMENTATIONS:
+    transform_list_train.append(resize_transform)
+if 'flip_and_rotate' in AUGMENTATIONS:
+    transform_list_train.append(flip_and_rotate_transform)
+if 'gaussian_noise' in AUGMENTATIONS:
+    transform_list_train.append(noise_transform)
+if 'jigsaw' in AUGMENTATIONS:
+    transform_list_train.append(jigsaw_transform)
 train_transform = transforms.Compose(transform_list_train)
 val_transform = transforms.Compose(transform_list_val)
 cfis_transform = transforms.Compose(transform_list_cfis)
@@ -505,6 +561,9 @@ elif MODEL_TYPE == 'unet':
     model = UNet(n_channels=INPUT_CHANNELS, n_classes=1, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)   
 elif MODEL_TYPE == 'unet2':
     model = UNet2(n_channels=INPUT_CHANNELS, n_classes=1, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)
+elif MODEL_TYPE == 'resnet18':
+    model = resnet.resnet18(input_channels=INPUT_CHANNELS, num_classes=1,
+                            min_output=min_output, max_output=max_output).to(device)
 else:
     print('Model type not supported')
     exit(1)
@@ -571,13 +630,13 @@ plt.close()
 # plt.savefig(LOSS_PLOT + '_nrmse_val_oco2.png') 
 # plt.close()
 
-# Plot val TROPOMI vs OCO-2 losses
-print('============== CFIS vs val OCO-2 losses ===============')
-sif_utils.print_stats(cfis_losses, val_oco2_losses, sif_mean, ax=plt.gca())
-plt.xlabel('Val OCO2 losses')
-plt.ylabel('CFIS losses')
-plt.title('CFIS vs val OCO-2 losses' + METHOD)
-# plt.xlim(left=0, right=0.5)
-# plt.ylim(bottom=0, top=0.5)
-plt.savefig(LOSS_PLOT + '_scatter_cfis_vs_val_oco2.png')
-plt.close()
+# # Plot val TROPOMI vs OCO-2 losses
+# print('============== CFIS vs val OCO-2 losses ===============')
+# sif_utils.print_stats(cfis_losses, val_oco2_losses, sif_mean, ax=plt.gca())
+# plt.xlabel('Val OCO2 losses')
+# plt.ylabel('CFIS losses')
+# plt.title('CFIS vs val OCO-2 losses' + METHOD)
+# # plt.xlim(left=0, right=0.5)
+# # plt.ylim(bottom=0, top=0.5)
+# plt.savefig(LOSS_PLOT + '_scatter_cfis_vs_val_oco2.png')
+# plt.close()

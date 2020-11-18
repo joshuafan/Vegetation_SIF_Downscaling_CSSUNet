@@ -32,7 +32,7 @@ def remove_pure_tiles(df, threshold=0.5):
     mixed_pixels = df[CROP_TYPES[0]] < threshold
     # print('Total tiles', len(df))
     for idx in range(1, len(CROP_TYPES)):
-        print('Num tiles with a lot of ', CROP_TYPES[idx], len(df[df[CROP_TYPES[idx]] > threshold]))
+        # print('Num tiles with a lot of ', CROP_TYPES[idx], len(df[df[CROP_TYPES[idx]] > threshold]))
         mixed_pixels = mixed_pixels & (df[CROP_TYPES[idx]] < threshold)
     df = df[mixed_pixels]
     # print('Mixed (non-pure) tiles', len(df))
@@ -302,7 +302,7 @@ def density_scatter(x, y, ax=None, sort=True, bins=20, **kwargs):
 
 
 def print_stats(true, predicted, average_sif, print_report=True, ax=None, fit_intercept=False):
-    if isinstance(true, list): 
+    if isinstance(true, list):
         true = np.array(true)
     if isinstance(predicted, list):
         predicted = np.array(predicted)
@@ -313,7 +313,6 @@ def print_stats(true, predicted, average_sif, print_report=True, ax=None, fit_in
     # intercept = true_to_predicted.intercept_
     # true_rescaled = true_to_predicted.predict(true)
     # r2 = r2_score(true_rescaled, predicted)
-    print('(num datapoints)', true.size)
 
     predicted = predicted.reshape(-1, 1)
     predicted_to_true = LinearRegression(fit_intercept=fit_intercept).fit(predicted, true)
@@ -338,7 +337,7 @@ def print_stats(true, predicted, average_sif, print_report=True, ax=None, fit_in
     if ax is not None:
         predicted = predicted.ravel()
         true = true.ravel()
-        if predicted.size > 1000:
+        if predicted.size > 500:
             ax = density_scatter(predicted, true, bins=[40, 40], ax=ax, s=5)
             # # Calculate the point density
             # xy = np.vstack([predicted, true])
@@ -363,6 +362,7 @@ def print_stats(true, predicted, average_sif, print_report=True, ax=None, fit_in
         ax.legend(fontsize=9, loc=loc)
 
     if print_report:
+        print('(num datapoints)', true.size)
         print('True vs predicted regression:', equation_string)
         print('R2:', round(r2, 3))
         # print('R2 (unscaled):', round(r2_unscaled, 3))
