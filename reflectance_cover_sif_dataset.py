@@ -17,6 +17,14 @@ warnings.filterwarnings("ignore")
 
 
 
+class CombinedDataset(Dataset):
+    """
+    Used to produce a Dataloader that can load samples from multiple Datasets simultaneously.
+    """
+    def __init__(self, datasets):
+        self.datasets = datasets
+
+
 class CombinedCfisOco2Dataset(Dataset):
     """Dataset mapping a tile (with reflectance/cover bands) to a coarse or fine resolution SIF map"""
 

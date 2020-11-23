@@ -65,15 +65,15 @@ DATES = ["2016-06-15", "2016-08-01"]
 TRAIN_DATES = ["2016-06-15", "2016-08-01"]
 TEST_DATES = ["2016-06-15", "2016-08-01"]
 # METHOD = "9a_Ridge_Regression_cfis" #_5soundings"
-# METHOD = "9b_Gradient_Boosting_Regressor_cfis" #_5soundings"
+METHOD = "9b_Gradient_Boosting_Regressor_cfis" #_5soundings"
 # METHOD = "9c_MLP_cfis" #_10soundings"
 # METHOD = "10a_Ridge_Regression_both"
 # METHOD = "10b_Gradient_Boosting_Regressor_both"
 # METHOD = "10c_MLP_both"
 # METHOD = "11a_Ridge_Regression_oco2"
 # METHOD = "11b_Gradient_Boosting_Regressor_oco2"
-METHOD = "11c_MLP_oco2"
-TRAIN_SOURCES = ['OCO2'] #['CFIS'] #, 'OCO2']
+# METHOD = "11c_MLP_oco2"
+TRAIN_SOURCES = ['CFIS'] #, 'OCO2']
 # TRAIN_SOURCES = ['CFIS', 'OCO2']
 print("METHOD:", METHOD, "- SOURCES:", TRAIN_SOURCES)
 
@@ -108,11 +108,13 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
         cfis_coarse_metadata = cfis_coarse_metadata[(cfis_coarse_metadata['fraction_valid'] >= min_coarse_fraction_valid) &
                                             (cfis_coarse_metadata['SIF'] >= MIN_SIF_CLIP)]
 
-        # Read fine metadata at particular resolution
+        # Read fine metadata at particular resolution, and do initial filtering
         CFIS_FINE_METADATA_FILE = os.path.join(CFIS_DIR, 'cfis_metadata_' + str(resolution) + 'm.csv')
         cfis_fine_metadata = pd.read_csv(CFIS_FINE_METADATA_FILE)
         cfis_fine_metadata = cfis_fine_metadata[(cfis_fine_metadata['SIF'] >= MIN_SIF_CLIP) &
                                         (cfis_fine_metadata['tile_file'].isin(set(cfis_coarse_metadata['tile_file'])))]
+        cfis_fine_metadata = cfis_fine_metadata[(cfis_fine_metadata['num_soundings'] >= min(MIN_FINE_CFIS_SOUNDINGS)) &
+                                                (cfis_fine_metadata['fraction_valid'] >= min(MIN_FINE_FRACTION_VALID_PIXELS))]
 
         # Read dataset splits
         oco2_train_set = oco2_metadata[(oco2_metadata['fold'].isin(TRAIN_FOLDS)) &
@@ -203,7 +205,7 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
             train_set = oco2_train_set
         elif 'CFIS' in TRAIN_SOURCES:
             print('ONLY using CFIS')
-            train_set = coarse_train_set
+            train_set = fine_train_set # TODO coarse_train_set
         else:
             print("Didn't specify valid sources :(")
             exit(0)

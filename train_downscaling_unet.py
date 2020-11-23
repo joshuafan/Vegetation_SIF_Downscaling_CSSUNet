@@ -43,8 +43,8 @@ OCO2_DIR = os.path.join(DATA_DIR, "OCO2")
 CFIS_COARSE_METADATA_FILE = os.path.join(CFIS_DIR, 'cfis_coarse_metadata.csv')
 CFIS_FINE_METADATA_FILE = os.path.join(CFIS_DIR, 'cfis_fine_metadata.csv')
 BAND_STATISTICS_FILE = os.path.join(CFIS_DIR, 'cfis_band_statistics_train.csv')
-DATASET_DIR = os.path.join(DATA_DIR, "processed_dataset_2degree_random0")
-OCO2_METADATA_FILE = os.path.join(DATASET_DIR, 'tile_info_train.csv')
+DATASET_DIR = os.path.join(DATA_DIR, "dataset_2018")
+OCO2_METADATA_FILE = os.path.join(DATASET_DIR, 'tropomi_metadata.csv')
 
 # Dataset resolution/scale
 RES = (0.00026949458523585647, 0.00026949458523585647)
@@ -70,9 +70,11 @@ TILE_SIZE_DEGREES = RES[0] * TILE_PIXELS
 # MODEL_TYPE = "unet2_pixel_embedding"
 # METHOD = "11d_unet2"
 # MODEL_TYPE = "unet2"
-METHOD = "2d_unet2"
+# METHOD = "2d_unet2"
+# MODEL_TYPE = "unet2"
+METHOD = "tropomi_cfis_unet2"
 MODEL_TYPE = "unet2"
-TRAIN_SOURCES = ["OCO2"] # ["CFIS"] #, "OCO2"]
+TRAIN_SOURCES = ["OCO2", "CFIS"] #, "OCO2"]
 OCO2_UPDATES_PER_CFIS = 1
 
 # Model files
@@ -126,7 +128,7 @@ MIN_FINE_CFIS_SOUNDINGS = 10
 MIN_COARSE_FRACTION_VALID_PIXELS = 0.1
 
 # Dates
-TRAIN_DATES = ['2016-06-15', '2016-08-01']
+TRAIN_DATES = ['2016-06-15', '2016-08-01', "2018-06-10", "2018-06-24", "2018-07-08", "2018-07-22", "2018-08-05", "2018-08-19"]
 TEST_DATES = ['2016-06-15', '2016-08-01']
 
 # Contrastive training settings
@@ -416,45 +418,46 @@ def train_model(model, dataloaders, criterion, optimizer, device, sif_mean, sif_
 
                 # Additional training with OCO-2 SIF
                 if 'oco2_input_tile' in sample:
-                    # Read OCO-2 input tile and SIF label
-                    oco2_tiles_std = sample['oco2_input_tile'][:, BANDS, :, :].to(device)
-                    oco2_true_sifs = sample['oco2_sif'].to(device)
+                    if (phase == 'val') or (phase == 'train' and random.random() < OCO2_UPDATES_PER_CFIS):
+                        # Read OCO-2 input tile and SIF label
+                        oco2_tiles_std = sample['oco2_input_tile'][:, BANDS, :, :].to(device)
+                        oco2_true_sifs = sample['oco2_sif'].to(device)
 
-                    with torch.set_grad_enabled(phase == 'train'):
-                        predicted_fine_sifs_std = model(oco2_tiles_std)  # predicted_fine_sifs_std: (batch size, 1, H, W)
-                        if type(predicted_fine_sifs_std) == tuple:
-                            predicted_fine_sifs_std = predicted_fine_sifs_std[0]
-                        predicted_fine_sifs_std = torch.squeeze(predicted_fine_sifs_std, dim=1)
-                        predicted_fine_sifs = predicted_fine_sifs_std * sif_std + sif_mean
+                        with torch.set_grad_enabled(phase == 'train'):
+                            predicted_fine_sifs_std = model(oco2_tiles_std)  # predicted_fine_sifs_std: (batch size, 1, H, W)
+                            if type(predicted_fine_sifs_std) == tuple:
+                                predicted_fine_sifs_std = predicted_fine_sifs_std[0]
+                            predicted_fine_sifs_std = torch.squeeze(predicted_fine_sifs_std, dim=1)
+                            predicted_fine_sifs = predicted_fine_sifs_std * sif_std + sif_mean
 
-                        # Binary mask for non-cloudy pixels
-                        non_cloudy_pixels = torch.logical_not(oco2_tiles_std[:, MISSING_REFLECTANCE_IDX, :, :])  # (batch size, H, W)
-                        # print('Percent noncloudy', torch.mean(non_cloudy_pixels, dim=(1, 2)))
+                            # Binary mask for non-cloudy pixels
+                            non_cloudy_pixels = torch.logical_not(oco2_tiles_std[:, MISSING_REFLECTANCE_IDX, :, :])  # (batch size, H, W)
+                            # print('Percent noncloudy', torch.mean(non_cloudy_pixels, dim=(1, 2)))
 
-                        # As a regularization technique, randomly choose more pixels to ignore.
-                        if phase == 'train':
-                            pixels_to_include = torch.rand(non_cloudy_pixels.shape, device=device) > (1 - FRACTION_OUTPUTS_TO_AVERAGE)
-                            non_cloudy_pixels = non_cloudy_pixels * pixels_to_include
+                            # As a regularization technique, randomly choose more pixels to ignore.
+                            if phase == 'train':
+                                pixels_to_include = torch.rand(non_cloudy_pixels.shape, device=device) > (1 - FRACTION_OUTPUTS_TO_AVERAGE)
+                                non_cloudy_pixels = non_cloudy_pixels * pixels_to_include
 
-                        # oco2_predicted_sifs = torch.mean(predicted_fine_sifs, dim=(1,2))
-                        oco2_predicted_sifs = sif_utils.masked_average(predicted_fine_sifs, non_cloudy_pixels, dims_to_average=(1, 2)) # (batch size)
-                        # print('oco2 predicted sifs', oco2_predicted_sifs)
-                        # print('oco2 true sifs', oco2_true_sifs)
-                        # Compute loss: predicted vs true SIF (standardized)
-                        oco2_predicted_sifs = torch.clamp(oco2_predicted_sifs, min=MIN_SIF_CLIP)
+                            # oco2_predicted_sifs = torch.mean(predicted_fine_sifs, dim=(1,2))
+                            oco2_predicted_sifs = sif_utils.masked_average(predicted_fine_sifs, non_cloudy_pixels, dims_to_average=(1, 2)) # (batch size)
+                            # print('oco2 predicted sifs', oco2_predicted_sifs)
+                            # print('oco2 true sifs', oco2_true_sifs)
+                            # Compute loss: predicted vs true SIF (standardized)
+                            oco2_predicted_sifs = torch.clamp(oco2_predicted_sifs, min=MIN_SIF_CLIP)
 
-                        # Compute loss: predicted vs true SIF
-                        oco2_loss = criterion(oco2_predicted_sifs, oco2_true_sifs)
-                        if phase == 'train':
-                            optimizer.zero_grad()
-                            oco2_loss.backward()
-                            optimizer.step()
+                            # Compute loss: predicted vs true SIF
+                            oco2_loss = criterion(oco2_predicted_sifs, oco2_true_sifs)
+                            if phase == 'train':
+                                optimizer.zero_grad()
+                                oco2_loss.backward()
+                                optimizer.step()
 
-                    with torch.set_grad_enabled(False):
-                        running_oco2_loss += oco2_loss.item() * len(oco2_true_sifs)
-                        num_oco2_datapoints += len(oco2_true_sifs)
-                        all_true_oco2_sifs.append(oco2_true_sifs.cpu().detach().numpy())
-                        all_predicted_oco2_sifs.append(oco2_predicted_sifs.cpu().detach().numpy())
+                        with torch.set_grad_enabled(False):
+                            running_oco2_loss += oco2_loss.item() * len(oco2_true_sifs)
+                            num_oco2_datapoints += len(oco2_true_sifs)
+                            all_true_oco2_sifs.append(oco2_true_sifs.cpu().detach().numpy())
+                            all_predicted_oco2_sifs.append(oco2_predicted_sifs.cpu().detach().numpy())
 
 
             if num_coarse_datapoints > 0:
