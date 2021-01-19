@@ -98,8 +98,8 @@ APPEND = False
 #                pd.date_range(start="2018-09-02", end="2018-09-15"),
 #                pd.date_range(start="2018-09-16", end="2018-09-29")]
 
-# DATE_RANGES = [pd.date_range(start="2016-06-15", end="2016-06-29"),
-#                pd.date_range(start="2016-08-01", end="2016-08-16")]
+DATE_RANGES = [pd.date_range(start="2016-06-15", end="2016-06-29"),
+               pd.date_range(start="2016-08-01", end="2016-08-16")]
 
 
 for DATE_RANGE in DATE_RANGES:

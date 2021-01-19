@@ -160,6 +160,85 @@ class UNet2(nn.Module):
         return logits
 
 
+class UNet2Larger(nn.Module):
+    def __init__(self, n_channels, n_classes, reduced_channels, min_output=None, max_output=None):
+        super(UNet2Larger, self).__init__()
+        self.n_channels = n_channels
+        self.n_classes = n_classes
+
+        self.inc = DoubleConv(n_channels, 128)
+        self.down1 = Down(128, 256)
+        self.down2 = Down(256, 256)
+        self.up1 = Up(512, 128, bilinear=True)
+        self.up2 = Up(256, 128, bilinear=True)
+        self.outc = OutConv(128, n_classes)
+
+        if min_output is not None and max_output is not None:
+            self.restrict_output = True
+            self.mean_output = (min_output + max_output) / 2
+            self.scale_factor = (max_output - min_output) / 2
+            self.tanh = nn.Tanh()
+        else:
+            self.restrict_output = False
+
+
+    def forward(self, x):
+        x1 = self.inc(x)
+        x2 = self.down1(x1)
+        x3 = self.down2(x2)
+        x = self.up1(x3, x2)
+        x = self.up2(x, x1)
+        logits = self.outc(x)
+
+        # Addition: restrict output 
+        if self.restrict_output:
+            logits = (self.tanh(logits) * self.scale_factor) + self.mean_output
+        return logits
+
+
+class UNet2CoarseFeatures(nn.Module):
+    def __init__(self, n_channels, n_classes, min_output=None, max_output=None, coarse_feature_indices=[9,10,11]):
+        super(UNet2, self).__init__()
+        n_channels = n_channels - len(coarse_feature_indices)
+        self.n_channels = n_channels
+        self.n_classes = n_classes
+        self.coarse_feature_indices = coarse_feature_indices
+
+        self.inc = DoubleConv(n_channels, 64)
+        self.down1 = Down(64, 128)
+        self.down2 = Down(128, 128)
+        self.up1 = Up(256, 64, bilinear=True)
+        self.up2 = Up(128, 64, bilinear=True)
+        self.outc = OutConv(64+len(coarse_feature_indices), n_classes)
+
+        if min_output is not None and max_output is not None:
+            self.restrict_output = True
+            self.mean_output = (min_output + max_output) / 2
+            self.scale_factor = (max_output - min_output) / 2
+            self.tanh = nn.Tanh()
+        else:
+            self.restrict_output = False
+
+
+    def forward(self, x):
+        coarse_features = x[self.coarse_feature_indices, :, :]
+        non_coarse_indices = [i for i in range(n_channels) if i not in coarse_features]
+        print('Noncoarse indices', non_coarse_indices)
+        x = x[non_coarse_indices, :, :]
+        x1 = self.inc(x)
+        x2 = self.down1(x1)
+        x3 = self.down2(x2)
+        x = self.up1(x3, x2)
+        x = self.up2(x, x1)
+        x = torch.concatenate([x, ])
+        logits = self.outc(x)
+
+        # Addition: restrict output 
+        if self.restrict_output:
+            logits = (self.tanh(logits) * self.scale_factor) + self.mean_output
+        return logits
+
+
 class UNet2PixelEmbedding(nn.Module):
     def __init__(self, n_channels, n_classes, reduced_channels, min_output=None, max_output=None):
         super(UNet2PixelEmbedding, self).__init__()

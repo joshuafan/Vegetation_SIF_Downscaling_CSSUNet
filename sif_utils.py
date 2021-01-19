@@ -20,6 +20,37 @@ from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_squared_error, r2_score
 
 
+# Encourages predictions to be similar within a single crop type, and
+# different across crop types.
+def crop_type_loss(predicted_fine_sifs, tiles, valid_masks, crop_type_indices=list(range(12, 42)),
+                   min_fraction=0.01):
+    loss = 0
+    for i in range(predicted_fine_sifs.shape[0]):
+        predicted = predicted_fine_sifs[i]
+        tile = tiles[i]
+        valid_mask = valid_masks[i]
+        crop_type_sif_means = [] #torch.empty((len(crop_type_indices)))
+        crop_type_sif_stds = [] #torch.empty((len(crop_type_indices)))
+        total_pixels = predicted_fine_sifs.shape[1] * predicted_fine_sifs.shape[2]
+        # print('Total pixels', total_pixels)
+        for i, idx in enumerate(crop_type_indices):
+            valid_crop_type_pixels = tile[idx].bool() & valid_mask
+            # print('Crop type', i, '# pixels', torch.count_nonzero(valid_crop_type_pixels))
+            if torch.count_nonzero(valid_crop_type_pixels) < min_fraction * total_pixels:
+                continue
+            predicted_sif_crop_type = predicted[valid_crop_type_pixels].flatten()
+            loss += torch.std(predicted_sif_crop_type)
+        #     print('Predicted sif crop type shape', predicted_sif_crop_type.shape)
+        #     crop_type_sif_means.append(torch.mean(predicted_sif_crop_type).item())
+        #     crop_type_sif_stds.append(torch.std(predicted_sif_crop_type))
+        # print('Crop type sif means', crop_type_sif_means)
+        # print('Crop type sif stds', crop_type_sif_stds)
+        # loss += (np.std(crop_type_sif_means) - np.mean(crop_type_sif_stds))
+    return loss
+
+
+
+
 def remove_pure_tiles(df, threshold=0.5):
     CROP_TYPES = ['grassland_pasture', 'corn', 'soybean', 'shrubland',
                     'deciduous_forest', 'evergreen_forest', 'spring_wheat', 'developed_open_space',
@@ -39,13 +70,20 @@ def remove_pure_tiles(df, threshold=0.5):
     return df
     
 # Returns the upper-left corner of the large (1x1 degree) grid area
-def get_large_grid_area_coordinates(lon, lat, grid_area_degrees):
-    return (round_down(lon, grid_area_degrees), round_down(lat, grid_area_degrees) + grid_area_degrees)
+def get_large_grid_area_coordinates(lon, lat, grid_area_degrees, decimal_places=1):
+    return (round(round_down(lon, grid_area_degrees), decimal_places),
+            round(round_down(lat, grid_area_degrees) + grid_area_degrees, decimal_places))
+
+
+# Returns the upper-left corner of the large (1x1 degree) grid area, but with latitude specified first
+def get_large_grid_area_coordinates_lat_first(lat, lon, grid_area_degrees, decimal_places=1):
+    return (round(round_down(lat, grid_area_degrees) + grid_area_degrees, decimal_places),
+            round(round_down(lon, grid_area_degrees), decimal_places))
 
 # Round down to the next-lower multiple of "divisor".
 # Code from https://stackoverflow.com/questions/13082698/rounding-down-integers-to-nearest-multiple
 def round_down(num, divisor):
-    return num - (num%divisor)
+    return math.floor(num / divisor) * divisor  # int(num - (num%divisor))
 
 def determine_split(large_grid_areas, row, grid_area_degrees):
     grid_area_coordinates = get_large_grid_area_coordinates(row['lon'], row['lat'], grid_area_degrees)
@@ -89,7 +127,15 @@ def compute_band_averages(input_tile, invalid_mask, missing_reflectance_idx=-1):
     input_pixels = np.moveaxis(input_tile, 0, -1)
     input_pixels = input_pixels.reshape((-1, input_pixels.shape[2]))
     invalid_pixels = invalid_mask.flatten()
-    pixels_with_data = input_pixels[invalid_pixels == 0, :]
+
+    if invalid_pixels.shape[0] > 1:
+        valid_mask = (invalid_pixels == 0)
+        pixels_with_data = input_pixels[valid_mask, :]
+    else:
+        # If there is only 1 pixel, something goes wrong with the Boolean indexing,
+        # so we treat this case separately.
+        pixels_with_data = input_pixels
+
     average_input_features = np.mean(pixels_with_data, axis=0)
 
     # Only change the "missing reflectance" feature to be the average across all pixels
@@ -193,7 +239,7 @@ def downsample_sif(sif_array, valid_sif_mask, soundings_array, resolution_pixels
     # print('Coarse sifs', coarse_sifs.shape)
     # print('Fraction valid', fraction_valid.shape)
 
-    # Instead of dividing by the total number of fine pixels, divide by the number of VALID fine pixels.
+    # Instead of dividing by the total number of fine pixels, we want to divide by the number of VALID fine pixels.
     # Each square is now: (sum SIF over valid fine pixels) / (# valid fine pixels), which is what we want.
     coarse_sifs = coarse_sifs / fraction_valid
 

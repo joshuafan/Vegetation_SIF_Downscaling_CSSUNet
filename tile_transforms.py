@@ -5,23 +5,6 @@ import torch.nn.functional as F
 from skimage.transform import resize
 
 
-# Encourages predictions to be similar within a single crop type, and
-# different across crop types.
-def crop_type_loss(predicted, tile, valid_mask, crop_type_indices=list(range(12, 42))):
-    crop_type_sif_means = torch.empty((len(crop_type_indices)))
-    crop_type_sif_stds = torch.empty((len(crop_type_indices)))
-    for i, idx in enumerate(crop_type_indices):
-        valid_crop_type_pixels = tile[idx] & valid_mask
-        print('Valid crop type pixels', valid_crop_type_pixels)
-        print('Count', torch.count_nonzero(valid_crop_type_pixels))
-        predicted_sif_crop_type = predicted[valid_crop_type_pixels].flatten()
-        print('Predicted sif crop type shape', predicted_sif_crop_type.shape)
-        crop_type_sif_means[i] = torch.mean(predicted_sif_crop_type)
-        crop_type_sif_stds[i] = torch.std(predicted_sif_crop_type)
-    print('Crop type sif means', crop_type_sif_means)
-    print('Crop type sif stds', crop_type_sif_stds)
-    return torch.std(crop_type_sif_means) - torch.mean(crop_type_sif_stds)
-
 
 
 class StandardizeTile(object):
@@ -229,6 +212,31 @@ class ResizeTileRandom(object):
         return resized_tile
 
 
+class RandomCrop(object):
+    def __init__(self, crop_dim):
+        self.crop_dim = crop_dim
+    
+    def __call__(self, tile):
+        top_index = np.random.randint(0, tile.shape[1] - self.crop_dim)
+        left_index = np.random.randint(0, tile.shape[2] - self.crop_dim)
+        return tile[:, top_index:top_index+self.crop_dim, left_index:left_index+self.crop_dim]
+
+class Cutout(object):
+    def __init__(self, cutout_dim, prob, reflectance_indices=list(range(0, 9)), missing_reflectance_idx=42):
+        self.cutout_dim = cutout_dim
+        self.prob = prob
+        self.reflectance_indices = reflectance_indices
+        self.missing_reflectance_idx = missing_reflectance_idx
+    
+    def __call__(self, tile):
+        if random.random() < self.prob:
+            # print('Cutout')
+            top_index = np.random.randint(0, tile.shape[1] - self.cutout_dim)
+            left_index = np.random.randint(0, tile.shape[2] - self.cutout_dim)
+            tile[self.reflectance_indices, top_index:top_index+self.cutout_dim, left_index:left_index+self.cutout_dim] = 0
+            tile[self.missing_reflectance_idx, top_index:top_index+self.cutout_dim, left_index:left_index+self.cutout_dim] = 1
+        return tile
+  
 class ToFloatTensor(object):
     def __call__(self, tile):
         return torch.from_numpy(tile).float()

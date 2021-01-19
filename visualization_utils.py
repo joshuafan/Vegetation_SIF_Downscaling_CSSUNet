@@ -54,7 +54,7 @@ def plot_figures(output_file, figures, nrows = 1, ncols=1, cmap=None):
     plt.savefig(output_file)
     plt.close()
 
-def plot_rgb_images(image_rows, image_filename_column, output_file, RGB_BANDS=[4, 3, 2]):
+def plot_rgb_images(image_rows, image_filename_column, output_file, RGB_BANDS=[3, 2, 1]):
     images = {}
     for idx, image_row in image_rows.iterrows():
         subtile = np.load(image_row[image_filename_column]).transpose((1, 2, 0))
@@ -111,7 +111,7 @@ def plot_cdl_layers_multiple(image_rows, image_filename_column, output_file, cdl
         axeslist.ravel()[ind].set_axis_off()
 
     ticks_loc = np.arange(0, len(CDL_COLORS), 1) #len(COVERS_TO_MASK) / len(CDL_COLORS))
-    cb = plt.colorbar(img, cmap=cmap)
+    cb = plt.colorbar(img, ax=axeslist[:, 4], cmap=cmap)
     cb.set_ticks(ticks_loc)
     cb.set_ticklabels(COVER_NAMES)
     cb.ax.tick_params(labelsize='small')
@@ -141,7 +141,7 @@ def plot_cdl_layers(tile, title, center_lon, center_lat, tile_size_degrees, plot
     fig, ax = plt.subplots(ncols=1, nrows=1, figsize=(10, 10))
     img = ax.imshow(cover_tile, interpolation='nearest',
                      cmap=crop_cmap, vmin=-0.5, vmax=len(CDL_COLORS)-0.5)
-    add_grid_lines(ax, center_lon, center_lat, tile.shape, tile_size_degrees, num_grid_squares, decimal_places)
+    add_grid_lines(ax, center_lon, center_lat, tile.shape[2], tile.shape[1], tile_size_degrees, num_grid_squares, decimal_places)
 
     # ax.set_xticks(np.linspace(-0.5, tile.shape[2]-0.5, num_ticks))
     # ax.set_yticks(np.linspace(-0.5, tile.shape[1]-0.5, num_ticks))
@@ -158,31 +158,41 @@ def plot_cdl_layers(tile, title, center_lon, center_lat, tile_size_degrees, plot
     plt.close()
 
 
+# Plots a single 2-D array ("array") to the given axes ("ax"), with grid lines
+def plot_2d_array(fig, ax, array, title, center_lon, center_lat, tile_size_degrees,
+                  num_grid_squares=4, decimal_places=3, min_feature=None, max_feature=None,
+                  colorbar=True, cmap='Greens'):
+
+    pcm = ax.imshow(array, cmap=cmap, vmin=min_feature, vmax=max_feature)
+    add_grid_lines(ax, center_lon, center_lat, array.shape[1], array.shape[0], tile_size_degrees, num_grid_squares, decimal_places)
+    fig.colorbar(pcm, ax=ax)
+    ax.set_title(title)
+
+
+
 # For a single tile, plot each band in its own plot
 def plot_individual_bands(tile, title, center_lon, center_lat, tile_size_degrees, plot_file,
                           num_grid_squares=4, decimal_places=3, min_feature=-3, max_feature=3):
-    eps = tile_size_degrees / 2
-    num_ticks = num_grid_squares + 1
+
     fig, axeslist = plt.subplots(ncols=6, nrows=8, figsize=(36, 48))
     fig.suptitle('All bands: ' + title)
 
     for band in range(0, 43):
         layer = tile[band, :, :]
         ax = axeslist.ravel()[band]
+        title = 'Band' + str(band)
         if band >= 12:
             # Binary masks (crop type or missing reflectance) range from 0 to 1
-            ax.imshow(layer, cmap='Greens', vmin=0, vmax=1)
+            min_feature = 0
+            max_feature = 1
         else:
             # Other channels range from -3 to 3
-            ax.imshow(layer, cmap='Greens', vmin=min_feature, vmax=max_feature)
-
-        # ax.set_xticks(np.linspace(-0.5, tile.shape[2]-0.5, num_ticks))
-        # ax.set_yticks(np.linspace(-0.5, tile.shape[1]-0.5, num_ticks))
-        # ax.set_xticklabels(np.round(np.linspace(center_lon-eps, center_lon+eps, num_ticks), decimal_places))
-        # ax.set_yticklabels(np.round(np.linspace(center_lat+eps, center_lat-eps, num_ticks), decimal_places))
-        # ax.grid(color='gray', linestyle='-', linewidth=2)
-        add_grid_lines(ax, center_lon, center_lat, tile.shape, tile_size_degrees, num_grid_squares, decimal_places)
-        ax.set_title('Band ' + str(band))
+            min_feature = -3
+            max_feature = 3
+        
+        # Plot band (channel)
+        plot_2d_array(fig, ax, layer, title, center_lon, center_lat, tile_size_degrees,
+                      num_grid_squares, decimal_places, min_feature, max_feature)
 
     plt.tight_layout() # optional
     fig.subplots_adjust(top=0.94)
@@ -197,15 +207,15 @@ def plot_rgb_bands(tile, title, center_lon, center_lat, tile_size_degrees, ax,
     array = tile.transpose((1, 2, 0))
     rgb_tile = (array[:, :, rgb_bands] + 2) / 4
     ax.imshow(rgb_tile)
-    add_grid_lines(ax, center_lon, center_lat, tile.shape, tile_size_degrees, num_grid_squares, decimal_places)
+    add_grid_lines(ax, center_lon, center_lat, tile.shape[2], tile.shape[1], tile_size_degrees, num_grid_squares, decimal_places)
     ax.set_title('RGB bands: ' + title)
 
 
-def add_grid_lines(ax, center_lon, center_lat, tile_shape, tile_size_degrees, num_grid_squares, decimal_places):
+def add_grid_lines(ax, center_lon, center_lat, tile_width, tile_height, tile_size_degrees, num_grid_squares, decimal_places):
     eps = tile_size_degrees / 2
     num_ticks = num_grid_squares + 1
-    ax.set_xticks(np.linspace(-0.5, tile_shape[2]-0.5, num_ticks))
-    ax.set_yticks(np.linspace(-0.5, tile_shape[1]-0.5, num_ticks))
+    ax.set_xticks(np.linspace(-0.5, tile_width-0.5, num_ticks))
+    ax.set_yticks(np.linspace(-0.5, tile_height-0.5, num_ticks))
     ax.set_xticklabels(np.round(np.linspace(center_lon-eps, center_lon+eps, num_ticks), decimal_places))
     ax.set_yticklabels(np.round(np.linspace(center_lat+eps, center_lat-eps, num_ticks), decimal_places))
     ax.grid(color='blue', linestyle='-', linewidth=2)
@@ -272,7 +282,7 @@ def plot_tile_prediction_only(tile, predicted_sif_tile, valid_mask, center_lon, 
     sif_cmap.set_bad(color='black')
     predicted_sif_tile[valid_mask == 0] = np.nan
     pcm = axeslist[1].imshow(predicted_sif_tile, cmap=sif_cmap, vmin=0, vmax=1.5)
-    add_grid_lines(axeslist[1], center_lon, center_lat, tile.shape, tile_size_degrees, num_grid_squares, decimal_places)
+    add_grid_lines(axeslist[1], center_lon, center_lat, tile.shape[2], tile.shape[1], tile_size_degrees, num_grid_squares, decimal_places)
     fig.colorbar(pcm, ax=axeslist, cmap=sif_cmap)
     plt.title('Pixel SIF predictions: ' + title)
     plt.savefig(os.path.join(plot_dir, tile_description + "_predictions.png"))
@@ -289,14 +299,13 @@ def plot_tile_prediction_only(tile, predicted_sif_tile, valid_mask, center_lon, 
 
 # Plot tile information along with true/predicted pixel SIFs.
 # "predicted_sif_tiles" and "prediction_methods" should be lists (they can be empty if we have no predictions)
-def plot_tile_predictions(tile, true_sif_tile, predicted_sif_tiles, valid_mask, prediction_methods,
+def plot_tile_predictions(tile, tile_description, true_sif_tile, predicted_sif_tiles, valid_mask, prediction_methods,
                           center_lon, center_lat, date, tile_size_degrees,
-                          res, num_grid_squares=4, decimal_places=3, rgb_bands=[3, 2, 1],
+                          res, soundings_tile=None, num_grid_squares=4, decimal_places=3, rgb_bands=[3, 2, 1],
                           cdl_bands=range(12, 42),
                           plot_dir="/mnt/beegfs/bulk/mirror/jyf6/datasets/exploratory_plots"):    
     eps = tile_size_degrees / 2
     num_ticks = num_grid_squares + 1
-    tile_description = 'lat_' + str(round(center_lat, 4)) + '_lon_' + str(round(center_lon, 4)) + '_' + date + '_' + str(res) + 'm_2018model'
     title = 'Lon ' + str(round(center_lon, 4)) + ', Lat ' + str(round(center_lat, 4)) + ', ' + date
 
     # Plot individual bands
@@ -311,6 +320,10 @@ def plot_tile_predictions(tile, true_sif_tile, predicted_sif_tiles, valid_mask, 
 
     # Set up subplots
     num_cols = 1 + len(predicted_sif_tiles)
+    right_idx = 1 + len(predicted_sif_tiles)  # Index of soundings tile if it exists, otherwise right edge (exclusive) of SIF plots
+    if soundings_tile is not None:
+        num_cols += 1
+    
     fig, axeslist = plt.subplots(ncols=num_cols, nrows=2, figsize=(8*num_cols, 14))
 
     # Plot the RGB bands
@@ -327,17 +340,11 @@ def plot_tile_predictions(tile, true_sif_tile, predicted_sif_tiles, valid_mask, 
         ax = axeslist[0, idx+1]
         sif_difference[valid_mask == 0] = np.nan
         pcm = ax.imshow(sif_difference, cmap=sif_cmap, vmin=-0.5, vmax=0.5)
-        add_grid_lines(ax, center_lon, center_lat, tile.shape, tile_size_degrees, num_grid_squares, decimal_places)
-
-        # ax.set_xticks(np.linspace(-0.5, sif_difference.shape[1]-0.5, num_ticks))
-        # ax.set_yticks(np.linspace(-0.5, sif_difference.shape[0]-0.5, num_ticks))
-        # ax.set_xticklabels(np.round(np.linspace(center_lon-eps, center_lon+eps, num_ticks), decimal_places))
-        # ax.set_yticklabels(np.round(np.linspace(center_lat+eps, center_lat-eps, num_ticks), decimal_places))
-        # ax.grid(color='blue', linestyle='-', linewidth=2)
+        add_grid_lines(ax, center_lon, center_lat, tile.shape[2], tile.shape[1], tile_size_degrees, num_grid_squares, decimal_places)
         ax.set_title(prediction_methods[idx] + ': difference from ground-truth')
 
     # Plot SIF difference colorbar
-    fig.colorbar(pcm, ax=axeslist[0, :], cmap=sif_cmap)
+    fig.colorbar(pcm, ax=axeslist[0, :right_idx], cmap=sif_cmap)
 
     # Plot ground-truth SIF
     sif_mean = sif_utils.masked_average_numpy(true_sif_tile, valid_mask, dims_to_average=(0, 1))
@@ -345,12 +352,7 @@ def plot_tile_predictions(tile, true_sif_tile, predicted_sif_tiles, valid_mask, 
     true_sif_tile[valid_mask == 0] = np.nan
 
     pcm = ax.imshow(true_sif_tile, cmap=sif_cmap, vmin=0.2, vmax=1.5)
-    add_grid_lines(ax, center_lon, center_lat, tile.shape, tile_size_degrees, num_grid_squares, decimal_places)
-    # ax.set_xticks(np.linspace(-0.5, true_sif_tile.shape[1]-0.5, num_ticks))
-    # ax.set_yticks(np.linspace(-0.5, true_sif_tile.shape[0]-0.5, num_ticks))
-    # ax.set_xticklabels(np.round(np.linspace(center_lon-eps, center_lon+eps, num_ticks), decimal_places))
-    # ax.set_yticklabels(np.round(np.linspace(center_lat+eps, center_lat-eps, num_ticks), decimal_places))
-    # ax.grid(color='blue', linestyle='-', linewidth=2)
+    add_grid_lines(ax, center_lon, center_lat, tile.shape[2], tile.shape[1], tile_size_degrees, num_grid_squares, decimal_places)
     ax.set_title('Ground truth (average SIF: ' + str(round(sif_mean, 4)) + ')')
 
     # Plot predicted SIFs
@@ -360,17 +362,20 @@ def plot_tile_predictions(tile, true_sif_tile, predicted_sif_tiles, valid_mask, 
         sif_tile[valid_mask == 0] = np.nan
 
         pcm = ax.imshow(sif_tile, cmap=sif_cmap, vmin=0.2, vmax=1.5)
-        add_grid_lines(ax, center_lon, center_lat, tile.shape, tile_size_degrees, num_grid_squares, decimal_places)
-
-        # ax.set_xticks(np.linspace(-0.5, sif_tile.shape[1]-0.5, num_ticks))
-        # ax.set_yticks(np.linspace(-0.5, sif_tile.shape[0]-0.5, num_ticks))
-        # ax.set_xticklabels(np.round(np.linspace(center_lon-eps, center_lon+eps, num_ticks), decimal_places))
-        # ax.set_yticklabels(np.round(np.linspace(center_lat+eps, center_lat-eps, num_ticks), decimal_places))
-        # ax.grid(color='blue', linestyle='-', linewidth=2)
+        add_grid_lines(ax, center_lon, center_lat, tile.shape[2], tile.shape[1], tile_size_degrees, num_grid_squares, decimal_places)
         ax.set_title(prediction_methods[idx] + ' (average SIF: ' + str(round(sif_mean, 4)) + ')')
 
     # Plot SIF colorbar
-    fig.colorbar(pcm, ax=axeslist[1, :], cmap=sif_cmap)
+    fig.colorbar(pcm, ax=axeslist[1, :right_idx], cmap=sif_cmap)
+
+    # Plot soundings, if soundings tile was given
+    if soundings_tile is not None:
+        plot_2d_array(fig, axeslist[0, right_idx], soundings_tile, 'Num soundings', center_lon, center_lat, tile_size_degrees,
+                      min_feature=None, max_feature=None, colorbar=True, cmap='Greys')
+
+    plt.savefig(os.path.join(plot_dir, tile_description + "_predictions.png"))
+    plt.close()
+    print('plotted', os.path.join(plot_dir, tile_description + "_predictions.png"))
 
     # # Plot coarse SIF
     # ax = axeslist[1, 0]
@@ -417,8 +422,6 @@ def plot_tile_predictions(tile, true_sif_tile, predicted_sif_tiles, valid_mask, 
     #     ax.grid(color='black', linestyle='-', linewidth=2)
     #     ax.set_title('Predicted Fine SIF (' + prediction_methods[idx] + '): ' + title)
     # plt.tight_layout()
-    plt.savefig(os.path.join(plot_dir, tile_description + "_predictions.png"))
-    plt.close()
 
 
 # # Test code
