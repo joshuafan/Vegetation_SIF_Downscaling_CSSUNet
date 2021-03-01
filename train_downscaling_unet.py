@@ -22,12 +22,16 @@ import tile_transforms
 import tqdm
 
 # Set random seed
-RANDOM_STATE = 0
+RANDOM_STATE = 1
 np.random.seed(RANDOM_STATE)
 random.seed(RANDOM_STATE)
 torch.manual_seed(RANDOM_STATE)
 
 # Folds
+# TRAIN_FOLDS = [2, 3, 4]
+# VAL_FOLDS = [0]
+# TEST_FOLDS = [1]
+
 TRAIN_FOLDS = [0, 1, 2]
 VAL_FOLDS = [3]
 TEST_FOLDS = [4]
@@ -53,10 +57,10 @@ DATASET_FILES = {'CFIS_2016': os.path.join(CFIS_2016_DIR, 'cfis_coarse_metadata.
                  'OCO2_2018': os.path.join(DATASET_2018_DIR, 'oco2_metadata.csv'),
                  'TROPOMI_2018': os.path.join(DATASET_2018_DIR, 'tropomi_metadata.csv')}
 COARSE_SIF_DATASETS = {'train': ['CFIS_2016', 'OCO2_2016'], #, 'TROPOMI_2018'], #, 'TROPOMI_2018'], # 'OCO2_2016', 'OCO2_2018', 'TROPOMI_2018'],
-                       'val': ['CFIS_2016']}
+                       'val': ['CFIS_2016']} # ['CFIS_2016']}
 FINE_SIF_DATASETS = {'train': ['CFIS_2016'],
                      'val': ['CFIS_2016']}
-MODEL_SELECTION_DATASET = 'CFIS_2016'
+MODEL_SELECTION_DATASET = 'CFIS_2016' # 'OCO2_2016' #' 'CFIS_2016'
 UPDATE_FRACTIONS = {'CFIS_2016': 1,
                     'OCO2_2016': 1,
                     'OCO2_2018': 0,
@@ -86,13 +90,19 @@ TILE_SIZE_DEGREES = RES[0] * TILE_PIXELS
 # MODEL_TYPE = "unet2_pixel_embedding"
 # METHOD = "9d_pixel_nn"
 # MODEL_TYPE = "pixel_nn"
-# METHOD = "10d_unet2"
+# METHOD = "9d_unet2_3"
 # MODEL_TYPE = "unet2"
-METHOD = "10d_unet2_larger_dropout"
-MODEL_TYPE = "unet2_larger"
+# METHOD = "10d_unet2_larger"
+# MODEL_TYPE = "unet2_larger"
+METHOD = "10d_unet2_8"
+MODEL_TYPE = "unet2"
+# METHOD = "10d_pixel_nn"
+# MODEL_TYPE = "pixel_nn"
+# METHOD = "10d_unet2_larger"
+# MODEL_TYPE = "unet2_larger"
 # METHOD = "10e_unet2_contrastive"
 # MODEL_TYPE = "unet2_pixel_embedding"
-# METHOD = "11d_unet2"
+# METHOD = "9d_unet2"
 # MODEL_TYPE = "unet2"
 # METHOD = "11d_unet2_pixel_embedding"
 # MODEL_TYPE = "unet2_pixel_embedding"
@@ -117,8 +127,8 @@ LOSS_PLOT = os.path.join(DATA_DIR, 'loss_plots/losses_' + METHOD)
 OPTIMIZER_TYPE = "Adam"
 LEARNING_RATE = 1e-4
 WEIGHT_DECAY = 1e-3
-NUM_EPOCHS = 100
-BATCH_SIZE = 50
+NUM_EPOCHS = 200
+BATCH_SIZE = 100
 NUM_WORKERS = 8
 FROM_PRETRAINED = False
 CROP_TYPE_LOSS = False
@@ -127,28 +137,28 @@ FREEZE_PIXEL_ENCODER = False
 MIN_SIF = None
 MAX_SIF = None
 MIN_SIF_CLIP = 0.1
-MIN_INPUT = -3
-MAX_INPUT = 3
-REDUCED_CHANNELS = 10
+MIN_INPUT = -5
+MAX_INPUT = 5
+REDUCED_CHANNELS = None
 
 
 # Which bands
-BANDS = list(range(0, 43))
+# BANDS = list(range(0, 43))
 # BANDS = list(range(0, 9)) + list(range(12, 42))
-# BANDS = list(range(0, 12)) + [12, 13, 14, 16] + [42]
+BANDS = list(range(0, 12)) + [12, 13, 14, 16, 17, 19, 23, 24, 25, 28, 34] + [42]
 # BANDS = list(range(0, 12)) + list(range(12, 27)) + [28] + [42]
 INPUT_CHANNELS = len(BANDS)
 CROP_TYPE_INDICES = list(range(12, 42))
 MISSING_REFLECTANCE_IDX = len(BANDS) - 1
 
 # Augmentations
-AUGMENTATIONS = ['cutout', 'flip_and_rotate', 'gaussian_noise', 'jigsaw']
+AUGMENTATIONS = ['flip_and_rotate', 'jigsaw'] # ['cutout', 'flip_and_rotate', 'gaussian_noise', 'jigsaw']
 RESIZE_DIM = 100
 CROP_DIM = 80
-NOISE = 0.1
-FRACTION_OUTPUTS_TO_AVERAGE = 0.5
-CUTOUT_DIM = 25
-CUTOUT_PROB = 1
+NOISE = 0 # 0.1
+FRACTION_OUTPUTS_TO_AVERAGE = 1 #0.2
+CUTOUT_DIM = 10
+CUTOUT_PROB = 0 # 0.5
 
 # OCO-2 filtering
 MIN_OCO2_SOUNDINGS = 3
@@ -156,8 +166,8 @@ MAX_OCO2_CLOUD_COVER = 0.5
 OCO2_SCALING_FACTOR = 0.97
 
 # CFIS filtering
-MIN_FINE_CFIS_SOUNDINGS = 10
-MIN_COARSE_FRACTION_VALID_PIXELS = 0.2
+MIN_FINE_CFIS_SOUNDINGS = 30
+MIN_COARSE_FRACTION_VALID_PIXELS = 0.1
 MAX_CFIS_CLOUD_COVER = 0.5
 
 # Dates
@@ -296,17 +306,22 @@ def train_contrastive(model, dataloader, criterion, optimizer, device, pixel_pai
 def train_model(model, dataloaders, criterion, optimizer, device, sif_mean, sif_std, num_epochs=100):
     since = time.time()
     best_model_wts = copy.deepcopy(model.state_dict())
-    best_train_coarse_loss = {k: float('inf') for k in COARSE_SIF_DATASETS['train']}
-    best_val_coarse_loss = {k: float('inf') for k in COARSE_SIF_DATASETS['val']}
-    best_train_fine_loss = {k: float('inf') for k in FINE_SIF_DATASETS['train']}
-    best_val_fine_loss = {k: float('inf') for k in FINE_SIF_DATASETS['val']}
+
+    # Record losses at each epoch
     train_coarse_losses = {k: [] for k in COARSE_SIF_DATASETS['train']}
     val_coarse_losses = {k: [] for k in COARSE_SIF_DATASETS['val']}
     train_fine_losses = {k: [] for k in FINE_SIF_DATASETS['train']}
     val_fine_losses = {k: [] for k in FINE_SIF_DATASETS['val']}
 
-    print('SIF mean', sif_mean)
-    print('SIF std', sif_std)
+    # Record the losses *at the epoch with lowest coarse validation loss*
+    best_train_coarse_loss = {k: float('inf') for k in COARSE_SIF_DATASETS['train']}
+    best_val_coarse_loss = {k: float('inf') for k in COARSE_SIF_DATASETS['val']}
+    best_train_fine_loss = {k: float('inf') for k in FINE_SIF_DATASETS['train']}
+    best_val_fine_loss = {k: float('inf') for k in FINE_SIF_DATASETS['val']}    
+
+    # Record the best-seen loss on the fine validation set (this is an alternate way to choose
+    # the best model, if we are allowed to peek at the fine-resolution dataset for validation)
+    absolute_best_val_fine_loss = float('inf')
 
     for epoch in range(num_epochs):
         print('Epoch {}/{}'.format(epoch, num_epochs - 1))
@@ -348,7 +363,7 @@ def train_model(model, dataloaders, criterion, optimizer, device, sif_mean, sif_
                         valid_fine_sif_mask = torch.logical_not(input_tiles_std[:, MISSING_REFLECTANCE_IDX, :, :])
                     valid_mask_numpy = valid_fine_sif_mask.cpu().detach().numpy() 
 
-                    with torch.set_grad_enabled(phase == 'train'):
+                    with torch.set_grad_enabled(phase == 'train' and dataset_name in COARSE_SIF_DATASETS[phase]):
                         # Pass tile through model to obtain fine-resolution SIF predictions
                         predicted_fine_sifs_std = model(input_tiles_std)  # predicted_fine_sifs_std: (batch size, 1, H, W)
                         if type(predicted_fine_sifs_std) == tuple:
@@ -385,7 +400,7 @@ def train_model(model, dataloaders, criterion, optimizer, device, sif_mean, sif_
                             coarse_loss += 0.0001 * sif_utils.crop_type_loss(predicted_fine_sifs, input_tiles_std, valid_fine_sif_mask)
 
                         # Backpropagate coarse loss
-                        if phase == 'train' and random.random() < UPDATE_FRACTIONS[dataset_name]: # and not np.isnan(fine_loss.item()):
+                        if phase == 'train' and random.random() < UPDATE_FRACTIONS[dataset_name] and dataset_name in COARSE_SIF_DATASETS[phase]: # and not np.isnan(fine_loss.item()):
                             optimizer.zero_grad()
                             coarse_loss.backward()
                             # print('Grad', model.down1.maxpool_conv[1].double_conv[0].weight.grad)
@@ -394,13 +409,14 @@ def train_model(model, dataloaders, criterion, optimizer, device, sif_mean, sif_
 
                         # Compute/record losses
                         with torch.set_grad_enabled(False):
-                            running_coarse_loss[dataset_name] += coarse_loss.item() * len(true_coarse_sifs)
-                            num_coarse_datapoints[dataset_name] += len(true_coarse_sifs)
-                            all_true_coarse_sifs[dataset_name].append(true_coarse_sifs.cpu().detach().numpy())
-                            all_predicted_coarse_sifs[dataset_name].append(predicted_coarse_sifs.cpu().detach().numpy())
+                            if dataset_name in COARSE_SIF_DATASETS[phase]:
+                                running_coarse_loss[dataset_name] += coarse_loss.item() * len(true_coarse_sifs)
+                                num_coarse_datapoints[dataset_name] += len(true_coarse_sifs)
+                                all_true_coarse_sifs[dataset_name].append(true_coarse_sifs.cpu().detach().numpy())
+                                all_predicted_coarse_sifs[dataset_name].append(predicted_coarse_sifs.cpu().detach().numpy())
 
                             # Read fine-resolution SIF labels, if they exist
-                            if 'fine_sif' in sample:
+                            if 'fine_sif' in sample and dataset_name in FINE_SIF_DATASETS[phase]:
                                 true_fine_sifs = sample['fine_sif'].to(device)
                                 fine_soundings = sample['fine_soundings'].to(device)
 
@@ -495,8 +511,10 @@ def train_model(model, dataloaders, criterion, optimizer, device, sif_mean, sif_
                 print('===== ', phase, coarse_dataset, 'Coarse stats ====')
                 sif_utils.print_stats(true_coarse, predicted_coarse, sif_mean)
 
+            epoch_fine_losses = dict()
             for fine_dataset in FINE_SIF_DATASETS[phase]:
                 epoch_fine_nrmse = math.sqrt(running_fine_loss[fine_dataset] / num_fine_datapoints[fine_dataset]) / sif_mean
+                epoch_fine_losses[fine_dataset] = epoch_fine_nrmse
                 if phase == 'train':
                     train_fine_losses[fine_dataset].append(epoch_fine_nrmse)
                 else:
@@ -522,6 +540,10 @@ def train_model(model, dataloaders, criterion, optimizer, device, sif_mean, sif_
                 best_model_wts = copy.deepcopy(model.state_dict())
                 torch.save(model.state_dict(), MODEL_FILE)
                 # torch.save(model.state_dict(), UNET_MODEL_FILE + "_epoch" + str(epoch))
+
+            if phase == 'val' and 'CFIS_2016' in epoch_fine_losses and epoch_fine_losses['CFIS_2016'] < absolute_best_val_fine_loss:
+                absolute_best_val_fine_loss = epoch_fine_losses['CFIS_2016']
+                torch.save(model.state_dict(), MODEL_FILE + '_best_val_fine')
 
             # if phase == 'train' and epoch_coarse_nrmse < best_train_coarse_loss:
             #     best_train_coarse_loss = epoch_coarse_nrmse
@@ -561,8 +583,8 @@ print("Device", device)
 train_statistics = pd.read_csv(BAND_STATISTICS_FILE)
 train_means = train_statistics['mean'].values
 train_stds = train_statistics['std'].values
-print("Means", train_means)
-print("Stds", train_stds)
+# print("Means", train_means)
+# print("Stds", train_stds)
 band_means = train_means[:-1]
 sif_mean = train_means[-1]
 band_stds = train_stds[:-1]
@@ -628,15 +650,15 @@ for dataset_name, dataset_file in DATASET_FILES.items():
 
     if '2018' in dataset_name:
         metadata['SIF'] /= 1.52
-        print(metadata['SIF'].head())
+        # print(metadata['SIF'].head())
 
     # Read dataset splits
     if dataset_name == 'OCO2_2016' or dataset_name == 'CFIS_2016':
-        train_set = metadata[(metadata['grid_fold'].isin(TRAIN_FOLDS)) &
+        train_set = metadata[(metadata['fold'].isin(TRAIN_FOLDS)) &
                             (metadata['date'].isin(TRAIN_DATES))].copy()
-        val_set = metadata[(metadata['grid_fold'].isin(VAL_FOLDS)) &
+        val_set = metadata[(metadata['fold'].isin(VAL_FOLDS)) &
                         (metadata['date'].isin(TRAIN_DATES))].copy()
-        test_set = metadata[(metadata['grid_fold'].isin(TEST_FOLDS)) &
+        test_set = metadata[(metadata['fold'].isin(TEST_FOLDS)) &
                             (metadata['date'].isin(TEST_DATES))].copy()
     else:
         train_set = metadata[(metadata['fold'].isin(TRAIN_FOLDS)) &
@@ -732,6 +754,7 @@ if 'cutout' in AUGMENTATIONS:
     PARAM_STRING += ("Cutout: size " + str(CUTOUT_DIM) + ", prob " + str(CUTOUT_PROB) + '\n')
 PARAM_STRING += ("Fraction outputs to average: " + str(FRACTION_OUTPUTS_TO_AVERAGE) + '\n')
 PARAM_STRING += ("SIF range: " + str(MIN_SIF) + " to " + str(MAX_SIF) + '\n')
+PARAM_STRING += ("SIF statistics: mean " + str(sif_mean) + ", std " + str(sif_std) + '\n')
 if PRETRAIN_CONTRASTIVE:
     PARAM_STRING += ('============ CONTRASTIVE PARAMS ===========\n')
     PARAM_STRING += ("Learning rate: " + str(CONTRASTIVE_LEARNING_RATE) + '\n')

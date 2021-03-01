@@ -20,14 +20,14 @@ from sklearn.linear_model import Ridge
 from sklearn.neural_network import MLPRegressor
 
 # Set random seed
-torch.manual_seed(0)
-np.random.seed(0)
+torch.manual_seed(1)
+np.random.seed(1)
 
 # Folds
 TRAIN_FOLDS = [0, 1, 2]
 VAL_FOLDS = [3]
-TEST_FOLDS = [0, 1, 2]
-TEST_SET = 'train'
+TEST_FOLDS = [0, 1, 2] #[3] # [0, 1, 2]
+TEST_SET = 'train'  #'val' # 'train' # 'val' # 'train'
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
 CFIS_DIR = os.path.join(DATA_DIR, "CFIS")
@@ -48,10 +48,16 @@ SCALE_PREDICTIONS_BY = 1 #0.64
 # METHOD = "9e_unet2_contrastive"
 # METHOD = "9d_unet2_pixel_embedding"
 # MODEL_TYPE = "unet2_pixel_embedding"
-METHOD = "10d_unet2_larger"
-MODEL_TYPE = "unet2_larger"
 # METHOD = "10d_unet2"
 # MODEL_TYPE = "unet2"
+# METHOD = "10d_unet2_larger_dropout"
+# MODEL_TYPE = "unet2_larger"
+# METHOD = "11d_unet2"
+# MODEL_TYPE = "unet2"
+METHOD = "10d_unet2_7"
+MODEL_TYPE = "unet2"
+# METHOD = "10d_pixel_nn"
+# MODEL_TYPE = "pixel_nn"
 # METHOD = "2e_unet2"
 # MODEL_TYPE = "unet2"
 # METHOD = "9d_unet2_contrastive"
@@ -59,11 +65,11 @@ MODEL_TYPE = "unet2_larger"
 # METHOD = "11d_unet2"
 # MODEL_TYPE = "unet2"
 COMPUTE_RESULTS = True
-PLOT = True
+PLOT = False
 
 # CFIS filtering
-MIN_EVAL_CFIS_SOUNDINGS = 10
-MIN_EVAL_CFIS_SOUNDINGS_EXPERIMENT = [10] #[100, 300, 1000, 3000]
+MIN_EVAL_CFIS_SOUNDINGS = 30 # 10
+MIN_EVAL_CFIS_SOUNDINGS_EXPERIMENT = [30] # [10, 20, 25, 30, 40, 50] #[1, 5, 10, 20, 30] #[100, 300, 1000, 3000]
 MIN_EVAL_FRACTION_VALID = 0.75
 MIN_EVAL_FRACTION_VALID_EXPERIMENT = [0.75] # [0.1, 0.3, 0.5, 0.7]
 MIN_SIF_CLIP = 0.1
@@ -84,15 +90,16 @@ MIN_INPUT = -3
 MAX_INPUT = 3
 MIN_SIF_CLIP = 0.1
 MIN_SIF_PLOT = 0
-MAX_SIF_PLOT = 2
+MAX_SIF_PLOT = 1.5
+BANDS = list(range(0, 12)) + [12, 13, 14, 16, 17, 19, 23, 24, 25, 28, 34] + [42]
 # BANDS = list(range(0, 9)) + list(range(12, 27)) + [28] + [42] 
-BANDS = list(range(0, 43))
+# BANDS = list(range(0, 43))
 INPUT_CHANNELS = len(BANDS)
 MISSING_REFLECTANCE_IDX = -1
-REDUCED_CHANNELS = 10
+REDUCED_CHANNELS = None
 DEGREES_PER_PIXEL = (0.00026949458523585647, 0.00026949458523585647)
 METERS_PER_PIXEL = 30
-RESOLUTIONS = [30, 90, 150, 300, 600]
+RESOLUTIONS = [30] #, 90, 150, 300, 600]
 TILE_PIXELS = 100
 TILE_SIZE_DEGREES = DEGREES_PER_PIXEL[0] * TILE_PIXELS
 PURE_THRESHOLD = 0.7
@@ -137,7 +144,7 @@ DATES = ["2016-06-15", "2016-08-01"]
 """
 Quickly computes true vs predicted loss of U-Net on fine CFIS dataset
 """
-def eval_unet_fast(model, dataloader, criterion, device, sif_mean, sif_std, resolution_meters, min_eval_cfis_soundings):
+def eval_unet_fast(model, dataloader, criterion, device, sif_mean, sif_std, resolution_meters, min_eval_cfis_soundings, min_eval_fraction_valid):
     fine_pixels_per_eval = int(resolution_meters / METERS_PER_PIXEL)
 
     running_coarse_loss = 0
@@ -185,7 +192,7 @@ def eval_unet_fast(model, dataloader, criterion, device, sif_mean, sif_std, reso
             true_eval_sifs, eval_fraction_valid, eval_soundings = sif_utils.downsample_sif(true_fine_sifs, valid_fine_sif_mask, fine_soundings, fine_pixels_per_eval)
 
             # Filter noisy coarse tiles
-            non_noisy_mask = (eval_soundings >= min_eval_cfis_soundings) & (true_eval_sifs >= MIN_SIF_CLIP) & (eval_fraction_valid >= MIN_EVAL_FRACTION_VALID)
+            non_noisy_mask = (eval_soundings >= min_eval_cfis_soundings) & (true_eval_sifs >= MIN_SIF_CLIP) & (eval_fraction_valid >= min_eval_fraction_valid)
             non_noisy_mask_flat = non_noisy_mask.flatten()
             true_eval_sifs_filtered = true_eval_sifs.flatten()[non_noisy_mask_flat]
             predicted_eval_sifs_filtered = predicted_eval_sifs.flatten()[non_noisy_mask_flat]
@@ -207,9 +214,9 @@ def eval_unet_fast(model, dataloader, criterion, device, sif_mean, sif_std, reso
     predicted_coarse = np.concatenate(all_predicted_coarse_sifs)
     predicted_eval = np.concatenate(all_predicted_eval_sifs)
     print('================== Coarse CFIS stats ======================')
-    sif_utils.print_stats(true_coarse, predicted_coarse, sif_mean, ax=None)
+    sif_utils.print_stats(true_coarse, predicted_coarse, sif_mean, fit_intercept=False, ax=None)
     print('================== Eval CFIS stats ======================')
-    sif_utils.print_stats(true_eval, predicted_eval, sif_mean, ax=None)
+    sif_utils.print_stats(true_eval, predicted_eval, sif_mean, fit_intercept=False, ax=None)
 
     return true_coarse, predicted_coarse, true_eval, predicted_eval
 
@@ -218,7 +225,7 @@ def eval_unet_fast(model, dataloader, criterion, device, sif_mean, sif_std, reso
 Compute detailed results. For each fine pixel, record metadata and compute predictions from
 U-Net and baseline methods. If "plot" is True, also plots visualizations.
 """
-def compare_unet_to_others(model, dataloader, device, sif_mean, sif_std, resolution_meters, min_eval_cfis_soundings, 
+def compare_unet_to_others(model, dataloader, device, sif_mean, sif_std, resolution_meters, min_eval_cfis_soundings, min_eval_fraction_valid,
                            coarse_set, eval_set, linear_model, mlp_model, plot):
     fine_pixels_per_eval = int(resolution_meters / METERS_PER_PIXEL)
     eval_resolution_degrees = (fine_pixels_per_eval * DEGREES_PER_PIXEL[0], fine_pixels_per_eval * DEGREES_PER_PIXEL[1])
@@ -236,7 +243,7 @@ def compare_unet_to_others(model, dataloader, device, sif_mean, sif_std, resolut
     for sample in dataloader:
         with torch.set_grad_enabled(False):
             # Read input tile
-            input_tiles_std = sample['input_tile'][:, BANDS, :, :].to(device)
+            input_tiles_std = sample['input_tile'].to(device)
 
             # Read coarse-resolution SIF label
             true_coarse_sifs = sample['coarse_sif'].to(device)
@@ -248,7 +255,7 @@ def compare_unet_to_others(model, dataloader, device, sif_mean, sif_std, resolut
 
             # Predict fine-resolution SIF using model
             # Predict fine-resolution SIF using model
-            predicted_fine_sifs_std = model(input_tiles_std)  # predicted_fine_sifs_std: (batch size, 1, H, W)
+            predicted_fine_sifs_std = model(input_tiles_std[:, BANDS, :, :])  # predicted_fine_sifs_std: (batch size, 1, H, W)
             if type(predicted_fine_sifs_std) == tuple:
                 predicted_fine_sifs_std = predicted_fine_sifs_std[0]
             predicted_fine_sifs_std = torch.squeeze(predicted_fine_sifs_std, dim=1)
@@ -270,7 +277,7 @@ def compare_unet_to_others(model, dataloader, device, sif_mean, sif_std, resolut
             # print('Predicted eval sifs', predicted_eval_sifs.shape)
 
             # Filter noisy coarse tiles
-            non_noisy_mask = (eval_soundings >= min_eval_cfis_soundings) & (true_eval_sifs >= MIN_SIF_CLIP) & (eval_fraction_valid >= MIN_EVAL_FRACTION_VALID)
+            non_noisy_mask = (eval_soundings >= min_eval_cfis_soundings) & (true_eval_sifs >= MIN_SIF_CLIP) & (eval_fraction_valid >= min_eval_fraction_valid)
             non_noisy_mask_flat = non_noisy_mask.flatten()
             true_eval_sifs_filtered = true_eval_sifs.flatten()[non_noisy_mask_flat]
             predicted_eval_sifs_filtered = predicted_eval_sifs.flatten()[non_noisy_mask_flat]
@@ -283,8 +290,9 @@ def compare_unet_to_others(model, dataloader, device, sif_mean, sif_std, resolut
                 large_tile_file = sample['tile_file'][i]
                 date = sample['date'][i]
                 input_tile = input_tiles_std[i].cpu().detach().numpy()
-                valid_eval_sif_mask_tile = non_noisy_mask[i].cpu().detach().numpy()
-                soundings_tile = fine_soundings[i].cpu().detach().numpy()
+                valid_eval_sif_mask_tile = valid_fine_sif_mask[i].cpu().detach().numpy()
+                non_noisy_mask_tile = non_noisy_mask[i].cpu().detach().numpy()
+                soundings_tile = eval_soundings[i].cpu().detach().numpy()
 
                 true_coarse_sif_tile = true_coarse_sifs[i].cpu().detach().numpy()
                 true_eval_sifs_tile = true_eval_sifs[i].cpu().detach().numpy()
@@ -301,7 +309,7 @@ def compare_unet_to_others(model, dataloader, device, sif_mean, sif_std, resolut
                 # print('Large tile file', large_tile_file)
                 # print('Coarse avg pandas', coarse_averages_pandas)
                 assert len(coarse_averages_pandas) == 1
-                assert len(tile_eval_averages) == np.count_nonzero(valid_eval_sif_mask_tile) 
+                # assert len(tile_eval_averages) == np.count_nonzero(valid_eval_sif_mask_tile) 
                 pandas_row = coarse_averages_pandas.iloc[0]
                 coarse_averages = pandas_row[INPUT_COLUMNS].to_numpy(copy=True).reshape(1, -1)
                 true_sif = pandas_row['SIF']
@@ -374,7 +382,7 @@ def compare_unet_to_others(model, dataloader, device, sif_mean, sif_std, resolut
                     eval_results.append(result_row)
 
                 # Plot selected tiles
-                if plot and sample['fraction_valid'][i] > 0.5:
+                if plot and sample['fraction_valid'][i] > 0.7:
                     print('Plotting')
                     # Plot example tile
                     true_eval_sifs_tile[valid_eval_sif_mask_tile == 0] = 0
@@ -392,7 +400,8 @@ def compare_unet_to_others(model, dataloader, device, sif_mean, sif_std, resolut
                     visualization_utils.plot_tile_predictions(input_tiles_std[i].cpu().detach().numpy(),
                                                 tile_description,
                                                 true_eval_sifs_tile, predicted_sif_tiles,
-                                                valid_eval_sif_mask_tile, prediction_methods, 
+                                                valid_eval_sif_mask_tile, non_noisy_mask_tile,
+                                                prediction_methods, 
                                                 large_tile_lon, large_tile_lat, date, TILE_SIZE_DEGREES,
                                                 resolution_meters, soundings_tile=soundings_tile)
                     plot_counter += 1
@@ -457,16 +466,16 @@ def main():
         # Read fine metadata at particular resolution
         cfis_eval_metadata = pd.read_csv(CFIS_EVAL_METADATA_FILE)
         cfis_eval_metadata = cfis_eval_metadata[(cfis_eval_metadata['SIF'] >= MIN_SIF_CLIP) &
-                                                (cfis_eval_metadata['num_soundings'] >= MIN_EVAL_CFIS_SOUNDINGS) &
+                                                # (cfis_eval_metadata['num_soundings'] >= MIN_EVAL_CFIS_SOUNDINGS) &
                                                 (cfis_eval_metadata['fraction_valid'] >= MIN_EVAL_FRACTION_VALID) &
                                                 (cfis_eval_metadata['tile_file'].isin(set(cfis_coarse_metadata['tile_file'])))]
 
         # Read dataset splits
-        coarse_train_set = cfis_coarse_metadata[(cfis_coarse_metadata['grid_fold'].isin(TRAIN_FOLDS)) &
+        coarse_train_set = cfis_coarse_metadata[(cfis_coarse_metadata['fold'].isin(TRAIN_FOLDS)) &
                                                 (cfis_coarse_metadata['date'].isin(TRAIN_DATES))].copy()
-        coarse_test_set = cfis_coarse_metadata[(cfis_coarse_metadata['grid_fold'].isin(TEST_FOLDS)) &
+        coarse_test_set = cfis_coarse_metadata[(cfis_coarse_metadata['fold'].isin(TEST_FOLDS)) &
                                                 (cfis_coarse_metadata['date'].isin(TEST_DATES))].copy()
-        eval_test_set = cfis_eval_metadata[(cfis_eval_metadata['grid_fold'].isin(TEST_FOLDS)) &
+        eval_test_set = cfis_eval_metadata[(cfis_eval_metadata['fold'].isin(TEST_FOLDS)) &
                                                 (cfis_eval_metadata['date'].isin(TEST_DATES))].copy()
 
         # Read OCO2 metadata
@@ -474,7 +483,7 @@ def main():
         oco2_metadata = oco2_metadata[(oco2_metadata['num_soundings'] >= MIN_OCO2_SOUNDINGS) &
                                         (oco2_metadata['missing_reflectance'] <= MAX_OCO2_CLOUD_COVER) &
                                         (oco2_metadata['SIF'] >= MIN_SIF_CLIP)]
-        oco2_train_set = oco2_metadata[(oco2_metadata['grid_fold'].isin(TRAIN_FOLDS)) &
+        oco2_train_set = oco2_metadata[(oco2_metadata['fold'].isin(TRAIN_FOLDS)) &
                                         (oco2_metadata['date'].isin(TRAIN_DATES))].copy()
         train_set = pd.concat([oco2_train_set, coarse_train_set])
 
@@ -531,7 +540,7 @@ def main():
 
         if COMPUTE_RESULTS:
             # Train averages models - TODO change parameters
-            linear_model = Ridge(alpha=10).fit(X_coarse_train, Y_coarse_train)
+            linear_model = Ridge(alpha=0).fit(X_coarse_train, Y_coarse_train)
             mlp_model = MLPRegressor(hidden_layer_sizes=(100, 100, 100), learning_rate_init=1e-3, max_iter=10000).fit(X_coarse_train, Y_coarse_train) 
 
             # Initialize model
@@ -557,11 +566,13 @@ def main():
             criterion = nn.MSELoss(reduction='mean')
 
             # Quickly get summary statistics
-            eval_unet_fast(model, dataloader, criterion, device, sif_mean, sif_std, RESOLUTION_METERS, MIN_EVAL_CFIS_SOUNDINGS)
+            eval_unet_fast(model, dataloader, criterion, device, sif_mean, sif_std, RESOLUTION_METERS, MIN_EVAL_CFIS_SOUNDINGS, MIN_EVAL_FRACTION_VALID)
+            continue
 
             # Get detailed results (including metadata)
             coarse_results_df, eval_results_df = compare_unet_to_others(model, dataloader, device, sif_mean, sif_std,
                                                                         RESOLUTION_METERS, MIN_EVAL_CFIS_SOUNDINGS,
+                                                                        MIN_EVAL_FRACTION_VALID,
                                                                         coarse_test_set, eval_test_set, linear_model,
                                                                         mlp_model, plot=PLOT)
             coarse_results_df.to_csv(COARSE_CFIS_RESULTS_CSV_FILE)

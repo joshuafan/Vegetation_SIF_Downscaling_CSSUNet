@@ -14,7 +14,7 @@ import visualization_utils
 import sif_utils
 
 # Set random seed
-RANDOM_STATE = 0
+RANDOM_STATE = 1
 np.random.seed(RANDOM_STATE)
 random.seed(RANDOM_STATE)
 
@@ -30,6 +30,11 @@ MIN_SOUNDINGS_FINE = 1
 MIN_FRACTION_VALID_PIXELS = 0.1  # Max fraction of invalid pixels when computing coarse-resolution SIF
 MIN_CDL_COVERAGE = 0.5  # Exclude areas where there is no CDL coverage (e.g. Canada)
 CDL_INDICES = list(range(12, 42))
+
+# These two filters are ONLY FOR COMPUTING STATISTICS; they are not applied to the dataset
+MIN_SIF_CLIP = 0.1
+MIN_FINE_CFIS_SOUNDINGS_FILTER = 30
+
 FRACTION_VAL = 0.2
 FRACTION_TEST = 0.2
 
@@ -38,7 +43,7 @@ OCO2_SCALING_FACTOR = 1.69 / 1.52
 
 # Number of folds
 NUM_FOLDS = 5
-TRAIN_FOLDS = [1, 2, 3]  # 1-indexed
+TRAIN_FOLDS = [0, 1, 2]  # 0-indexed
 
 # OCO-2 tile datasets to output to
 OCO2_METADATA_FILE = os.path.join(OCO2_DIR, 'oco2_metadata_overlap.csv')
@@ -191,7 +196,7 @@ for date_idx, DATE in enumerate(DATES):
     print('Lats shape', lats.shape)
     print('Sifs shape', sifs.shape)
 
-    # Loop through all CFIS soundings. The arrays in "tile_to_sum_sif_array" will store the SUM
+    # Loop through all CFIS soundings. The arrays in "tile_to_sum_cfis_sif_array" will store the SUM
     # of all SIF soundings per pixel. Then we will divide by the number of soundings (computed in
     # "tile_to_cfis_soundings_array") to get the AVERAGE.
     for i in range(lons.shape[0]):
@@ -280,12 +285,12 @@ for date_idx, DATE in enumerate(DATES):
             oco2_left_lon = oco2_lons[oco2_lon_idx] - TILE_SIZE_DEGREES / 2
             oco2_top_lat = oco2_lats[oco2_lat_idx] + TILE_SIZE_DEGREES / 2    
 
-            # Compute the lat/lon grid square this OCO-2 tile is in. Again this computation is based
-            # on the upper-left corner of the tile. If it overlaps with a CFIS region, skip this tile.
-            grid_square = sif_utils.get_large_grid_area_coordinates_lat_first(oco2_top_lat, oco2_left_lon, GRID_AREA_DEGREES)
-            if grid_square in grid_squares_with_cfis:
-                print('Grid square', grid_square, 'had CFIS data!!!!!')
-                # continue
+            # # Compute the lat/lon grid square this OCO-2 tile is in. Again this computation is based
+            # # on the upper-left corner of the tile. If it overlaps with a CFIS region, skip this tile.
+            # grid_square = sif_utils.get_large_grid_area_coordinates_lat_first(oco2_top_lat, oco2_left_lon, GRID_AREA_DEGREES)
+            # if grid_square in grid_squares_with_cfis:
+            #     print('Grid square', grid_square, 'had CFIS data!!!!!')
+            #     # continue
             # else:
                 # print('Grid square', grid_square, 'has no CFIS data :)')
             # print('=============================')
@@ -455,7 +460,10 @@ print('Number of fine CFIS SIF points:', len(cfis_fine_metadata_df))
 # coarse_averages_test_df.to_csv(COARSE_AVERAGES_TEST_FILE)
 
 # Compute averages for each band
-fine_averages_train_df = cfis_fine_metadata_df[cfis_fine_metadata_df['fold'].isin(TRAIN_FOLDS)]
+fine_averages_train_df = cfis_fine_metadata_df[(cfis_fine_metadata_df['fold'].isin(TRAIN_FOLDS)) &
+                                               (cfis_fine_metadata_df['SIF'] >= MIN_SIF_CLIP) &
+                                               (cfis_fine_metadata_df['tile_file'].isin(set(cfis_coarse_metadata_df['tile_file']))) &
+                                               (cfis_fine_metadata_df['num_soundings'] >= MIN_FINE_CFIS_SOUNDINGS_FILTER)]
 selected_columns = fine_averages_train_df[STATISTICS_COLUMNS]
 print("Band values ARRAY shape", selected_columns.shape)
 band_means = selected_columns.mean(axis=0)

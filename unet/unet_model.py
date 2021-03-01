@@ -130,7 +130,14 @@ class UNet2(nn.Module):
         self.n_channels = n_channels
         self.n_classes = n_classes
 
-        self.inc = DoubleConv(n_channels, 64)
+        if reduced_channels is not None:
+            self.dimensionality_reduction = nn.Conv2d(n_channels, reduced_channels, kernel_size=1, stride=1)
+            self.inc = nn.Conv2d(reduced_channels, 64, kernel_size=1, stride=1)
+        else:
+            self.dimensionality_reduction = None
+            self.inc = nn.Conv2d(n_channels, 64, kernel_size=1, stride=1)
+
+        # self.inc = DoubleConv(n_channels, 64)
         self.down1 = Down(64, 128)
         self.down2 = Down(128, 128)
         self.up1 = Up(256, 64, bilinear=True)
@@ -147,7 +154,11 @@ class UNet2(nn.Module):
 
 
     def forward(self, x):
+        if self.dimensionality_reduction is not None:
+            x = self.dimensionality_reduction(x)
+            x = F.relu(x)
         x1 = self.inc(x)
+        x1 = F.relu(x1)
         x2 = self.down1(x1)
         x3 = self.down2(x2)
         x = self.up1(x3, x2)
@@ -166,7 +177,9 @@ class UNet2Larger(nn.Module):
         self.n_channels = n_channels
         self.n_classes = n_classes
 
-        self.inc = DoubleConv(n_channels, 128)
+        # self.dimensionality_reduction = nn.Conv2d(n_channels, reduced_channels, kernel_size=1, stride=1)
+        self.inc = nn.Conv2d(n_channels, 128, kernel_size=1, stride=1)  # TODO CHange back
+        # self.inc = DoubleConv(n_channels, 128)  # TODO CHange back
         self.down1 = Down(128, 256)
         self.down2 = Down(256, 256)
         self.up1 = Up(512, 128, bilinear=True)
@@ -183,7 +196,10 @@ class UNet2Larger(nn.Module):
 
 
     def forward(self, x):
+        # x = self.dimensionality_reduction(x)
+        # x = F.relu(x)
         x1 = self.inc(x)
+        x1 = F.leaky_relu(x1)
         x2 = self.down1(x1)
         x3 = self.down2(x2)
         x = self.up1(x3, x2)
