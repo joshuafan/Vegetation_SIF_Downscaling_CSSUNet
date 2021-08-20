@@ -62,8 +62,8 @@ BAND_STATISTICS_FILE = os.path.join(CFIS_DIR, 'cfis_band_statistics_train.csv')
 
 MIN_COARSE_FRACTION_VALID_PIXELS = [0.1]
 MIN_FINE_CFIS_SOUNDINGS = [30] #[30] #[1, 5, 10, 20, 30] # # 100, 250] #[100, 300, 1000, 3000]
-MIN_FINE_FRACTION_VALID_PIXELS = [0.75] #[0.1, 0.3, 0.5, 0.7] # [0.5] #[0.5]
-RESOLUTION_METERS = [30] #, 90, 150, 300, 600]
+MIN_FINE_FRACTION_VALID_PIXELS = [0.9] #[0.1, 0.3, 0.5, 0.7] # [0.5] #[0.5]
+RESOLUTION_METERS = [30]  #, 90, 150, 300, 600]
 
 # Dates/sources
 DATES = ["2016-06-15", "2016-08-01"]
@@ -72,8 +72,8 @@ TEST_DATES = ["2016-06-15", "2016-08-01"]
 # METHOD = "9a_Ridge_Regression_cfis" #_5soundings"
 # METHOD = "9b_Gradient_Boosting_Regressor_cfis" #_5soundings"
 # METHOD = "9c_MLP_cfis" #_10soundings"
-METHOD = "10a_Ridge_Regression_both"
-# METHOD = "10b_Gradient_Boosting_Regressor_both"
+# METHOD = "10a_Ridge_Regression_both"
+METHOD = "10b_Gradient_Boosting_Regressor_both"
 # METHOD = "10c_MLP_both"
 # METHOD = "11a_Ridge_Regression_oco2"
 # METHOD = "11b_Gradient_Boosting_Regressor_oco2"
@@ -95,17 +95,26 @@ MAX_SIF_CLIP = None # 1.5
 MIN_SIF_PLOT = 0
 MAX_SIF_PLOT = 1.5
 NUM_RUNS = 3
+STANDARD_DEVIATION = 0.2
 
 # True vs predicted plot
 CFIS_TRUE_VS_PREDICTED_PLOT = os.path.join(PLOTS_DIR, 'true_vs_predicted_sif_cfis_' + METHOD)
 
 # Input feature names
-# INPUT_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
-#                     'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg',
-#                     'grassland_pasture', 'corn', 'soybean',
-#                     'deciduous_forest', 'evergreen_forest', 'developed_open_space',
-#                     'woody_wetlands', 'open_water', 'alfalfa',
-#                     'developed_low_intensity', 'developed_med_intensity', 'missing_reflectance']
+
+INPUT_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
+                    'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg',
+                    'grassland_pasture', 'corn', 'soybean',
+                    'deciduous_forest', 'evergreen_forest', 'developed_open_space',
+                    'woody_wetlands', 'open_water', 'alfalfa',
+                    'developed_low_intensity', 'developed_med_intensity', 'missing_reflectance']
+# INPUT_COLUMNS = ["NDVI"]
+ALL_COVER_COLUMNS = ['grassland_pasture', 'corn', 'soybean',
+                    'deciduous_forest', 'evergreen_forest', 'developed_open_space',
+                    'woody_wetlands', 'open_water', 'alfalfa',
+                    'developed_low_intensity', 'developed_med_intensity']
+REFLECTANCE_BANDS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
+                    'ref_10', 'ref_11']
 # INPUT_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
 #                     'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg',
 #                     'grassland_pasture', 'corn', 'soybean', 'shrubland',
@@ -116,8 +125,8 @@ CFIS_TRUE_VS_PREDICTED_PLOT = os.path.join(PLOTS_DIR, 'true_vs_predicted_sif_cfi
 #                     'canola', 'sunflower', 'dry_beans', 'developed_med_intensity',
 #                     'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
 #                     'lentils', 'missing_reflectance']
-INPUT_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
-                    'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg']
+# INPUT_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
+#                     'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg']
 
 COLUMNS_TO_STANDARDIZE = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
                     'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg']
@@ -144,12 +153,18 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
         oco2_metadata = oco2_metadata[(oco2_metadata['num_soundings'] >= MIN_OCO2_SOUNDINGS) &
                                         (oco2_metadata['missing_reflectance'] <= MAX_OCO2_CLOUD_COVER) &
                                         (oco2_metadata['SIF'] >= MIN_SIF_CLIP)]
+        print('Before filtering - OCO2', len(oco2_metadata))
+        oco2_metadata = oco2_metadata[oco2_metadata[ALL_COVER_COLUMNS].sum(axis=1) >= 0.5]
+        print('After filtering - OCO2', len(oco2_metadata))
 
         # Read CFIS coarse datapoints - only include CFIS tiles with enough valid pixels
         cfis_coarse_metadata = pd.read_csv(CFIS_COARSE_METADATA_FILE)
         cfis_coarse_metadata = cfis_coarse_metadata[(cfis_coarse_metadata['fraction_valid'] >= min_coarse_fraction_valid) &
                                                     (cfis_coarse_metadata['SIF'] >= MIN_SIF_CLIP) &
                                                     (cfis_coarse_metadata['missing_reflectance'] <= MAX_CFIS_CLOUD_COVER)]
+        print('Before filtering - CFIS coarse', len(cfis_coarse_metadata))
+        cfis_coarse_metadata = cfis_coarse_metadata[cfis_coarse_metadata[ALL_COVER_COLUMNS].sum(axis=1) >= 0.5]
+        print('After filtering - CFIS coarse', len(cfis_coarse_metadata))
 
         # Read fine metadata at particular resolution, and do initial filtering
         CFIS_FINE_METADATA_FILE = os.path.join(CFIS_DIR, 'cfis_metadata_' + str(resolution) + 'm.csv')
@@ -157,7 +172,12 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
         cfis_fine_metadata = cfis_fine_metadata[(cfis_fine_metadata['SIF'] >= MIN_SIF_CLIP) &
                                         (cfis_fine_metadata['tile_file'].isin(set(cfis_coarse_metadata['tile_file'])))]
         cfis_fine_metadata = cfis_fine_metadata[(cfis_fine_metadata['num_soundings'] >= min(MIN_FINE_CFIS_SOUNDINGS)) &
-                                                (cfis_fine_metadata['fraction_valid'] >= min(MIN_FINE_FRACTION_VALID_PIXELS))]
+                                                (cfis_fine_metadata['fraction_valid'] >= min(MIN_FINE_FRACTION_VALID_PIXELS) - 1e-5)]  # Avoid roundoff errors
+
+        # Compute NDVI
+        oco2_metadata["NDVI"] = (oco2_metadata["ref_5"] - oco2_metadata["ref_4"]) / (oco2_metadata["ref_5"] + oco2_metadata["ref_4"])
+        cfis_coarse_metadata["NDVI"] = (cfis_coarse_metadata["ref_5"] - cfis_coarse_metadata["ref_4"]) / (cfis_coarse_metadata["ref_5"] + cfis_coarse_metadata["ref_4"])
+        cfis_fine_metadata["NDVI"] = (cfis_fine_metadata["ref_5"] - cfis_fine_metadata["ref_4"]) / (cfis_fine_metadata["ref_5"] + cfis_fine_metadata["ref_4"])
 
         # Read dataset splits
         oco2_train_set = oco2_metadata[(oco2_metadata['fold'].isin(TRAIN_FOLDS)) &
@@ -322,6 +342,16 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
         # print('Average SIF (OCO2, test)', oco2_test_set['SIF'].mean())
         # print('Average SIf from band statistics file', sif_mean)
 
+        # Inject noise
+        train_set = pd.concat([train_set] * 5)
+        train_set = train_set.reset_index(drop=True)
+        for idx in range(len(train_set)):
+            # print("Initial bands")
+            # print(train_set.loc[idx, REFLECTANCE_BANDS])
+            noise = 1 + np.random.normal(loc=0, scale=STANDARD_DEVIATION)
+            train_set.loc[idx, REFLECTANCE_BANDS] = train_set.loc[idx, REFLECTANCE_BANDS] * noise
+            # print("After noise", noise)
+            # print(train_set.loc[idx, REFLECTANCE_BANDS])
 
         # Standardize data
         for idx, column in enumerate(COLUMNS_TO_STANDARDIZE):
@@ -330,6 +360,8 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
             fine_train_set[column] = np.clip((fine_train_set[column] - band_means[idx]) / band_stds[idx], a_min=MIN_INPUT, a_max=MAX_INPUT)
             fine_val_set[column] = np.clip((fine_val_set[column] - band_means[idx]) / band_stds[idx], a_min=MIN_INPUT, a_max=MAX_INPUT)
             fine_test_set[column] = np.clip((fine_test_set[column] - band_means[idx]) / band_stds[idx], a_min=MIN_INPUT, a_max=MAX_INPUT)
+
+
 
         X_train = train_set[INPUT_COLUMNS]
         Y_train = train_set[OUTPUT_COLUMN].values.ravel()

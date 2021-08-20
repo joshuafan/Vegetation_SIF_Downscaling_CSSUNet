@@ -172,7 +172,8 @@ def plot_2d_array(fig, ax, array, title, center_lon, center_lat, tile_size_degre
 
 # For a single tile, plot each band in its own plot
 def plot_individual_bands(tile, title, center_lon, center_lat, tile_size_degrees, plot_file,
-                          num_grid_squares=4, decimal_places=3, min_feature=-3, max_feature=3):
+                          num_grid_squares=4, decimal_places=3, min_feature=-3, max_feature=3,
+                          crop_type_start_idx=12):
 
     fig, axeslist = plt.subplots(ncols=6, nrows=8, figsize=(36, 48))
     fig.suptitle('All bands: ' + title)
@@ -181,7 +182,7 @@ def plot_individual_bands(tile, title, center_lon, center_lat, tile_size_degrees
         layer = tile[band, :, :]
         ax = axeslist.ravel()[band]
         title = 'Band' + str(band)
-        if band >= 12:
+        if band >= crop_type_start_idx:
             # Binary masks (crop type or missing reflectance) range from 0 to 1
             min_feature = 0
             max_feature = 1

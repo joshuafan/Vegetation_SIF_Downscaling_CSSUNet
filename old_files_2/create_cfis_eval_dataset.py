@@ -1,4 +1,6 @@
 """
+OUTDATED!
+
 Constructs validation datasets from CFIS data. 
 
 The main dataset (written to OUTPUT_CSV_FILE) contains

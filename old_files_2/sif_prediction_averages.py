@@ -1,4 +1,5 @@
 """
+OUTDATED. Use train_downscaling_averages instead.
 Runs pre-built ML methods over the channel averages of each tile (e.g. linear regression or gradient boosted tree)
 """
 import hydra

@@ -27,9 +27,16 @@ class UNet(nn.Module):
         # channels_after_embedding = n_channels - len(self.crop_type_bands) + crop_type_embedding_dim  # Number of features after embedding crop type
         # self.dimensionality_reduction = nn.Conv2d(channels_after_embedding, reduced_channels, kernel_size=1, stride=1)
 
-        # Try reducing dimensionality of the channels
-        self.dimensionality_reduction = nn.Conv2d(n_channels, reduced_channels, kernel_size=1, stride=1)
-        self.inc = DoubleConv(reduced_channels, 64)
+        if reduced_channels is not None:
+            self.dimensionality_reduction = nn.Conv2d(n_channels, reduced_channels, kernel_size=1, stride=1)
+            self.inc = DoubleConv(reduced_channels, 64)
+        else:
+            self.dimensionality_reduction = None
+            self.inc = DoubleConv(n_channels, 64)
+
+        # # Try reducing dimensionality of the channels
+        # self.dimensionality_reduction = nn.Conv2d(n_channels, reduced_channels, kernel_size=1, stride=1)
+        # self.inc = DoubleConv(reduced_channels, 64)
         self.down1 = Down(64, 128)
         self.down2 = Down(128, 256)
         self.down3 = Down(256, 512)
@@ -61,8 +68,9 @@ class UNet(nn.Module):
 
         # Embed each pixel. Each pixel's vector should contain semantic information about
         # the crop type + reflectance + other features
-        x = self.dimensionality_reduction(x)
-        x = F.relu(x)
+        if self.dimensionality_reduction is not None:
+            x = self.dimensionality_reduction(x)
+            x = F.relu(x)
         x1 = self.inc(x)
         x2 = self.down1(x1)
         x3 = self.down2(x2)
@@ -136,6 +144,7 @@ class UNet2(nn.Module):
         else:
             self.dimensionality_reduction = None
             self.inc = nn.Conv2d(n_channels, 64, kernel_size=1, stride=1)
+        # self.dropout = nn.Dropout2d()
 
         # self.inc = DoubleConv(n_channels, 64)
         self.down1 = Down(64, 128)
@@ -158,6 +167,7 @@ class UNet2(nn.Module):
             x = self.dimensionality_reduction(x)
             x = F.relu(x)
         x1 = self.inc(x)
+        # x1 = self.dropout(x1)
         x1 = F.relu(x1)
         x2 = self.down1(x1)
         x3 = self.down2(x2)

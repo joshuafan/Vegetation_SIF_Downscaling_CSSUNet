@@ -63,6 +63,17 @@ class GaussianNoise(object):
         #print('After noise', tile[self.continuous_bands, 0:3, 0:3])
         return tile
 
+class MultiplicativeGaussianNoise(object):
+    def __init__(self, continuous_bands, standard_deviation=0.1):
+        self.continuous_bands = continuous_bands
+        self.standard_deviation = standard_deviation
+
+    def __call__(self, tile):
+        tile_shape = tile.shape[1:3]
+        noise = np.random.normal(loc=0, scale=self.standard_deviation) #, size=tile_shape)
+        tile[self.continuous_bands, :, :] = tile[self.continuous_bands, :, :] * (1 + noise)
+        return tile
+
 class ColorDistortion(object):
     def __init__(self, continuous_bands, standard_deviation=0.1):
         self.continuous_bands = continuous_bands

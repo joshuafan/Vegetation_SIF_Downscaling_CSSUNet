@@ -11,6 +11,8 @@ import torchvision.transforms as transforms
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+from torch import autograd
+from torch.autograd import grad
 
 import simple_cnn
 from reflectance_cover_sif_dataset import CombinedDataset, CoarseSIFDataset, FineSIFDataset
@@ -94,8 +96,10 @@ TILE_SIZE_DEGREES = RES[0] * TILE_PIXELS
 # MODEL_TYPE = "unet2"
 # METHOD = "10d_unet2_larger"
 # MODEL_TYPE = "unet2_larger"
-METHOD = "10d_unet2_8"
-MODEL_TYPE = "unet2"
+# METHOD = "10d_unet2_9"
+# MODEL_TYPE = "unet2"
+# METHOD = "10d_unet2_lr1e-4_weightdecay1e-4_multiplicative_fractionoutput0.2"
+# MODEL_TYPE = "unet2"
 # METHOD = "10d_pixel_nn"
 # MODEL_TYPE = "pixel_nn"
 # METHOD = "10d_unet2_larger"
@@ -113,6 +117,11 @@ MODEL_TYPE = "unet2"
 # METHOD = "tropomi_cfis_unet2"
 # MODEL_TYPE = "unet"
 
+# METHOD = "10d_unet2_lr1e-4_weightdecay1e-4_multiplicative_fractionoutput0.2_gradient_penalty"
+METHOD = "10d_unet2_lr1e-4_weightdecay1e-4_multiplicative"
+# METHOD = "10d_unet2_lr1e-4_weightdecay1e-4_gaussian_fractionoutput0.1"
+MODEL_TYPE = "unet2"
+
 
 # Model files
 PRETRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/" + METHOD) #9e_unet2_contrastive")
@@ -126,8 +135,9 @@ LOSS_PLOT = os.path.join(DATA_DIR, 'loss_plots/losses_' + METHOD)
 # Parameters
 OPTIMIZER_TYPE = "Adam"
 LEARNING_RATE = 1e-4
-WEIGHT_DECAY = 1e-3
-NUM_EPOCHS = 200
+WEIGHT_DECAY = 1e-4
+NUM_EPOCHS = 500
+EARLY_STOPPING_PATIENCE = 5
 BATCH_SIZE = 100
 NUM_WORKERS = 8
 FROM_PRETRAINED = False
@@ -137,26 +147,30 @@ FREEZE_PIXEL_ENCODER = False
 MIN_SIF = None
 MAX_SIF = None
 MIN_SIF_CLIP = 0.1
-MIN_INPUT = -5
-MAX_INPUT = 5
+MIN_INPUT = -3
+MAX_INPUT = 3
 REDUCED_CHANNELS = None
-
+RECON_LOSS = False
+GRADIENT_PENALTY = False
 
 # Which bands
 # BANDS = list(range(0, 43))
 # BANDS = list(range(0, 9)) + list(range(12, 42))
 BANDS = list(range(0, 12)) + [12, 13, 14, 16, 17, 19, 23, 24, 25, 28, 34] + [42]
+RECONSTRUCTION_BANDS = list(range(0, 9)) + [12, 13, 14, 16, 17, 19, 23, 24, 25, 28, 34]
 # BANDS = list(range(0, 12)) + list(range(12, 27)) + [28] + [42]
 INPUT_CHANNELS = len(BANDS)
+OUTPUT_CHANNELS = 1 + len(RECONSTRUCTION_BANDS)
 CROP_TYPE_INDICES = list(range(12, 42))
 MISSING_REFLECTANCE_IDX = len(BANDS) - 1
 
 # Augmentations
-AUGMENTATIONS = ['flip_and_rotate', 'jigsaw'] # ['cutout', 'flip_and_rotate', 'gaussian_noise', 'jigsaw']
+AUGMENTATIONS = ['flip_and_rotate', 'jigsaw', 'multiplicative_noise']  # 'gaussian_noise'] # ['cutout', 'flip_and_rotate', 'gaussian_noise', 'jigsaw']
 RESIZE_DIM = 100
 CROP_DIM = 80
-NOISE = 0 # 0.1
-FRACTION_OUTPUTS_TO_AVERAGE = 1 #0.2
+MULTIPLICATIVE_NOISE = 0.2
+GAUSSIAN_NOISE = 0.2
+FRACTION_OUTPUTS_TO_AVERAGE = 1
 CUTOUT_DIM = 10
 CUTOUT_PROB = 0 # 0.5
 
@@ -169,6 +183,7 @@ OCO2_SCALING_FACTOR = 0.97
 MIN_FINE_CFIS_SOUNDINGS = 30
 MIN_COARSE_FRACTION_VALID_PIXELS = 0.1
 MAX_CFIS_CLOUD_COVER = 0.5
+MIN_CDL_COVERAGE = 0.5
 
 # Dates
 TRAIN_DATES = ['2016-06-15', '2016-08-01'] #, '2016-08-01', "2018-06-10", "2018-06-24", "2018-07-08", "2018-07-22", "2018-08-05", "2018-08-19"]
@@ -182,6 +197,13 @@ CONTRASTIVE_TEMP = 0.2
 PIXEL_PAIRS_PER_IMAGE = 5
 CONTRASTIVE_BATCH_SIZE = BATCH_SIZE * PIXEL_PAIRS_PER_IMAGE
 
+ALL_COVER_COLUMNS = ['grassland_pasture', 'corn', 'soybean',
+                    'deciduous_forest', 'evergreen_forest', 'developed_open_space',
+                    'woody_wetlands', 'open_water', 'alfalfa',
+                    'developed_low_intensity', 'developed_med_intensity']
+
+# Gradient penalty
+LAMBDA = 1
 
 
 # # Print params for reference
@@ -302,6 +324,25 @@ def train_contrastive(model, dataloader, criterion, optimizer, device, pixel_pai
                 pbar.set_postfix(avg_loss=train_loss/total)
     return model
 
+def calc_gradient_penalty(model, predicted_fine_sifs, input_tiles_std):
+    # # Get predicted pixel SIFs
+    # input_tiles_std.requires_grad_(True)
+    # outputs = model(input_tiles_std)  # predicted_fine_sifs_std: (batch size, output dim, H, W)
+    # if type(outputs) == tuple:
+    #     outputs = outputs[0]
+    # predicted_fine_sifs_std = outputs[:, 0, :, :]  # torch.squeeze(predicted_fine_sifs_std, dim=1)
+    # predicted_fine_sifs = predicted_fine_sifs_std * sif_std + sif_mean
+
+    gradients = autograd.grad(outputs=predicted_fine_sifs, inputs=input_tiles_std,
+                              grad_outputs=torch.ones(predicted_fine_sifs.size()).to(device),
+                              create_graph=True, retain_graph=True, only_inputs=True)[0]
+    # print("Gradients shape", gradients.shape)
+    gradients = gradients[:, 0:9, :, :]
+    gradients = gradients.view(gradients.size(0), -1)
+    gradient_norms = gradients.norm(2, dim=1)
+    gradient_penalty = (torch.max(torch.zeros_like(gradient_norms), gradient_norms - 1) ** 2).mean() * LAMBDA
+    return gradient_penalty
+
 
 def train_model(model, dataloaders, criterion, optimizer, device, sif_mean, sif_std, num_epochs=100):
     since = time.time()
@@ -310,18 +351,28 @@ def train_model(model, dataloaders, criterion, optimizer, device, sif_mean, sif_
     # Record losses at each epoch
     train_coarse_losses = {k: [] for k in COARSE_SIF_DATASETS['train']}
     val_coarse_losses = {k: [] for k in COARSE_SIF_DATASETS['val']}
+    train_reconstruction_losses = {k: [] for k in COARSE_SIF_DATASETS['train']}
+    val_reconstruction_losses = {k: [] for k in COARSE_SIF_DATASETS['val']}
     train_fine_losses = {k: [] for k in FINE_SIF_DATASETS['train']}
     val_fine_losses = {k: [] for k in FINE_SIF_DATASETS['val']}
+    num_epochs_no_improvement = 0  # Record number of consecutive epochs in which fine validation loss did not improve
 
-    # Record the losses *at the epoch with lowest coarse validation loss*
-    best_train_coarse_loss = {k: float('inf') for k in COARSE_SIF_DATASETS['train']}
-    best_val_coarse_loss = {k: float('inf') for k in COARSE_SIF_DATASETS['val']}
-    best_train_fine_loss = {k: float('inf') for k in FINE_SIF_DATASETS['train']}
-    best_val_fine_loss = {k: float('inf') for k in FINE_SIF_DATASETS['val']}    
+    # Record the losses at the epoch with lowest *fine validation loss*, and at the epoch with lowest *coarse validation loss*
+    best_val_fine_epoch = -1
+    best_val_coarse_epoch = -1
+    train_coarse_loss_at_best_val_fine = {k: float('inf') for k in COARSE_SIF_DATASETS['train']}
+    val_coarse_loss_at_best_val_fine = {k: float('inf') for k in COARSE_SIF_DATASETS['val']}
+    train_coarse_loss_at_best_val_coarse = {k: float('inf') for k in COARSE_SIF_DATASETS['train']}
+    val_coarse_loss_at_best_val_coarse = {k: float('inf') for k in COARSE_SIF_DATASETS['val']}
+    train_fine_loss_at_best_val_fine = {k: float('inf') for k in FINE_SIF_DATASETS['train']}
+    val_fine_loss_at_best_val_fine = {k: float('inf') for k in FINE_SIF_DATASETS['val']}    
+    train_fine_loss_at_best_val_coarse = {k: float('inf') for k in FINE_SIF_DATASETS['train']}
+    val_fine_loss_at_best_val_coarse = {k: float('inf') for k in FINE_SIF_DATASETS['val']}
 
     # Record the best-seen loss on the fine validation set (this is an alternate way to choose
     # the best model, if we are allowed to peek at the fine-resolution dataset for validation)
-    absolute_best_val_fine_loss = float('inf')
+    # best_val_coarse_loss = float('inf')
+    # best_val_fine_loss = float('inf')
 
     for epoch in range(num_epochs):
         print('Epoch {}/{}'.format(epoch, num_epochs - 1))
@@ -335,6 +386,7 @@ def train_model(model, dataloaders, criterion, optimizer, device, sif_mean, sif_
             else:
                 model.eval()
 
+            running_reconstruction_loss = {k: 0 for k in COARSE_SIF_DATASETS[phase]}
             running_coarse_loss = {k: 0 for k in COARSE_SIF_DATASETS[phase]}
             num_coarse_datapoints = {k: 0 for k in COARSE_SIF_DATASETS[phase]}
             all_true_coarse_sifs = {k: [] for k in COARSE_SIF_DATASETS[phase]}
@@ -351,6 +403,7 @@ def train_model(model, dataloaders, criterion, optimizer, device, sif_mean, sif_
                     # if (phase == 'val') or (phase == 'train' and random.random() < UPDATE_FRACTIONS[dataset_name]):
                     # Read input tile
                     input_tiles_std = sample['input_tile'][:, BANDS, :, :].to(device)
+                    reconstruction_target = sample['input_tile'][:, RECONSTRUCTION_BANDS, :, :].detach().clone().to(device)
 
                     # Read coarse-resolution SIF label
                     true_coarse_sifs = sample['coarse_sif'].to(device)
@@ -364,12 +417,17 @@ def train_model(model, dataloaders, criterion, optimizer, device, sif_mean, sif_
                     valid_mask_numpy = valid_fine_sif_mask.cpu().detach().numpy() 
 
                     with torch.set_grad_enabled(phase == 'train' and dataset_name in COARSE_SIF_DATASETS[phase]):
+                        # If penalizing gradient of pixel SIF w.r.t inputs, require gradient for input
+                        if GRADIENT_PENALTY:
+                            input_tiles_std.requires_grad_(True)
+
                         # Pass tile through model to obtain fine-resolution SIF predictions
-                        predicted_fine_sifs_std = model(input_tiles_std)  # predicted_fine_sifs_std: (batch size, 1, H, W)
-                        if type(predicted_fine_sifs_std) == tuple:
-                            predicted_fine_sifs_std = predicted_fine_sifs_std[0]
-                        predicted_fine_sifs_std = torch.squeeze(predicted_fine_sifs_std, dim=1)
+                        outputs = model(input_tiles_std)  # predicted_fine_sifs_std: (batch size, output dim, H, W)
+                        if type(outputs) == tuple:
+                            outputs = outputs[0]
+                        predicted_fine_sifs_std = outputs[:, 0, :, :]  # torch.squeeze(predicted_fine_sifs_std, dim=1)
                         predicted_fine_sifs = predicted_fine_sifs_std * sif_std + sif_mean
+
                         # print('Valid', torch.mean(valid_fine_sif_mask.float()))
 
                         # As a regularization technique, randomly choose more pixels to ignore.
@@ -382,6 +440,8 @@ def train_model(model, dataloaders, criterion, optimizer, device, sif_mean, sif_
                         for i in range(valid_fine_sif_mask.shape[0]):
                             if torch.sum(valid_fine_sif_mask[i]) == 0:
                                 valid_fine_sif_mask[i, 0, 0] = True
+                                print("No valid pixels in ", sample['tile_file'][i])
+                                exit(1)
 
                         # For each tile, compute average predicted SIF over all valid pixels
                         predicted_coarse_sifs = sif_utils.masked_average(predicted_fine_sifs, valid_fine_sif_mask, dims_to_average=(1, 2)) # (batch size)
@@ -396,13 +456,30 @@ def train_model(model, dataloaders, criterion, optimizer, device, sif_mean, sif_
 
                         # Compute loss (predicted vs true coarse SIF)
                         coarse_loss = criterion(true_coarse_sifs, predicted_coarse_sifs)
-                        if CROP_TYPE_LOSS:
-                            coarse_loss += 0.0001 * sif_utils.crop_type_loss(predicted_fine_sifs, input_tiles_std, valid_fine_sif_mask)
+                        # if CROP_TYPE_LOSS:
+                        #     coarse_loss += 0.0001 * sif_utils.crop_type_loss(predicted_fine_sifs, input_tiles_std, valid_fine_sif_mask)
+
+                        # Compute reconstruction loss
+                        # print("Reconstructed", outputs[:, 1:, :, :].shape)
+                        # print("Reconstructed targets", reconstruction_target.shape)
+                        # print("Flattened", reconstruction_target.flatten(start_dim=1).shape)
+                        reconstruction_loss = criterion(outputs[:, 1:, :, :].flatten(start_dim=1),
+                                                        reconstruction_target.flatten(start_dim=1))
+                        if RECON_LOSS:
+                            loss = coarse_loss + reconstruction_loss
+                        else:
+                            loss = coarse_loss
+                        
+                        if GRADIENT_PENALTY and phase == 'train':
+                            gradient_penalty = calc_gradient_penalty(model, predicted_fine_sifs, input_tiles_std)
+                            print("Coarse loss", coarse_loss.item(), "--- Gradient penalty", gradient_penalty.item())
+                            loss += gradient_penalty
+
 
                         # Backpropagate coarse loss
                         if phase == 'train' and random.random() < UPDATE_FRACTIONS[dataset_name] and dataset_name in COARSE_SIF_DATASETS[phase]: # and not np.isnan(fine_loss.item()):
                             optimizer.zero_grad()
-                            coarse_loss.backward()
+                            loss.backward()
                             # print('Grad', model.down1.maxpool_conv[1].double_conv[0].weight.grad)
                             optimizer.step()
 
@@ -411,6 +488,7 @@ def train_model(model, dataloaders, criterion, optimizer, device, sif_mean, sif_
                         with torch.set_grad_enabled(False):
                             if dataset_name in COARSE_SIF_DATASETS[phase]:
                                 running_coarse_loss[dataset_name] += coarse_loss.item() * len(true_coarse_sifs)
+                                running_reconstruction_loss[dataset_name] += reconstruction_loss.item() * len(true_coarse_sifs)
                                 num_coarse_datapoints[dataset_name] += len(true_coarse_sifs)
                                 all_true_coarse_sifs[dataset_name].append(true_coarse_sifs.cpu().detach().numpy())
                                 all_predicted_coarse_sifs[dataset_name].append(predicted_coarse_sifs.cpu().detach().numpy())
@@ -428,7 +506,7 @@ def train_model(model, dataloaders, criterion, optimizer, device, sif_mean, sif_
                                 predicted_fine_sifs_filtered = torch.clamp(predicted_fine_sifs_filtered, min=MIN_SIF_CLIP)
                                 fine_loss = criterion(true_fine_sifs_filtered, predicted_fine_sifs_filtered)
 
-                                # # Backpropagate fine loss (SHOULD NOT BE USED)
+                                # # Backpropagate fine loss (SHOULD NOT BE USED EXCEPT FOR FULLY-SUPERVISED TRAINING)
                                 # if phase == 'train': # and not np.isnan(fine_loss.item()):
                                 #     optimizer.zero_grad()
                                 #     fine_loss.backward()
@@ -439,6 +517,25 @@ def train_model(model, dataloaders, criterion, optimizer, device, sif_mean, sif_
                                 all_true_fine_sifs[dataset_name].append(true_fine_sifs_filtered.cpu().detach().numpy())
                                 all_predicted_fine_sifs[dataset_name].append(predicted_fine_sifs_filtered.cpu().detach().numpy())
 
+                            # for i in range(0, 30, 2):
+                            #     plot_dir="/mnt/beegfs/bulk/mirror/jyf6/datasets/exploratory_plots"
+                            #     center_lat = sample['lat'][i].item()
+                            #     center_lon = sample['lon'][i].item()
+                            #     date = sample['date'][i]
+                            #     tile_description = 'lat_' + str(round(center_lat, 4)) + '_lon_' + str(round(center_lon, 4)) + '_' + date
+                            #     title = 'Lon ' + str(round(center_lon, 4)) + ', Lat ' + str(round(center_lat, 4)) + ', ' + date
+                            #     visualization_utils.plot_individual_bands(reconstruction_target[i].cpu().detach().numpy(),
+                            #                           title, center_lon, center_lat, TILE_SIZE_DEGREES, 
+                            #                           plot_file=os.path.join(plot_dir, tile_description + '_recon_target.png'),
+                            #                           crop_type_start_idx=9)
+
+                            #     # Also plot reconstructed input for comparison
+                            #     visualization_utils.plot_individual_bands(outputs[i, 1:].cpu().detach().numpy(),
+                            #                           title, center_lon, center_lat, TILE_SIZE_DEGREES, 
+                            #                           plot_file=os.path.join(plot_dir, tile_description + '_recon.png'),
+                            #                           crop_type_start_idx=9)
+                            # exit(0)
+                                                        
                             # for i in range(0, 30, 2):
                             #     visualization_utils.plot_tile_predictions(input_tiles_std[i].cpu().detach().numpy(),
                             #                                 true_fine_sifs[i].cpu().detach().numpy(),
@@ -498,23 +595,26 @@ def train_model(model, dataloaders, criterion, optimizer, device, sif_mean, sif_
                             # predicted_coarse_sifs_filtered = predicted_coarse_sifs.flatten()[valid_coarse_sif_mask]
 
             # For each dataset, compute loss
-            epoch_coarse_losses = dict()
             for coarse_dataset in COARSE_SIF_DATASETS[phase]:
+                # Record reconstruction loss
+                epoch_reconstruction_loss = running_reconstruction_loss[coarse_dataset] / num_coarse_datapoints[coarse_dataset]
+
+                # Compute and record coarse SIF loss
                 epoch_coarse_nrmse = math.sqrt(running_coarse_loss[coarse_dataset] / num_coarse_datapoints[coarse_dataset]) / sif_mean
-                epoch_coarse_losses[coarse_dataset] = epoch_coarse_nrmse
                 if phase == 'train':
+                    train_reconstruction_losses[coarse_dataset].append(epoch_reconstruction_loss)
                     train_coarse_losses[coarse_dataset].append(epoch_coarse_nrmse)
                 else:
+                    val_reconstruction_losses[coarse_dataset].append(epoch_reconstruction_loss)
                     val_coarse_losses[coarse_dataset].append(epoch_coarse_nrmse)
                 true_coarse = np.concatenate(all_true_coarse_sifs[coarse_dataset])
                 predicted_coarse = np.concatenate(all_predicted_coarse_sifs[coarse_dataset])
                 print('===== ', phase, coarse_dataset, 'Coarse stats ====')
+                print("Reconstruction loss", epoch_reconstruction_loss)
                 sif_utils.print_stats(true_coarse, predicted_coarse, sif_mean)
 
-            epoch_fine_losses = dict()
             for fine_dataset in FINE_SIF_DATASETS[phase]:
                 epoch_fine_nrmse = math.sqrt(running_fine_loss[fine_dataset] / num_fine_datapoints[fine_dataset]) / sif_mean
-                epoch_fine_losses[fine_dataset] = epoch_fine_nrmse
                 if phase == 'train':
                     train_fine_losses[fine_dataset].append(epoch_fine_nrmse)
                 else:
@@ -528,22 +628,31 @@ def train_model(model, dataloaders, criterion, optimizer, device, sif_mean, sif_
 
             # If the model performed better on "MODEL_SELECTION_DATASET" validation set than the
             # best previous model, record losses for this epoch, and save this model
-            if phase == 'val' and epoch_coarse_losses[MODEL_SELECTION_DATASET] < best_val_coarse_loss[MODEL_SELECTION_DATASET]:
-                for coarse_dataset in train_coarse_losses:
-                    best_train_coarse_loss[coarse_dataset] = train_coarse_losses[coarse_dataset][-1]
-                for coarse_dataset in val_coarse_losses:
-                    best_val_coarse_loss[coarse_dataset] = val_coarse_losses[coarse_dataset][-1]
-                for fine_dataset in train_fine_losses:
-                    best_train_fine_loss[fine_dataset] = train_fine_losses[fine_dataset][-1]
-                for fine_dataset in val_fine_losses:
-                    best_val_fine_loss[fine_dataset] = val_fine_losses[fine_dataset][-1]
+            if phase == 'val' and val_coarse_losses[MODEL_SELECTION_DATASET][-1] < val_coarse_loss_at_best_val_coarse[MODEL_SELECTION_DATASET]:
                 best_model_wts = copy.deepcopy(model.state_dict())
                 torch.save(model.state_dict(), MODEL_FILE)
-                # torch.save(model.state_dict(), UNET_MODEL_FILE + "_epoch" + str(epoch))
+                for coarse_dataset in train_coarse_losses:
+                    train_coarse_loss_at_best_val_coarse[coarse_dataset] = train_coarse_losses[coarse_dataset][-1]
+                for coarse_dataset in val_coarse_losses:
+                    val_coarse_loss_at_best_val_coarse[coarse_dataset] = val_coarse_losses[coarse_dataset][-1]
+                for fine_dataset in train_fine_losses:
+                    train_fine_loss_at_best_val_coarse[fine_dataset] = train_fine_losses[fine_dataset][-1]
+                for fine_dataset in val_fine_losses:
+                    val_fine_loss_at_best_val_coarse[fine_dataset] = val_fine_losses[fine_dataset][-1]
+                best_val_coarse_epoch = epoch
 
-            if phase == 'val' and 'CFIS_2016' in epoch_fine_losses and epoch_fine_losses['CFIS_2016'] < absolute_best_val_fine_loss:
-                absolute_best_val_fine_loss = epoch_fine_losses['CFIS_2016']
-                torch.save(model.state_dict(), MODEL_FILE + '_best_val_fine')
+            if phase == 'val' and 'CFIS_2016' in val_fine_losses:
+                if val_fine_losses[MODEL_SELECTION_DATASET][-1] < val_fine_loss_at_best_val_fine[MODEL_SELECTION_DATASET]:
+                    torch.save(model.state_dict(), MODEL_FILE + '_best_val_fine')
+                    for coarse_dataset in train_coarse_losses:
+                        train_coarse_loss_at_best_val_fine[coarse_dataset] = train_coarse_losses[coarse_dataset][-1]
+                    for coarse_dataset in val_coarse_losses:
+                        val_coarse_loss_at_best_val_fine[coarse_dataset] = val_coarse_losses[coarse_dataset][-1]
+                    for fine_dataset in train_fine_losses:
+                        train_fine_loss_at_best_val_fine[fine_dataset] = train_fine_losses[fine_dataset][-1]
+                    for fine_dataset in val_fine_losses:
+                        val_fine_loss_at_best_val_fine[fine_dataset] = val_fine_losses[fine_dataset][-1]
+                    best_val_fine_epoch = epoch
 
             # if phase == 'train' and epoch_coarse_nrmse < best_train_coarse_loss:
             #     best_train_coarse_loss = epoch_coarse_nrmse
@@ -556,18 +665,32 @@ def train_model(model, dataloaders, criterion, optimizer, device, sif_mean, sif_
             epoch_time // 60, epoch_time % 60))
         print()
 
+        # If fine validation loss did not improve for more than "EARLY_STOPPING_PATIENCE" consecutive epochs, stop training.
+        if epoch >= 1 and val_fine_losses[MODEL_SELECTION_DATASET][-1] < val_fine_losses[MODEL_SELECTION_DATASET][-2]:
+            num_epochs_no_improvement = 0
+        else:
+            num_epochs_no_improvement += 1
+            if num_epochs_no_improvement > EARLY_STOPPING_PATIENCE:
+                break
+
 
     time_elapsed = time.time() - since
     print('Training complete in {:.0f}m {:.0f}s'.format(
         time_elapsed // 60, time_elapsed % 60))
-    print('Best train coarse losses:', best_train_coarse_loss)
-    print('Best train fine loss:', best_train_fine_loss)
-    print('Best val coarse loss:', best_val_coarse_loss)
-    print('Best val fine loss:', best_val_fine_loss)
+    print('=================== At best val fine (epoch ' + str(best_val_fine_epoch) + ') ========================')
+    print('train coarse losses:', train_coarse_loss_at_best_val_fine)
+    print('train fine loss:', train_fine_loss_at_best_val_fine)
+    print('val coarse loss:', val_coarse_loss_at_best_val_fine)
+    print('val fine loss:', val_fine_loss_at_best_val_fine)
+    print('=================== At best val coarse (epoch ' + str(best_val_coarse_epoch) + ') ========================')
+    print('train coarse losses:', train_coarse_loss_at_best_val_coarse)
+    print('train fine loss:', train_fine_loss_at_best_val_coarse)
+    print('val coarse loss:', val_coarse_loss_at_best_val_coarse)
+    print('val fine loss:', val_fine_loss_at_best_val_coarse)
 
     # load best model weights
     model.load_state_dict(best_model_wts)
-    return model, train_coarse_losses, val_coarse_losses, train_fine_losses, val_fine_losses
+    return model, train_coarse_losses, val_coarse_losses, train_fine_losses, val_fine_losses, train_reconstruction_losses, val_reconstruction_losses
 
 
 # Check if any CUDA devices are visible. If so, pick a default visible device.
@@ -602,8 +725,9 @@ else:
 # Set up image transforms / augmentations
 standardize_transform = tile_transforms.StandardizeTile(band_means, band_stds) #, min_input=MIN_INPUT, max_input=MAX_INPUT)
 clip_transform = tile_transforms.ClipTile(min_input=MIN_INPUT, max_input=MAX_INPUT)
-color_distortion_transform = tile_transforms.ColorDistortion(continuous_bands=list(range(0, 12)), standard_deviation=NOISE)
-noise_transform = tile_transforms.GaussianNoise(continuous_bands=list(range(0, 9)), standard_deviation=NOISE)
+color_distortion_transform = tile_transforms.ColorDistortion(continuous_bands=list(range(0, 12)), standard_deviation=MULTIPLICATIVE_NOISE)
+noise_transform = tile_transforms.GaussianNoise(continuous_bands=list(range(0, 9)), standard_deviation=MULTIPLICATIVE_NOISE)
+multiplicative_noise_transform = tile_transforms.MultiplicativeGaussianNoise(continuous_bands=list(range(0, 9)), standard_deviation=MULTIPLICATIVE_NOISE)
 flip_and_rotate_transform = tile_transforms.RandomFlipAndRotate()
 jigsaw_transform = tile_transforms.RandomJigsaw()
 resize_transform = tile_transforms.ResizeTile(target_dim=[RESIZE_DIM, RESIZE_DIM])
@@ -615,6 +739,11 @@ transform_list_val = [standardize_transform, clip_transform] #[standardize_trans
 # Apply cutout at beginning, since it is supposed to zero pixels out BEFORE standardizing
 if 'cutout' in AUGMENTATIONS:
     transform_list_train.insert(0, cutout_transform)
+
+# Add multiplicative noise at beginning
+if 'multiplicative_noise' in AUGMENTATIONS:
+    transform_list_train.insert(0, multiplicative_noise_transform)
+
 if 'resize' in AUGMENTATIONS:
     transform_list_train.append(resize_transform)
 if 'flip_and_rotate' in AUGMENTATIONS:
@@ -647,6 +776,8 @@ for dataset_name, dataset_file in DATASET_FILES.items():
         metadata = metadata[(metadata['num_soundings'] >= MIN_OCO2_SOUNDINGS) &
                                         (metadata['missing_reflectance'] <= MAX_OCO2_CLOUD_COVER) &
                                         (metadata['SIF'] >= MIN_SIF_CLIP)]
+
+    metadata = metadata[metadata[ALL_COVER_COLUMNS].sum(axis=1) >= MIN_CDL_COVERAGE]
 
     if '2018' in dataset_name:
         metadata['SIF'] /= 1.52
@@ -735,6 +866,8 @@ if FROM_PRETRAINED:
     PARAM_STRING += ('From pretrained model: ' + os.path.basename(PRETRAINED_MODEL_FILE) + '\n')
 else:
     PARAM_STRING += ("Training from scratch\n")
+if RECON_LOSS:
+    PARAM_STRING += ("Using reconstruction loss!\n")
 PARAM_STRING += ("Model name: " + os.path.basename(MODEL_FILE) + '\n')
 PARAM_STRING += ("Model type: " + MODEL_TYPE + '\n')
 PARAM_STRING += ("Optimizer: " + OPTIMIZER_TYPE + '\n')
@@ -747,7 +880,9 @@ PARAM_STRING += ("Augmentations: " + str(AUGMENTATIONS) + '\n')
 if 'resize' in AUGMENTATIONS:
     PARAM_STRING += ('Resize images to: ' + str(RESIZE_DIM) + '\n')
 if 'gaussian_noise' in AUGMENTATIONS:
-    PARAM_STRING += ("Gaussian noise (std deviation): " + str(NOISE) + '\n')
+    PARAM_STRING += ("Gaussian noise (std deviation): " + str(MULTIPLICATIVE_NOISE) + '\n')
+if 'multiplicative_noise' in AUGMENTATIONS:
+    PARAM_STRING += ("Multiplicative noise: Gaussian (std deviation): " + str(MULTIPLICATIVE_NOISE) + '\n')
 if 'random_crop' in AUGMENTATIONS:
     PARAM_STRING += ("Random crop size: " + str(CROP_DIM) + '\n')
 if 'cutout' in AUGMENTATIONS:
@@ -775,17 +910,17 @@ dataloaders = {x: torch.utils.data.DataLoader(datasets[x], batch_size=BATCH_SIZE
 
 # Initialize model
 if MODEL_TYPE == 'unet_small':
-    unet_model = UNetSmall(n_channels=INPUT_CHANNELS, n_classes=1, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)
+    unet_model = UNetSmall(n_channels=INPUT_CHANNELS, n_classes=OUTPUT_CHANNELS, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)
 elif MODEL_TYPE == 'pixel_nn':
-    unet_model = simple_cnn.PixelNN(input_channels=INPUT_CHANNELS, output_dim=1, min_output=min_output, max_output=max_output).to(device)
+    unet_model = simple_cnn.PixelNN(input_channels=INPUT_CHANNELS, output_dim=OUTPUT_CHANNELS, min_output=min_output, max_output=max_output).to(device)
 elif MODEL_TYPE == 'unet2':
-    unet_model = UNet2(n_channels=INPUT_CHANNELS, n_classes=1, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)
+    unet_model = UNet2(n_channels=INPUT_CHANNELS, n_classes=OUTPUT_CHANNELS, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)
 elif MODEL_TYPE == 'unet2_larger':
-    unet_model = UNet2Larger(n_channels=INPUT_CHANNELS, n_classes=1, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)
+    unet_model = UNet2Larger(n_channels=INPUT_CHANNELS, n_classes=OUTPUT_CHANNELS, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)
 elif MODEL_TYPE == 'unet2_pixel_embedding':
-    unet_model = UNet2PixelEmbedding(n_channels=INPUT_CHANNELS, n_classes=1, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)
+    unet_model = UNet2PixelEmbedding(n_channels=INPUT_CHANNELS, n_classes=OUTPUT_CHANNELS, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)
 elif MODEL_TYPE == 'unet':
-    unet_model = UNet(n_channels=INPUT_CHANNELS, n_classes=1, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)   
+    unet_model = UNet(n_channels=INPUT_CHANNELS, n_classes=OUTPUT_CHANNELS, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)   
 else:
     print('Model type not supported')
     exit(1)
@@ -820,34 +955,40 @@ if FREEZE_PIXEL_ENCODER:
     # unet_model.dimensionality_reduction_2.requires_grad = False
 
 # Train model to predict SIF
-unet_model, train_coarse_losses, val_coarse_losses, train_fine_losses, val_fine_losses = train_model(unet_model, dataloaders, criterion, optimizer, device, sif_mean, sif_std, num_epochs=NUM_EPOCHS)
+unet_model, train_coarse_losses, val_coarse_losses, train_fine_losses, val_fine_losses, train_reconstruction_losses, val_reconstruction_losses = train_model(unet_model, dataloaders, criterion, optimizer, device, sif_mean, sif_std, num_epochs=NUM_EPOCHS)
 torch.save(unet_model.state_dict(), MODEL_FILE)
 
 # Plot loss curves: NRMSE
-epoch_list = range(NUM_EPOCHS)
+epoch_list = range(len(train_coarse_losses['CFIS_2016']))
 plots = []
-print("Coarse Train NRMSE:", train_coarse_losses['CFIS_2016'])
+# print("Coarse Train NRMSE:", train_coarse_losses['CFIS_2016'])
 train_coarse_plot, = plt.plot(epoch_list, train_coarse_losses['CFIS_2016'], color='blue', label='Coarse Train NRMSE (CFIS)')
 plots.append(train_coarse_plot)
+# print("Coarse train recon loss:", train_reconstruction_losses['CFIS_2016'])
+train_recon_plot, = plt.plot(epoch_list, train_reconstruction_losses['CFIS_2016'], color='black', label='Train reconstruction loss')
+plots.append(train_recon_plot)
 if 'OCO2_2016' in COARSE_SIF_DATASETS:
-    print("OCO2 Train NRMSE:", train_coarse_losses['OCO2_2016'])
+    # print("OCO2 Train NRMSE:", train_coarse_losses['OCO2_2016'])
     train_oco2_plot, = plt.plot(epoch_list, train_coarse_losses['OCO2_2016'], color='purple', label='Coarse Train NRMSE (OCO-2)')
     plots.append(train_oco2_plot)
-print("Coarse Val NRMSE:", val_coarse_losses['CFIS_2016'])
+# print("Coarse Val NRMSE:", val_coarse_losses['CFIS_2016'])
 val_coarse_plot, = plt.plot(epoch_list, val_coarse_losses['CFIS_2016'], color='green', label='Coarse Val NRMSE')
 plots.append(val_coarse_plot)
-print("Fine Train NRMSE:", train_fine_losses['CFIS_2016'])
+# print("Coarse val recon loss:", val_reconstruction_losses['CFIS_2016'])
+val_recon_plot, = plt.plot(epoch_list, val_reconstruction_losses['CFIS_2016'], color='gray', label='Val reconstruction loss')
+plots.append(val_recon_plot)
+# print("Fine Train NRMSE:", train_fine_losses['CFIS_2016'])
 train_fine_plot, = plt.plot(epoch_list, train_fine_losses['CFIS_2016'], color='red', label='Fine Train (Interpolated) NRMSE')
 plots.append(train_fine_plot)
-print("Fine Val NRMSE:", val_fine_losses['CFIS_2016'])
+# print("Fine Val NRMSE:", val_fine_losses['CFIS_2016'])
 val_fine_plot, = plt.plot(epoch_list, val_fine_losses['CFIS_2016'], color='orange', label='Fine Val (Interpolated) NRMSE')
 plots.append(val_fine_plot)
-
 
 # Add legend and axis labels
 plt.legend(handles=plots)
 plt.xlabel('Epoch #')
 plt.ylabel('NRMSE')
+plt.ylim(0, 0.4)
 plt.savefig(LOSS_PLOT + '_nrmse.png')
 plt.close()
 

@@ -303,16 +303,19 @@ def masked_average_numpy(array, mask, dims_to_average):
     return np.sum(wanted_values, axis=dims_to_average) / np.sum(mask, axis=dims_to_average)
 
 
-def plot_histogram(column, plot_filename, plot_dir="/mnt/beegfs/bulk/mirror/jyf6/datasets/exploratory_plots", title=None):
+def plot_histogram(column, plot_filename, plot_dir="/mnt/beegfs/bulk/mirror/jyf6/datasets/exploratory_plots", title=None, weights=None):
     column = column.flatten()
     column = column[~np.isnan(column)]
     print(plot_filename)
     # print('Number of datapoints:', len(column))
-    print('Mean:', round(np.mean(column), 4))
-    print('Std:', round(np.std(column), 4))
+    if weights is not None:
+        print('Weighted mean', round(np.average(column, weights=weights), 4))
+    else:
+        print('Mean:', round(np.mean(column), 4))
+        print('Std:', round(np.std(column), 4))
     # print('Max:', round(np.max(column), 4))
     # print('Min:', round(np.min(column), 4))
-    n, bins, patches = plt.hist(column, 40, facecolor='blue', alpha=0.5)
+    n, bins, patches = plt.hist(column, 40, facecolor='blue', alpha=0.5, weights=weights)
     if title is not None:
         plt.title(title)
     plt.savefig(os.path.join(plot_dir, plot_filename))

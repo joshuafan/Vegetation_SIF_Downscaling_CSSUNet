@@ -1,5 +1,5 @@
 """
-Trains a ResNet (with full supervision) to predict the total SIF of a large tile (0.1 x 0.1 degree)
+Trains a ResNet (with full supervision) to predict the total SIF of a small sub-tile.
 """
 
 import copy

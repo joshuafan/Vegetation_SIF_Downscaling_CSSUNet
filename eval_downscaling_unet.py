@@ -26,8 +26,8 @@ np.random.seed(1)
 # Folds
 TRAIN_FOLDS = [0, 1, 2]
 VAL_FOLDS = [3]
-TEST_FOLDS = [0, 1, 2] #[3] # [0, 1, 2]
-TEST_SET = 'train'  #'val' # 'train' # 'val' # 'train'
+TEST_FOLDS = [0, 1, 2] #[0, 1, 2]  # [3] # [0, 1, 2]
+TEST_SET = 'train' #'train'  #'val' # 'train' # 'val' # 'train'
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
 CFIS_DIR = os.path.join(DATA_DIR, "CFIS")
@@ -54,8 +54,11 @@ SCALE_PREDICTIONS_BY = 1 #0.64
 # MODEL_TYPE = "unet2_larger"
 # METHOD = "11d_unet2"
 # MODEL_TYPE = "unet2"
-METHOD = "10d_unet2_7"
+# METHOD = "10d_unet2_9_best_val_fine"
+# MODEL_TYPE = "unet2"
+METHOD = "10d_unet2_lr1e-4_weightdecay1e-4_multiplicative_recon_fractionoutput0.1_best_val_fine" #1e-4"
 MODEL_TYPE = "unet2"
+
 # METHOD = "10d_pixel_nn"
 # MODEL_TYPE = "pixel_nn"
 # METHOD = "2e_unet2"
@@ -70,8 +73,8 @@ PLOT = False
 # CFIS filtering
 MIN_EVAL_CFIS_SOUNDINGS = 30 # 10
 MIN_EVAL_CFIS_SOUNDINGS_EXPERIMENT = [30] # [10, 20, 25, 30, 40, 50] #[1, 5, 10, 20, 30] #[100, 300, 1000, 3000]
-MIN_EVAL_FRACTION_VALID = 0.75
-MIN_EVAL_FRACTION_VALID_EXPERIMENT = [0.75] # [0.1, 0.3, 0.5, 0.7]
+MIN_EVAL_FRACTION_VALID = 0.9
+MIN_EVAL_FRACTION_VALID_EXPERIMENT = [0.9] # [0.1, 0.3, 0.5, 0.7]
 MIN_SIF_CLIP = 0.1
 MAX_SIF_CLIP = None
 MIN_COARSE_FRACTION_VALID_PIXELS = 0.1
@@ -94,12 +97,14 @@ MAX_SIF_PLOT = 1.5
 BANDS = list(range(0, 12)) + [12, 13, 14, 16, 17, 19, 23, 24, 25, 28, 34] + [42]
 # BANDS = list(range(0, 9)) + list(range(12, 27)) + [28] + [42] 
 # BANDS = list(range(0, 43))
+RECONSTRUCTION_BANDS = list(range(0, 9)) + [12, 13, 14, 16, 17, 19, 23, 24, 25, 28, 34]
 INPUT_CHANNELS = len(BANDS)
+OUTPUT_CHANNELS = 1 + len(RECONSTRUCTION_BANDS)
 MISSING_REFLECTANCE_IDX = -1
 REDUCED_CHANNELS = None
 DEGREES_PER_PIXEL = (0.00026949458523585647, 0.00026949458523585647)
 METERS_PER_PIXEL = 30
-RESOLUTIONS = [30] #, 90, 150, 300, 600]
+RESOLUTIONS = [30, 90, 150, 300, 600]
 TILE_PIXELS = 100
 TILE_SIZE_DEGREES = DEGREES_PER_PIXEL[0] * TILE_PIXELS
 PURE_THRESHOLD = 0.7
@@ -107,29 +112,45 @@ MAX_CFIS_CLOUD_COVER = 0.5
 MIN_OCO2_SOUNDINGS = 3
 MAX_OCO2_CLOUD_COVER = 0.5
 
+ALL_COVER_COLUMNS = ['grassland_pasture', 'corn', 'soybean',
+                    'deciduous_forest', 'evergreen_forest', 'developed_open_space',
+                    'woody_wetlands', 'open_water', 'alfalfa',
+                    'developed_low_intensity', 'developed_med_intensity']
+
 COLUMN_NAMES = ['true_sif', 'predicted_sif_linear', 'predicted_sif_mlp', 'predicted_sif_unet',
                     'lon', 'lat', 'source', 'date', 'large_tile_file', 'large_tile_lon', 'large_tile_lat',
                     'ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
                     'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg', 
-                    'grassland_pasture', 'corn', 'soybean', 'shrubland',
-                    'deciduous_forest', 'evergreen_forest', 'spring_wheat', 'developed_open_space',
-                    'other_hay_non_alfalfa', 'winter_wheat', 'herbaceous_wetlands',
-                    'woody_wetlands', 'open_water', 'alfalfa', 'fallow_idle_cropland',
-                    'sorghum', 'developed_low_intensity', 'barren', 'durum_wheat',
-                    'canola', 'sunflower', 'dry_beans', 'developed_med_intensity',
-                    'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
-                    'lentils', 'missing_reflectance', 'num_soundings', 'fraction_valid']
+                    'grassland_pasture', 'corn', 'soybean',
+                    'deciduous_forest', 'evergreen_forest', 'developed_open_space',
+                    'woody_wetlands', 'open_water', 'alfalfa',
+                    'developed_low_intensity', 'developed_med_intensity', 'missing_reflectance',
+                    'num_soundings', 'fraction_valid']
+                    # 'ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
+                    # 'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg', 
+                    # 'grassland_pasture', 'corn', 'soybean', 'shrubland',
+                    # 'deciduous_forest', 'evergreen_forest', 'spring_wheat', 'developed_open_space',
+                    # 'other_hay_non_alfalfa', 'winter_wheat', 'herbaceous_wetlands',
+                    # 'woody_wetlands', 'open_water', 'alfalfa', 'fallow_idle_cropland',
+                    # 'sorghum', 'developed_low_intensity', 'barren', 'durum_wheat',
+                    # 'canola', 'sunflower', 'dry_beans', 'developed_med_intensity',
+                    # 'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
+                    # 'lentils', 'missing_reflectance', 'num_soundings', 'fraction_valid']
 
 INPUT_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
                     'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg', 
-                    'grassland_pasture', 'corn', 'soybean', 'shrubland',
-                    'deciduous_forest', 'evergreen_forest', 'spring_wheat', 'developed_open_space',
-                    'other_hay_non_alfalfa', 'winter_wheat', 'herbaceous_wetlands',
-                    'woody_wetlands', 'open_water', 'alfalfa', 'fallow_idle_cropland',
-                    'sorghum', 'developed_low_intensity', 'barren', 'durum_wheat',
-                    'canola', 'sunflower', 'dry_beans', 'developed_med_intensity',
-                    'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
-                    'lentils', 'missing_reflectance']
+                    'grassland_pasture', 'corn', 'soybean',
+                    'deciduous_forest', 'evergreen_forest', 'developed_open_space',
+                    'woody_wetlands', 'open_water', 'alfalfa',
+                    'developed_low_intensity', 'developed_med_intensity', 'missing_reflectance']
+                    # 'grassland_pasture', 'corn', 'soybean', 'shrubland',
+                    # 'deciduous_forest', 'evergreen_forest', 'spring_wheat', 'developed_open_space',
+                    # 'other_hay_non_alfalfa', 'winter_wheat', 'herbaceous_wetlands',
+                    # 'woody_wetlands', 'open_water', 'alfalfa', 'fallow_idle_cropland',
+                    # 'sorghum', 'developed_low_intensity', 'barren', 'durum_wheat',
+                    # 'canola', 'sunflower', 'dry_beans', 'developed_med_intensity',
+                    # 'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
+                    # 'lentils', 'missing_reflectance']
 OUTPUT_COLUMN = ['SIF']
 COLUMNS_TO_STANDARDIZE = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
                     'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg']
@@ -146,6 +167,7 @@ Quickly computes true vs predicted loss of U-Net on fine CFIS dataset
 """
 def eval_unet_fast(model, dataloader, criterion, device, sif_mean, sif_std, resolution_meters, min_eval_cfis_soundings, min_eval_fraction_valid):
     fine_pixels_per_eval = int(resolution_meters / METERS_PER_PIXEL)
+    print('Fine pixels per eval', fine_pixels_per_eval)
 
     running_coarse_loss = 0
     running_eval_loss = 0
@@ -174,10 +196,10 @@ def eval_unet_fast(model, dataloader, criterion, device, sif_mean, sif_std, reso
             fine_soundings = sample['fine_soundings'].to(device)
 
             # Predict fine-resolution SIF using model
-            predicted_fine_sifs_std = model(input_tiles_std)  # predicted_fine_sifs_std: (batch size, 1, H, W)
-            if type(predicted_fine_sifs_std) == tuple:
-                predicted_fine_sifs_std = predicted_fine_sifs_std[0]
-            predicted_fine_sifs_std = torch.squeeze(predicted_fine_sifs_std, dim=1)
+            outputs = model(input_tiles_std)  # predicted_fine_sifs_std: (batch size, 1, H, W)
+            if type(outputs) == tuple:
+                outputs = outputs[0]
+            predicted_fine_sifs_std = outputs[:, 0, :, :] # torch.squeeze(predicted_fine_sifs_std, dim=1)
             predicted_fine_sifs = predicted_fine_sifs_std * sif_std + sif_mean
             predicted_fine_sifs *= SCALE_PREDICTIONS_BY
 
@@ -192,7 +214,7 @@ def eval_unet_fast(model, dataloader, criterion, device, sif_mean, sif_std, reso
             true_eval_sifs, eval_fraction_valid, eval_soundings = sif_utils.downsample_sif(true_fine_sifs, valid_fine_sif_mask, fine_soundings, fine_pixels_per_eval)
 
             # Filter noisy coarse tiles
-            non_noisy_mask = (eval_soundings >= min_eval_cfis_soundings) & (true_eval_sifs >= MIN_SIF_CLIP) & (eval_fraction_valid >= min_eval_fraction_valid)
+            non_noisy_mask = (eval_soundings >= min_eval_cfis_soundings) & (true_eval_sifs >= MIN_SIF_CLIP) & (eval_fraction_valid >= min_eval_fraction_valid - 1e-5)
             non_noisy_mask_flat = non_noisy_mask.flatten()
             true_eval_sifs_filtered = true_eval_sifs.flatten()[non_noisy_mask_flat]
             predicted_eval_sifs_filtered = predicted_eval_sifs.flatten()[non_noisy_mask_flat]
@@ -254,11 +276,10 @@ def compare_unet_to_others(model, dataloader, device, sif_mean, sif_std, resolut
             fine_soundings = sample['fine_soundings'].to(device)
 
             # Predict fine-resolution SIF using model
-            # Predict fine-resolution SIF using model
-            predicted_fine_sifs_std = model(input_tiles_std[:, BANDS, :, :])  # predicted_fine_sifs_std: (batch size, 1, H, W)
-            if type(predicted_fine_sifs_std) == tuple:
-                predicted_fine_sifs_std = predicted_fine_sifs_std[0]
-            predicted_fine_sifs_std = torch.squeeze(predicted_fine_sifs_std, dim=1)
+            outputs = model(input_tiles_std[:, BANDS, :, :])  # predicted_fine_sifs_std: (batch size, 1, H, W)
+            if type(outputs) == tuple:
+                outputs = outputs[0]
+            predicted_fine_sifs_std = outputs[:, 0, :, :] # torch.squeeze(predicted_fine_sifs_std, dim=1)
             predicted_fine_sifs = predicted_fine_sifs_std * sif_std + sif_mean
             predicted_fine_sifs = predicted_fine_sifs * SCALE_PREDICTIONS_BY
 
@@ -375,14 +396,17 @@ def compare_unet_to_others(model, dataloader, device, sif_mean, sif_std, resolut
                     # assert abs(true_sif - true_fine_sifs_tile[height_idx, width_idx]) < 1e-6
                     # assert abs(linear_predicted_sif - predicted_fine_sifs_linear[height_idx, width_idx]) < 1e-6
                     # assert abs(mlp_predicted_sif - predicted_fine_sifs_mlp[height_idx, width_idx]) < 1e-6
-                    result_row = [true_sif, linear_predicted_sif, mlp_predicted_sif, unet_predicted_sif,
-                                row['lon'], row['lat'], 'CFIS', row['date'],
-                                large_tile_file, large_tile_lon, large_tile_lat] + eval_averages.flatten().tolist() + \
-                                [eval_soundings[i, height_idx, width_idx].item(), eval_fraction_valid[i, height_idx, width_idx].item()]
-                    eval_results.append(result_row)
+
+                    # Only record the actual result if there are enough soundings
+                    if row['num_soundings'] >= min_eval_cfis_soundings:
+                        result_row = [true_sif, linear_predicted_sif, mlp_predicted_sif, unet_predicted_sif,
+                                    row['lon'], row['lat'], 'CFIS', row['date'],
+                                    large_tile_file, large_tile_lon, large_tile_lat] + eval_averages.flatten().tolist() + \
+                                    [eval_soundings[i, height_idx, width_idx].item(), eval_fraction_valid[i, height_idx, width_idx].item()]
+                        eval_results.append(result_row)
 
                 # Plot selected tiles
-                if plot and sample['fraction_valid'][i] > 0.7:
+                if plot and sample['fraction_valid'][i] > 0.5:
                     print('Plotting')
                     # Plot example tile
                     true_eval_sifs_tile[valid_eval_sif_mask_tile == 0] = 0
@@ -395,7 +419,7 @@ def compare_unet_to_others(model, dataloader, device, sif_mean, sif_std, resolut
                     prediction_methods = ['Linear', 'ANN', 'U-Net (CFIS)']
                     average_sifs = []
                     tile_description = 'lat_' + str(round(large_tile_lat, 4)) + '_lon_' + str(round(large_tile_lon, 4)) + '_' \
-                                        + date + '_' + str(resolution_meters) + 'm_soundings' + str(min_eval_cfis_soundings) + '_fractionvalid' + str(MIN_EVAL_FRACTION_VALID)
+                                        + date + '_' + str(resolution_meters) + 'm_soundings' + str(min_eval_cfis_soundings) + '_fractionvalid' + str(MIN_EVAL_FRACTION_VALID) + '_best_fine'
 
                     visualization_utils.plot_tile_predictions(input_tiles_std[i].cpu().detach().numpy(),
                                                 tile_description,
@@ -456,6 +480,8 @@ def main():
     cfis_coarse_metadata = cfis_coarse_metadata[(cfis_coarse_metadata['fraction_valid'] >= MIN_COARSE_FRACTION_VALID_PIXELS) &
                                         (cfis_coarse_metadata['SIF'] >= MIN_SIF_CLIP) &
                                         (cfis_coarse_metadata['missing_reflectance'] <= MAX_CFIS_CLOUD_COVER)]
+    cfis_coarse_metadata = cfis_coarse_metadata[cfis_coarse_metadata[ALL_COVER_COLUMNS].sum(axis=1) >= 0.5]
+    print('After filtering - CFIS coarse', len(cfis_coarse_metadata))
 
     # Iterate through resolutions
     for RESOLUTION_METERS in RESOLUTIONS:
@@ -466,9 +492,12 @@ def main():
         # Read fine metadata at particular resolution
         cfis_eval_metadata = pd.read_csv(CFIS_EVAL_METADATA_FILE)
         cfis_eval_metadata = cfis_eval_metadata[(cfis_eval_metadata['SIF'] >= MIN_SIF_CLIP) &
-                                                # (cfis_eval_metadata['num_soundings'] >= MIN_EVAL_CFIS_SOUNDINGS) &
-                                                (cfis_eval_metadata['fraction_valid'] >= MIN_EVAL_FRACTION_VALID) &
+                                                # (cfis_eval_metadata['num_soundings'] >= MIN_EVAL_CFIS_SOUNDINGS) &  # Remove this condition for plotting purposes 
+                                                (cfis_eval_metadata['fraction_valid'] >= MIN_EVAL_FRACTION_VALID - 1e-5) &
                                                 (cfis_eval_metadata['tile_file'].isin(set(cfis_coarse_metadata['tile_file'])))]
+        # cfis_eval_metadata = cfis_eval_metadata[cfis_eval_metadata[ALL_COVER_COLUMNS].sum(axis=1) >= 0.5]
+        if not PLOT:
+            cfis_eval_metadata = cfis_eval_metadata[(cfis_eval_metadata['num_soundings'] >= MIN_EVAL_CFIS_SOUNDINGS)]  # If not plotting, just remove the pixels with few soundings
 
         # Read dataset splits
         coarse_train_set = cfis_coarse_metadata[(cfis_coarse_metadata['fold'].isin(TRAIN_FOLDS)) &
@@ -477,14 +506,18 @@ def main():
                                                 (cfis_coarse_metadata['date'].isin(TEST_DATES))].copy()
         eval_test_set = cfis_eval_metadata[(cfis_eval_metadata['fold'].isin(TEST_FOLDS)) &
                                                 (cfis_eval_metadata['date'].isin(TEST_DATES))].copy()
+        print('Eval metadata', len(eval_test_set))
 
         # Read OCO2 metadata
         oco2_metadata = pd.read_csv(OCO2_METADATA_FILE)
         oco2_metadata = oco2_metadata[(oco2_metadata['num_soundings'] >= MIN_OCO2_SOUNDINGS) &
                                         (oco2_metadata['missing_reflectance'] <= MAX_OCO2_CLOUD_COVER) &
                                         (oco2_metadata['SIF'] >= MIN_SIF_CLIP)]
+        oco2_metadata = oco2_metadata[oco2_metadata[ALL_COVER_COLUMNS].sum(axis=1) >= 0.5]
+
         oco2_train_set = oco2_metadata[(oco2_metadata['fold'].isin(TRAIN_FOLDS)) &
                                         (oco2_metadata['date'].isin(TRAIN_DATES))].copy()
+
         train_set = pd.concat([oco2_train_set, coarse_train_set])
 
         # # Read coarse/fine pixel averages
@@ -545,17 +578,17 @@ def main():
 
             # Initialize model
             if MODEL_TYPE == 'unet_small':
-                model = UNetSmall(n_channels=INPUT_CHANNELS, n_classes=1, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)
+                model = UNetSmall(n_channels=INPUT_CHANNELS, n_classes=OUTPUT_CHANNELS, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)
             elif MODEL_TYPE == 'pixel_nn':
-                model = simple_cnn.PixelNN(input_channels=INPUT_CHANNELS, output_dim=1, min_output=min_output, max_output=max_output).to(device)
+                model = simple_cnn.PixelNN(input_channels=INPUT_CHANNELS, output_dim=OUTPUT_CHANNELS, min_output=min_output, max_output=max_output).to(device)
             elif MODEL_TYPE == 'unet2':
-                model = UNet2(n_channels=INPUT_CHANNELS, n_classes=1, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)
+                model = UNet2(n_channels=INPUT_CHANNELS, n_classes=OUTPUT_CHANNELS, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)
             elif MODEL_TYPE == 'unet2_larger':
-                model = UNet2Larger(n_channels=INPUT_CHANNELS, n_classes=1, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)
+                model = UNet2Larger(n_channels=INPUT_CHANNELS, n_classes=OUTPUT_CHANNELS, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)
             elif MODEL_TYPE == 'unet2_pixel_embedding':
-                model = UNet2PixelEmbedding(n_channels=INPUT_CHANNELS, n_classes=1, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)
+                model = UNet2PixelEmbedding(n_channels=INPUT_CHANNELS, n_classes=OUTPUT_CHANNELS, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)
             elif MODEL_TYPE == 'unet':
-                model = UNet(n_channels=INPUT_CHANNELS, n_classes=1, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)   
+                model = UNet(n_channels=INPUT_CHANNELS, n_classes=OUTPUT_CHANNELS, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)   
             else:
                 print('Model type not supported')
                 exit(1)
