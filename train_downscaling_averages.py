@@ -23,21 +23,18 @@ from sklearn.tree import DecisionTreeRegressor
 from sif_utils import plot_histogram, print_stats
 
 # Set random seed for data shuffling
-RANDOM_STATE = 1
+RANDOM_STATE = 0
 np.random.seed(RANDOM_STATE)
 random.seed(RANDOM_STATE)
 
 # Random seeds for model training
-TRAIN_RANDOM_STATES = [1, 2, 3]
+TRAIN_RANDOM_STATES = [0, 1, 2]
 
 # Folds
 TRAIN_FOLDS = [0, 1, 2]
 VAL_FOLDS = [3]
 TEST_FOLDS = [4]
 
-# TRAIN_FOLDS = [0, 1, 2]
-# VAL_FOLDS = [3] #[3]
-# TEST_FOLDS = [4] #[4]
 
 # Directories
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
@@ -62,8 +59,9 @@ BAND_STATISTICS_FILE = os.path.join(CFIS_DIR, 'cfis_band_statistics_train.csv')
 
 MIN_COARSE_FRACTION_VALID_PIXELS = [0.1]
 MIN_FINE_CFIS_SOUNDINGS = [30] #[30] #[1, 5, 10, 20, 30] # # 100, 250] #[100, 300, 1000, 3000]
-MIN_FINE_FRACTION_VALID_PIXELS = [0.9] #[0.1, 0.3, 0.5, 0.7] # [0.5] #[0.5]
-RESOLUTION_METERS = [30]  #, 90, 150, 300, 600]
+eps = 1e-5
+MIN_FINE_FRACTION_VALID_PIXELS = [0.9-eps] #[0.1, 0.3, 0.5, 0.7] # [0.5] #[0.5]
+RESOLUTION_METERS = [30, 90, 150, 300, 600]
 
 # Dates/sources
 DATES = ["2016-06-15", "2016-08-01"]
@@ -72,8 +70,8 @@ TEST_DATES = ["2016-06-15", "2016-08-01"]
 # METHOD = "9a_Ridge_Regression_cfis" #_5soundings"
 # METHOD = "9b_Gradient_Boosting_Regressor_cfis" #_5soundings"
 # METHOD = "9c_MLP_cfis" #_10soundings"
-# METHOD = "10a_Ridge_Regression_both"
-METHOD = "10b_Gradient_Boosting_Regressor_both"
+METHOD = "10a_Ridge_Regression_both"
+# METHOD = "10b_Gradient_Boosting_Regressor_both"
 # METHOD = "10c_MLP_both"
 # METHOD = "11a_Ridge_Regression_oco2"
 # METHOD = "11b_Gradient_Boosting_Regressor_oco2"
@@ -151,8 +149,8 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
         # Filter OCO2 tiles
         oco2_metadata = pd.read_csv(OCO2_METADATA_FILE)
         oco2_metadata = oco2_metadata[(oco2_metadata['num_soundings'] >= MIN_OCO2_SOUNDINGS) &
-                                        (oco2_metadata['missing_reflectance'] <= MAX_OCO2_CLOUD_COVER) &
-                                        (oco2_metadata['SIF'] >= MIN_SIF_CLIP)]
+                                      (oco2_metadata['missing_reflectance'] <= MAX_OCO2_CLOUD_COVER) &
+                                      (oco2_metadata['SIF'] >= MIN_SIF_CLIP)]
         print('Before filtering - OCO2', len(oco2_metadata))
         oco2_metadata = oco2_metadata[oco2_metadata[ALL_COVER_COLUMNS].sum(axis=1) >= 0.5]
         print('After filtering - OCO2', len(oco2_metadata))
@@ -172,12 +170,12 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
         cfis_fine_metadata = cfis_fine_metadata[(cfis_fine_metadata['SIF'] >= MIN_SIF_CLIP) &
                                         (cfis_fine_metadata['tile_file'].isin(set(cfis_coarse_metadata['tile_file'])))]
         cfis_fine_metadata = cfis_fine_metadata[(cfis_fine_metadata['num_soundings'] >= min(MIN_FINE_CFIS_SOUNDINGS)) &
-                                                (cfis_fine_metadata['fraction_valid'] >= min(MIN_FINE_FRACTION_VALID_PIXELS) - 1e-5)]  # Avoid roundoff errors
+                                                (cfis_fine_metadata['fraction_valid'] >= min(MIN_FINE_FRACTION_VALID_PIXELS))]  # Avoid roundoff errors
 
-        # Compute NDVI
-        oco2_metadata["NDVI"] = (oco2_metadata["ref_5"] - oco2_metadata["ref_4"]) / (oco2_metadata["ref_5"] + oco2_metadata["ref_4"])
-        cfis_coarse_metadata["NDVI"] = (cfis_coarse_metadata["ref_5"] - cfis_coarse_metadata["ref_4"]) / (cfis_coarse_metadata["ref_5"] + cfis_coarse_metadata["ref_4"])
-        cfis_fine_metadata["NDVI"] = (cfis_fine_metadata["ref_5"] - cfis_fine_metadata["ref_4"]) / (cfis_fine_metadata["ref_5"] + cfis_fine_metadata["ref_4"])
+        # # Compute NDVI
+        # oco2_metadata["NDVI"] = (oco2_metadata["ref_5"] - oco2_metadata["ref_4"]) / (oco2_metadata["ref_5"] + oco2_metadata["ref_4"])
+        # cfis_coarse_metadata["NDVI"] = (cfis_coarse_metadata["ref_5"] - cfis_coarse_metadata["ref_4"]) / (cfis_coarse_metadata["ref_5"] + cfis_coarse_metadata["ref_4"])
+        # cfis_fine_metadata["NDVI"] = (cfis_fine_metadata["ref_5"] - cfis_fine_metadata["ref_4"]) / (cfis_fine_metadata["ref_5"] + cfis_fine_metadata["ref_4"])
 
         # Read dataset splits
         oco2_train_set = oco2_metadata[(oco2_metadata['fold'].isin(TRAIN_FOLDS)) &
@@ -342,16 +340,16 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
         # print('Average SIF (OCO2, test)', oco2_test_set['SIF'].mean())
         # print('Average SIf from band statistics file', sif_mean)
 
-        # Inject noise
-        train_set = pd.concat([train_set] * 5)
-        train_set = train_set.reset_index(drop=True)
-        for idx in range(len(train_set)):
-            # print("Initial bands")
-            # print(train_set.loc[idx, REFLECTANCE_BANDS])
-            noise = 1 + np.random.normal(loc=0, scale=STANDARD_DEVIATION)
-            train_set.loc[idx, REFLECTANCE_BANDS] = train_set.loc[idx, REFLECTANCE_BANDS] * noise
-            # print("After noise", noise)
-            # print(train_set.loc[idx, REFLECTANCE_BANDS])
+        # # Inject noise
+        # train_set = pd.concat([train_set] * 5)
+        # train_set = train_set.reset_index(drop=True)
+        # for idx in range(len(train_set)):
+        #     # print("Initial bands")
+        #     # print(train_set.loc[idx, REFLECTANCE_BANDS])
+        #     noise = 1 + np.random.normal(loc=0, scale=STANDARD_DEVIATION)
+        #     train_set.loc[idx, REFLECTANCE_BANDS] = train_set.loc[idx, REFLECTANCE_BANDS] * noise
+        #     # print("After noise", noise)
+        #     # print(train_set.loc[idx, REFLECTANCE_BANDS])
 
         # Standardize data
         for idx, column in enumerate(COLUMNS_TO_STANDARDIZE):
@@ -461,6 +459,8 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
                 # Record performances for this setting
                 all_r2 = {'all_coarse_val': [], 'all_fine_train': [], 'all_fine_val': [], 'all_fine_test': [], 'grassland_pasture': [], 'corn': [], 'soybean': [], 'deciduous_forest': []}
                 all_nrmse = {'all_coarse_val': [], 'all_fine_train': [], 'all_fine_val': [], 'all_fine_test': [], 'grassland_pasture': [], 'corn': [], 'soybean': [], 'deciduous_forest': []}
+                all_corr = {'all_coarse_val': [], 'all_fine_train': [], 'all_fine_val': [], 'all_fine_test': [], 'grassland_pasture': [], 'corn': [], 'soybean': [], 'deciduous_forest': []}
+
 
                 print('========================================= FILTER ======================================================')
                 print('*** Resolution', resolution)
@@ -488,17 +488,18 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
                         print_stats(Y_train, predictions_train, sif_mean, fit_intercept=False)
 
                         print('============== Coarse val set stats =====================')
-                        coarse_val_r2, coarse_val_nrmse = print_stats(Y_coarse_val, predictions_coarse_val, sif_mean, ax=plt.gca(), fit_intercept=False)
+                        coarse_val_r2, coarse_val_nrmse, coarse_val_corr = print_stats(Y_coarse_val, predictions_coarse_val, sif_mean, ax=plt.gca(), fit_intercept=False)
                         plt.title('Coarse val set: true vs predicted SIF (' + METHOD + ')')
                         plt.xlim(left=MIN_SIF_PLOT, right=MAX_SIF_PLOT)
                         plt.ylim(bottom=MIN_SIF_PLOT, top=MAX_SIF_PLOT)
                         plt.savefig(CFIS_TRUE_VS_PREDICTED_PLOT + '_coarsefractionvalid' + str(min_coarse_fraction_valid) + '_coarse_val.png')
                         plt.close()
                     else:
-                        coarse_val_r2, coarse_val_nrmse = print_stats(Y_coarse_val, predictions_coarse_val, sif_mean,
+                        coarse_val_r2, coarse_val_nrmse, coarse_val_corr = print_stats(Y_coarse_val, predictions_coarse_val, sif_mean,
                                                                       ax=None, fit_intercept=False, print_report=False)
                     all_r2['all_coarse_val'].append(coarse_val_r2)
                     all_nrmse['all_coarse_val'].append(coarse_val_nrmse)
+                    all_corr['all_coarse_val'].append(coarse_val_corr)
 
                     PLOT_PREFIX = CFIS_TRUE_VS_PREDICTED_PLOT + '_res' + str(resolution) + '_coarsefractionvalid' + str(min_coarse_fraction_valid) + '_finesoundings' + str(min_fine_cfis_soundings) + '_finefractionvalid' + str(min_fraction_valid_pixels)
 
@@ -531,7 +532,7 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
 
                     if plot_results:
                         print('============== Fine train set stats =====================')
-                        fine_train_r2, fine_train_nrmse = print_stats(Y_fine_train_filtered, predictions_fine_train_filtered, sif_mean, ax=plt.gca(), fit_intercept=False)
+                        fine_train_r2, fine_train_nrmse, fine_train_corr = print_stats(Y_fine_train_filtered, predictions_fine_train_filtered, sif_mean, ax=plt.gca(), fit_intercept=False)
                         plt.title('Fine train set: true vs predicted SIF (' + METHOD + ')')
                         plt.xlim(left=MIN_SIF_PLOT, right=MAX_SIF_PLOT)
                         plt.ylim(bottom=MIN_SIF_PLOT, top=MAX_SIF_PLOT)
@@ -539,7 +540,7 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
                         plt.close()
 
                         print('============== Fine val set stats =====================')
-                        fine_val_r2, fine_val_nrmse = print_stats(Y_fine_val_filtered, predictions_fine_val_filtered, sif_mean, ax=plt.gca(), fit_intercept=False)
+                        fine_val_r2, fine_val_nrmse, fine_val_corr = print_stats(Y_fine_val_filtered, predictions_fine_val_filtered, sif_mean, ax=plt.gca(), fit_intercept=False)
                         plt.title('Fine val set: true vs predicted SIF (' + METHOD + ')')
                         plt.xlim(left=MIN_SIF_PLOT, right=MAX_SIF_PLOT)
                         plt.ylim(bottom=MIN_SIF_PLOT, top=MAX_SIF_PLOT)
@@ -547,26 +548,29 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
                         plt.close()
 
                         print('============== Fine test set stats =====================')
-                        fine_test_r2, fine_test_nrmse = print_stats(Y_fine_test_filtered, predictions_fine_test_filtered, sif_mean, ax=plt.gca(), fit_intercept=False)
+                        fine_test_r2, fine_test_nrmse, fine_test_corr = print_stats(Y_fine_test_filtered, predictions_fine_test_filtered, sif_mean, ax=plt.gca(), fit_intercept=False)
                         plt.title('Fine test set: true vs predicted SIF (' + METHOD + ')')
                         plt.xlim(left=MIN_SIF_PLOT, right=MAX_SIF_PLOT)
                         plt.ylim(bottom=MIN_SIF_PLOT, top=MAX_SIF_PLOT)
                         plt.savefig(PLOT_PREFIX + '_fine_test.png')
                         plt.close()
                     else:
-                        fine_train_r2, fine_train_nrmse = print_stats(Y_fine_train_filtered, predictions_fine_train_filtered, sif_mean,
-                                                                      ax=None, fit_intercept=False, print_report=False)
-                        fine_val_r2, fine_val_nrmse = print_stats(Y_fine_val_filtered, predictions_fine_val_filtered, sif_mean,
-                                                                      ax=None, fit_intercept=False, print_report=False)
-                        fine_test_r2, fine_test_nrmse = print_stats(Y_fine_test_filtered, predictions_fine_test_filtered, sif_mean,
-                                                                    ax=None, fit_intercept=False, print_report=False)
+                        fine_train_r2, fine_train_nrmse, fine_train_corr = print_stats(Y_fine_train_filtered, predictions_fine_train_filtered, sif_mean,
+                                                                                       ax=None, fit_intercept=False, print_report=False)
+                        fine_val_r2, fine_val_nrmse, fine_val_corr = print_stats(Y_fine_val_filtered, predictions_fine_val_filtered, sif_mean,
+                                                                                 ax=None, fit_intercept=False, print_report=False)
+                        fine_test_r2, fine_test_nrmse, fine_test_corr = print_stats(Y_fine_test_filtered, predictions_fine_test_filtered, sif_mean,
+                                                                                    ax=None, fit_intercept=False, print_report=False)
 
                     all_r2['all_fine_train'].append(fine_train_r2)
                     all_nrmse['all_fine_train'].append(fine_train_nrmse)
+                    all_corr['all_fine_train'].append(fine_train_corr)
                     all_r2['all_fine_val'].append(fine_val_r2)
                     all_nrmse['all_fine_val'].append(fine_val_nrmse)
+                    all_corr['all_fine_val'].append(fine_val_corr)
                     all_r2['all_fine_test'].append(fine_test_r2)
                     all_nrmse['all_fine_test'].append(fine_test_nrmse)
+                    all_corr['all_fine_test'].append(fine_test_corr)
 
                     # Plot true vs. predicted for each crop on CFIS fine (for each crop)
                     if plot_results:
@@ -579,14 +583,15 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
                             if plot_results:
                                 print('======================= (CFIS fine) CROP: ', crop_type, '==============================')
                                 ax = axeslist.ravel()[idx]
-                                crop_r2, crop_nrmse = print_stats(true, predicted, sif_mean, ax=ax, fit_intercept=False)
+                                crop_r2, crop_nrmse, crop_corr = print_stats(true, predicted, sif_mean, ax=ax, fit_intercept=False)
                                 ax.set_xlim(left=MIN_SIF_PLOT, right=MAX_SIF_PLOT)
                                 ax.set_ylim(bottom=MIN_SIF_PLOT, top=MAX_SIF_PLOT)
                                 ax.set_title(crop_type)
                             else:
-                                crop_r2, crop_nrmse = print_stats(true, predicted, sif_mean, ax=None, fit_intercept=False, print_report=False)
+                                crop_r2, crop_nrmse, crop_corr = print_stats(true, predicted, sif_mean, ax=None, fit_intercept=False, print_report=False)
                             all_r2[crop_type].append(crop_r2)
                             all_nrmse[crop_type].append(crop_nrmse)
+                            all_corr[crop_type].append(crop_corr)
                         
                             # Fit linear model on just this crop, to see how strong the relationship is
                             # X_train_crop = X_train.loc[train_set[crop_type] > PURE_THRESHOLD]
@@ -704,8 +709,8 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
                 PARAM_STRING = ''
                 PARAM_STRING += '================ RESULTS =================\n'
                 PARAM_STRING += 'R2 means: ' + json.dumps(r2_mean) + '\n'
-                PARAM_STRING += 'NRMSE means: ' + json.dumps(nrmse_mean) + '\n'
                 PARAM_STRING += 'R2 stds: ' + json.dumps(r2_std) + '\n'
+                PARAM_STRING += 'NRMSE means: ' + json.dumps(nrmse_mean) + '\n'
                 PARAM_STRING += 'NRMSE stds: ' + json.dumps(nrmse_std) + '\n'
                 results_dir = os.path.join('results', METHOD)
                 if not os.path.exists(results_dir):

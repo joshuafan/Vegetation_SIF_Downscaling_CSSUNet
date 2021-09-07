@@ -19,7 +19,7 @@ class DoubleConv(nn.Module):
             nn.ReLU(inplace=True),
 
             # ATTENTION!!! Kernel size changed to 1
-            nn.Conv2d(mid_channels, out_channels, kernel_size=1, padding=1),
+            nn.Conv2d(mid_channels, out_channels, kernel_size=1, padding=0),
             # nn.Dropout2d(),
             # nn.BatchNorm2d(out_channels), # nn.InstanceNorm2d(out_channels),
             nn.ReLU(inplace=True)

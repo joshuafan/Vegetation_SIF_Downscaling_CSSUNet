@@ -4,6 +4,8 @@ import matplotlib
 import matplotlib.pyplot as plt
 import os
 import sif_utils
+import tile_transforms
+import torchvision.transforms as transforms
 
 COVERS_TO_MASK = [176, 1, 5, 152, 141, 142, 23, 121, 37, 24, 195, 190, 111, 36, 61, 4, 122, 131, 22, 31, 6, 42, 123, 29, 41, 28, 143, 53, 21, 52]  # [176, 152, 1, 5, 141, 142, 23, 121, 37, 190, 195, 111, 36, 24, 61, 0]
 
@@ -209,16 +211,17 @@ def plot_rgb_bands(tile, title, center_lon, center_lat, tile_size_degrees, ax,
     rgb_tile = (array[:, :, rgb_bands] + 2) / 4
     ax.imshow(rgb_tile)
     add_grid_lines(ax, center_lon, center_lat, tile.shape[2], tile.shape[1], tile_size_degrees, num_grid_squares, decimal_places)
-    ax.set_title('RGB bands: ' + title)
+    ax.set_title('RGB bands' + title, fontsize=24)
 
 
 def add_grid_lines(ax, center_lon, center_lat, tile_width, tile_height, tile_size_degrees, num_grid_squares, decimal_places):
     eps = tile_size_degrees / 2
     num_ticks = num_grid_squares + 1
+    # ax.axis('off')
     ax.set_xticks(np.linspace(-0.5, tile_width-0.5, num_ticks))
     ax.set_yticks(np.linspace(-0.5, tile_height-0.5, num_ticks))
-    ax.set_xticklabels(np.round(np.linspace(center_lon-eps, center_lon+eps, num_ticks), decimal_places))
-    ax.set_yticklabels(np.round(np.linspace(center_lat+eps, center_lat-eps, num_ticks), decimal_places))
+    # ax.set_xticklabels(np.round(np.linspace(center_lon-eps, center_lon+eps, num_ticks), decimal_places), fontsize=12)
+    # ax.set_yticklabels(np.round(np.linspace(center_lat+eps, center_lat-eps, num_ticks), decimal_places), fontsize=12)
     ax.grid(color='blue', linestyle='-', linewidth=2)
 
 
@@ -306,6 +309,14 @@ def plot_tile_predictions(tile, tile_description, true_sif_tile, predicted_sif_t
                           cdl_bands=range(12, 42),
                           plot_dir="/mnt/beegfs/bulk/mirror/jyf6/datasets/exploratory_plots"): 
 
+    # Plot an augmented version of the tile
+    flip_and_rotate_transform = tile_transforms.RandomFlipAndRotate()
+    jigsaw_transform = tile_transforms.RandomJigsaw()
+    multiplicative_noise_transform = tile_transforms.MultiplicativeGaussianNoise(continuous_bands=list(range(0, 9)), standard_deviation=0.2)
+    # transform_list_train = [flip_and_rotate_transform] #, jigsaw_transform, multiplicative_noise_transform]
+    # train_transform = transforms.Compose(transform_list_train)
+    augmented_tile =  None  #multiplicative_noise_transform(flip_and_rotate_transform(tile))
+
     # Get indices of non-noisy pixels
     non_noisy_indices = np.argwhere(non_noisy_mask)
     # print('Non-noisy mask', non_noisy_mask[0, :])
@@ -329,14 +340,15 @@ def plot_tile_predictions(tile, tile_description, true_sif_tile, predicted_sif_t
     # Set up subplots
     num_cols = 1 + len(predicted_sif_tiles)
     right_idx = 1 + len(predicted_sif_tiles)  # Index of soundings tile if it exists, otherwise right edge (exclusive) of SIF plots
-    if soundings_tile is not None:
+    if soundings_tile is not None or augmented_tile is not None:
         num_cols += 1
-    
-    fig, axeslist = plt.subplots(ncols=num_cols, nrows=2, figsize=(12*num_cols, 20))
+
+    fig, axeslist = plt.subplots(ncols=num_cols, nrows=2, figsize=(10*num_cols, 16))
+    fig.suptitle(title, fontsize=30)
 
     # Plot the RGB bands
     ax = axeslist[0, 0]
-    plot_rgb_bands(tile, title, center_lon, center_lat, tile_size_degrees, ax,
+    plot_rgb_bands(tile, "", center_lon, center_lat, tile_size_degrees, ax,
                    rgb_bands=rgb_bands, num_grid_squares=num_grid_squares,
                    decimal_places=decimal_places)
 
@@ -348,12 +360,13 @@ def plot_tile_predictions(tile, tile_description, true_sif_tile, predicted_sif_t
         ax = axeslist[0, idx+1]
         sif_difference[valid_mask == 0] = np.nan
         pcm = ax.imshow(sif_difference, cmap=sif_cmap, vmin=-0.5, vmax=0.5)
-        ax.scatter(x=non_noisy_indices[:, 1], y=non_noisy_indices[:, 0], c='black', s=0.5)
+        # ax.scatter(x=non_noisy_indices[:, 1], y=non_noisy_indices[:, 0], c='black', s=0.5)
         add_grid_lines(ax, center_lon, center_lat, sif_difference.shape[1], sif_difference.shape[0], tile_size_degrees, num_grid_squares, decimal_places)
-        ax.set_title(prediction_methods[idx] + ': difference from ground-truth')
+        ax.set_title(prediction_methods[idx] + ': difference from ground-truth', fontsize=24)
 
     # Plot SIF difference colorbar
-    fig.colorbar(pcm, ax=axeslist[0, :right_idx], cmap=sif_cmap)
+    cbar = fig.colorbar(pcm, ax=axeslist[0, :right_idx], cmap=sif_cmap)
+    cbar.ax.tick_params(labelsize=16)
 
     # Plot ground-truth SIF
     sif_mean = sif_utils.masked_average_numpy(true_sif_tile, valid_mask, dims_to_average=(0, 1))
@@ -361,9 +374,9 @@ def plot_tile_predictions(tile, tile_description, true_sif_tile, predicted_sif_t
     true_sif_tile[valid_mask == 0] = np.nan
 
     pcm = ax.imshow(true_sif_tile, cmap=sif_cmap, vmin=0, vmax=1)
-    ax.scatter(x=non_noisy_indices[:, 1], y=non_noisy_indices[:, 0], c='black', s=0.5)
+    # ax.scatter(x=non_noisy_indices[:, 1], y=non_noisy_indices[:, 0], c='black', s=0.5)
     add_grid_lines(ax, center_lon, center_lat, true_sif_tile.shape[1], true_sif_tile.shape[0], tile_size_degrees, num_grid_squares, decimal_places)
-    ax.set_title('Ground truth (average SIF: ' + str(round(sif_mean, 4)) + ')')
+    ax.set_title('Ground truth (average SIF: ' + str(round(sif_mean, 4)) + ')', fontsize=24)
 
     # Plot predicted SIFs
     for idx, sif_tile in enumerate(predicted_sif_tiles):
@@ -372,21 +385,30 @@ def plot_tile_predictions(tile, tile_description, true_sif_tile, predicted_sif_t
         sif_tile[valid_mask == 0] = np.nan
 
         pcm = ax.imshow(sif_tile, cmap=sif_cmap, vmin=0, vmax=1)
-        ax.scatter(x=non_noisy_indices[:, 1], y=non_noisy_indices[:, 0], c='black', s=0.5)
+        # ax.scatter(x=non_noisy_indices[:, 1], y=non_noisy_indices[:, 0], c='black', s=0.5)
         add_grid_lines(ax, center_lon, center_lat, sif_tile.shape[1], sif_tile.shape[0], tile_size_degrees, num_grid_squares, decimal_places)
-        ax.set_title(prediction_methods[idx] + ' (average SIF: ' + str(round(sif_mean, 4)) + ')')
+        ax.set_title(prediction_methods[idx] + ' (average SIF: ' + str(round(sif_mean, 4)) + ')', fontsize=24)
 
     # Plot SIF colorbar
-    fig.colorbar(pcm, ax=axeslist[1, :right_idx], cmap=sif_cmap)
+    cbar = fig.colorbar(pcm, ax=axeslist[1, :right_idx], cmap=sif_cmap)
+    cbar.ax.tick_params(labelsize=16) 
 
     # Plot soundings, if soundings tile was given
     if soundings_tile is not None:
         plot_2d_array(fig, axeslist[0, right_idx], soundings_tile, 'Num soundings', center_lon, center_lat, tile_size_degrees,
                       min_feature=None, max_feature=None, colorbar=True, cmap='Greys')
 
+    if augmented_tile is not None:
+        plot_rgb_bands(augmented_tile, "", center_lon, center_lat, tile_size_degrees, axeslist[0, right_idx],
+                       rgb_bands=rgb_bands, num_grid_squares=num_grid_squares,
+                       decimal_places=decimal_places)
+
+    # fig.subplots_adjust(top=0.94)
+
     plt.savefig(os.path.join(plot_dir, tile_description + "_predictions.png"))
     plt.close()
     print('plotted', os.path.join(plot_dir, tile_description + "_predictions.png"))
+
     # # Plot coarse SIF
     # ax = axeslist[1, 0]
     # ax.imshow(coarse_sif_tile, cmap='YlGn', vmin=0.2, vmax=1.5)

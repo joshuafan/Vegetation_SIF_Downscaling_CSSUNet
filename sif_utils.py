@@ -3,6 +3,7 @@ import math
 import numpy as np
 import os
 import random
+import subprocess
 import time
 import torch
 import torch.nn as nn
@@ -18,6 +19,10 @@ from scipy.interpolate import interpn
 from scipy.stats import gaussian_kde, pearsonr, spearmanr
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_squared_error, r2_score
+
+
+def get_git_revision_hash():
+    return subprocess.check_output(['git', 'rev-parse', 'HEAD']).decode('ascii').strip()
 
 
 # Encourages predictions to be similar within a single crop type, and
@@ -341,7 +346,7 @@ def density_scatter(x, y, ax=None, sort=True, bins=20, **kwargs):
         idx = z.argsort()
         x, y, z = x[idx], y[idx], z[idx]
 
-    ax.scatter( x, y, c=z, **kwargs )
+    ax.scatter( x, y, c=z, cmap=plt.get_cmap("Greys"), **kwargs )
 
     norm = Normalize(vmin = np.min(z), vmax = np.max(z))
     # cbar = fig.colorbar(cm.ScalarMappable(norm = norm), ax=ax)
@@ -369,8 +374,10 @@ def print_stats(true, predicted, average_sif, print_report=True, ax=None, fit_in
     if fit_intercept:
         intercept = predicted_to_true.intercept_
     predicted_rescaled = predicted_to_true.predict(predicted)
+    predicted = predicted.flatten()
     r2 = r2_score(true, predicted_rescaled)
     r2_unscaled = r2_score(true, predicted)
+    corr, _ = pearsonr(true, predicted)
 
     # Note NRMSE is not scaled linearly?
     nrmse_unscaled = math.sqrt(mean_squared_error(true, predicted)) / average_sif
@@ -413,12 +420,12 @@ def print_stats(true, predicted, average_sif, print_report=True, ax=None, fit_in
     if print_report:
         print('(num datapoints)', true.size)
         print('True vs predicted regression:', equation_string)
-        print('R2:', round(r2, 3))
-        # print('R2 (unscaled):', round(r2_unscaled, 3))
+        # print('R2:', round(r2, 3))
+        print('R2 (unscaled):', round(r2_unscaled, 3))
         print('NRMSE (unscaled):', round(nrmse_unscaled, 3))
         # print('NRMSE (scaled):', round(nrmse_scaled, 3))
 
-    return r2, nrmse_unscaled
+    return r2_unscaled, nrmse_unscaled, corr
 
     # corr, _ = pearsonr(true, predicted_rescaled)
     # nrmse_unstd = math.sqrt(mean_squared_error(true, predicted)) / average_sif

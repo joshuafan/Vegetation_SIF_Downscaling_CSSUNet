@@ -1,10 +1,13 @@
+import argparse
 import copy
+import csv
 import math
 import matplotlib.pyplot as plt
 import numpy as np
 import os
 import pandas as pd
 import random
+import sys
 import time
 import torch
 import torchvision.transforms as transforms
@@ -23,17 +26,8 @@ import sif_utils
 import tile_transforms
 import tqdm
 
-# Set random seed
-RANDOM_STATE = 1
-np.random.seed(RANDOM_STATE)
-random.seed(RANDOM_STATE)
-torch.manual_seed(RANDOM_STATE)
 
 # Folds
-# TRAIN_FOLDS = [2, 3, 4]
-# VAL_FOLDS = [0]
-# TEST_FOLDS = [1]
-
 TRAIN_FOLDS = [0, 1, 2]
 VAL_FOLDS = [3]
 TEST_FOLDS = [4]
@@ -77,103 +71,174 @@ TILE_SIZE_DEGREES = RES[0] * TILE_PIXELS
 
 # Method/model type
 # METHOD = "9d_unet" #_contrastive"
-# MODEL_TYPE = "unet"
+# args.model = "unet"
 # METHOD = "9d_unet2_local"
-# MODEL_TYPE = "unet2"
+# args.model = "unet2"
 # METHOD = "9d_unet2_larger"
-# MODEL_TYPE = "unet2_larger"
+# args.model = "unet2_larger"
 # METHOD = "9d_unet2_pixel_embedding"
-# MODEL_TYPE = "unet2_pixel_embedding"
+# args.model = "unet2_pixel_embedding"
 # METHOD = "9d_unet2_contrastive"
-# MODEL_TYPE = "unet2_pixel_embedding"
+# args.model = "unet2_pixel_embedding"
 # METHOD = "9e_unet2_pixel_contrastive_3" #contrastive_2" #pixel_embedding"
-# MODEL_TYPE = "unet2_pixel_embedding"
+# args.model = "unet2_pixel_embedding"
 # METHOD = "9e_unet2_pixel_embedding"
-# MODEL_TYPE = "unet2_pixel_embedding"
+# args.model = "unet2_pixel_embedding"
 # METHOD = "9d_pixel_nn"
-# MODEL_TYPE = "pixel_nn"
+# args.model = "pixel_nn"
 # METHOD = "9d_unet2_3"
-# MODEL_TYPE = "unet2"
+# args.model = "unet2"
 # METHOD = "10d_unet2_larger"
-# MODEL_TYPE = "unet2_larger"
+# args.model = "unet2_larger"
 # METHOD = "10d_unet2_9"
-# MODEL_TYPE = "unet2"
+# args.model = "unet2"
 # METHOD = "10d_unet2_lr1e-4_weightdecay1e-4_multiplicative_fractionoutput0.2"
-# MODEL_TYPE = "unet2"
+# args.model = "unet2"
 # METHOD = "10d_pixel_nn"
-# MODEL_TYPE = "pixel_nn"
+# args.model = "pixel_nn"
 # METHOD = "10d_unet2_larger"
-# MODEL_TYPE = "unet2_larger"
+# args.model = "unet2_larger"
 # METHOD = "10e_unet2_contrastive"
-# MODEL_TYPE = "unet2_pixel_embedding"
+# args.model = "unet2_pixel_embedding"
 # METHOD = "9d_unet2"
-# MODEL_TYPE = "unet2"
+# args.model = "unet2"
 # METHOD = "11d_unet2_pixel_embedding"
-# MODEL_TYPE = "unet2_pixel_embedding"
+# args.model = "unet2_pixel_embedding"
 # METHOD = "11d_pixel_nn"
-# MODEL_TYPE = "pixel_nn"
+# args.model = "pixel_nn"
 # METHOD = "2d_unet2"
-# MODEL_TYPE = "unet2"
+# args.model = "unet2"
 # METHOD = "tropomi_cfis_unet2"
-# MODEL_TYPE = "unet"
+# args.model = "unet"
 
-# METHOD = "10d_unet2_lr1e-4_weightdecay1e-4_multiplicative_fractionoutput0.2_gradient_penalty"
-METHOD = "10d_unet2_lr1e-4_weightdecay1e-4_multiplicative"
-# METHOD = "10d_unet2_lr1e-4_weightdecay1e-4_gaussian_fractionoutput0.1"
-MODEL_TYPE = "unet2"
+parser = argparse.ArgumentParser()
+parser.add_argument('-prefix', "--prefix", default='10d_', type=str, help='prefix')
+parser.add_argument('-model', "--model", default='unet2', type=str, help='model type')
+
+# Random seed
+parser.add_argument('-seed', "--seed", default=0, type=int)
+
+# Optimizer params
+parser.add_argument('-optimizer', "--optimizer", default='Adam', choices=["Adam", "AdamW"], type=str, help='optimizer type')
+parser.add_argument('-lr', "--learning_rate", default=1e-4, type=float, help='initial learning rate')
+parser.add_argument('-wd', "--weight_decay", default=1e-4, type=float, help='weight decay rate')
+parser.add_argument('-sche', "--scheduler", default='cosine', choices=['cosine', 'step', 'plateau', 'exp', 'const'], help='lr scheduler')
+parser.add_argument('-T0', "--T0", default=50, type=int, help='optimizer T0 (cosine only)')
+parser.add_argument('-T_mult', "--T_mult", default=2, type=int, help='optimizer T_multi (cosine only)') 
+parser.add_argument('-eta_min', "--eta_min", default=1e-5, type=float, help='minimum lr (cosine only)')
+parser.add_argument('-gamma', "--gamma", default=0.5, type=float, help='StepLR decay (step only)')
+parser.add_argument('-lrsteps', "--lrsteps", default=50, type=int, help='StepLR steps (step only)')
+
+
+# Training params
+parser.add_argument('-epoch', "--max_epoch", default=100, type=int, help='max epoch to train')
+parser.add_argument('-patience', "--patience", default=5, type=int, help="Early stopping patience (stop if val loss doesn't improve for this many epochs)")
+parser.add_argument('-bs', "--batch_size", default=100, type=int, help="Batch size")
+parser.add_argument('-num_workers', "--num_workers", default=4, type=int, help="Number of dataloader workers")
+parser.add_argument('-from_pretrained', "--from_pretrained", default=False, action='store_true', help='Whether to initialize from pre-trained model')
+
+# Contrastive pre-training
+parser.add_argument('-pretrain_contrastive', "--pretrain_contrastive", default=False, action='store_true', help='Whether to pre-train initial layers in contrastive way (nearby/similar pixels should have similar representations)')
+parser.add_argument('-freeze_pixel_encoder', "--freeze_pixel_encoder", default=False, action='store_true', help='If using pretrain_contrastive, whether to freeze the initial learned layers')
+
+# Optional loss terms
+parser.add_argument('-crop_type_loss', "--crop_type_loss", default=False, action='store_true', help='Whether to add a "crop type loss" term (encouraging predictions for same crop type to be similar)')
+parser.add_argument('-recon_loss', "--recon_loss", default=False, action='store_true', help='Whether to add a reconstruction loss')
+parser.add_argument('-gradient_penalty', "--gradient_penalty", default=False, action='store_true', help="DOES NOT SEEM TO WORK. Whether to penalize gradient of SIF wrt input, to make function Lipschitz.")
+parser.add_argument('-lambduh', "--lambduh", default=1, type=int, help="Gradient penalty lambda")
+
+# Restricting output and input values
+parser.add_argument('-min_sif', "--min_sif", default=None, type=float, help="If (min_sif, max_sif) are set, the model uses a tanh function to ensure the output is within that range.")
+parser.add_argument('-max_sif', "--max_sif", default=None, type=float, help="If (min_sif, max_sif) are set, the model uses a tanh function to ensure the output is within that range.")
+parser.add_argument('-min_sif_clip', "--min_sif_clip", default=0.1, type=float, help="Before computing loss, clip outputs below this to this value.")
+parser.add_argument('-min_input', "--min_input", default=-3, type=float, help="Clip extreme input values to this many standard deviations below mean")
+parser.add_argument('-max_input', "--max_input", default=3, type=float, help="Clip extreme input values to this many standard deviations above mean")
+parser.add_argument('-reduced_channels', "--reduced_channels", default=None, type=float, help="If this is set, add a 'dimensionality reduction' layer to the front of the model, to reduce the number of channels to this.")
+
+# Augmentations. None are enabled by default.
+parser.add_argument('-fraction_outputs_to_average', "--fraction_outputs_to_average", default=0.2, type=float, help="Fraction of outputs to average when computing loss.")
+parser.add_argument('-flip_and_rotate', "--flip_and_rotate", action='store_true')
+parser.add_argument('-jigsaw', "--jigsaw", action='store_true')
+parser.add_argument('-multiplicative_noise', "--multiplicative_noise", action='store_true')
+parser.add_argument('-mult_noise_std', "--mult_noise_std", default=0.2, type=float, help="If the 'multiplicative_noise' augmentation is used, multiply each channel by (1+eps), where eps ~ N(0, mult_noise_std)")
+parser.add_argument('-gaussian_noise', "--gaussian_noise", action='store_true')
+parser.add_argument('-gaussian_noise_std', "--gaussian_noise_std", default=0.2, type=float, help="If the 'multiplicative_noise' augmentation is used, add eps to each pixel, where eps ~ N(0, gaussian_noise_std)")
+parser.add_argument('-cutout', "--cutout", action='store_true')
+parser.add_argument('-cutout_dim', "--cutout_dim", default=10, type=int, help="If the 'cutout' augmentation is used, this is the dimension of the square to be erased.")
+parser.add_argument('-cutout_prob', "--cutout_prob", default=0.5, type=float, help="If the 'cutout' augmentation is used, this is the probability that a square will be erased.")
+parser.add_argument('-resize', "--resize", action='store_true')
+parser.add_argument('-resize_dim', "--resize_dim", default=100, type=int, help="If the 'resize' augmentation is used, the dimension to resize to.")
+parser.add_argument('-random_crop', "--random_crop", action='store_true')
+parser.add_argument('-crop_dim', "--crop_dim", default=80, type=int, help="If the 'random_crop' augmentation is used, the dimension to crop.")
+
+# Contrastive training settings
+parser.add_argument('-contrastive_epochs', "--contrastive_epochs", default=50, type=int)
+parser.add_argument('-contrastive_learning_rate', "--contrastive_learning_rate", default=1e-3, type=float)
+parser.add_argument('-contrastive_weight_decay', "--contrastive_weight_decay", default=1e-3, type=float)
+parser.add_argument('-contrastive_temp', "--contrastive_temp", default=0.2, type=float)
+parser.add_argument('-pixel_pairs_per_image', "--pixel_pairs_per_image", default=5, type=int)
+
+args = parser.parse_args()
+
+# Set random seeds
+np.random.seed(args.seed)
+random.seed(args.seed)
+torch.manual_seed(args.seed)
+torch.cuda.manual_seed(args.seed)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+
+
+CONTRASTIVE_BATCH_SIZE = args.batch_size * args.pixel_pairs_per_image
+
+PARAM_SETTING = "{}_{}_optimizer-{}_bs-{}_lr-{}_wd-{}_maxepoch-{}_sche-{}_fractionoutputs-{}_seed-{}".format(  #_T0-{}_etamin-{}_step-{}_gamma-{}_
+    args.prefix, args.model, args.optimizer, args.batch_size, args.learning_rate, args.weight_decay, args.max_epoch, args.scheduler, args.fraction_outputs_to_average, args.seed  #args.T0, args.eta_min, args.lrsteps, args.gamma,
+)
+if args.flip_and_rotate:
+    PARAM_SETTING += "_fliprotate"
+if args.jigsaw:
+    PARAM_SETTING += "_jigsaw"
+if args.multiplicative_noise:
+    PARAM_SETTING += "_multiplicativenoise-{}".format(args.mult_noise_std)
+if args.gaussian_noise:
+    PARAM_SETTING += "_gaussiannoise-{}".format(args.mult_noise_std)
+if args.cutout:
+    PARAM_SETTING += "_cutout-{}_prob-{}".format(args.cutout_dim, args.cutout_prob)
+if args.resize:
+    PARAM_SETTING += "_resize-{}".format(args.resize_dim)
+if args.random_crop:
+    PARAM_SETTING += "_randomcrop-{}".format(args.crop_dim)
 
 
 # Model files
-PRETRAINED_MODEL_FILE = os.path.join(DATA_DIR, "models/" + METHOD) #9e_unet2_contrastive")
-MODEL_FILE = os.path.join(DATA_DIR, "models/" + METHOD) #aug_2")
+results_dir = os.path.join("unet_results", PARAM_SETTING)
+if not os.path.exists(results_dir):
+    os.makedirs(results_dir)
+
+PRETRAINED_MODEL_FILE = os.path.join(results_dir, "model.ckpt") #9e_unet2_contrastive")
+MODEL_FILE = os.path.join(results_dir, "model.ckpt")
 
 # Results files/plots
-CFIS_RESULTS_CSV_FILE = os.path.join(CFIS_2016_DIR, 'cfis_results_' + METHOD + '.csv')
-LOSS_PLOT = os.path.join(DATA_DIR, 'loss_plots/losses_' + METHOD)
+CFIS_RESULTS_CSV_FILE = os.path.join(results_dir, 'cfis_results_' + PARAM_SETTING + '.csv')
+LOSS_PLOT = os.path.join(results_dir, 'losses')
+
+# Summary csv file of all results. Create this if it doesn't exist
+RESULTS_SUMMARY_FILE = "unet_results/results_summary.csv"
+if not os.path.isfile(RESULTS_SUMMARY_FILE):
+    with open(RESULTS_SUMMARY_FILE, mode='w') as f:
+        csv_writer = csv.writer(f, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+        csv_writer.writerow(['model', 'git_commit', 'command', 'optimizer', 'lr', 'wd', 'fine_val_nrmse', 'path_to_model', 'best_val_fine_epoch'])
+GIT_COMMIT = sif_utils.get_git_revision_hash()
+COMMAND_STRING = " ".join(sys.argv)
+
+# METHOD = "10d_unet2_lr1e-4_weightdecay1e-4_multiplicative_fractionoutput0.2_gradient_penalty"
+# METHOD = "10d_unet2_lr1e-4_weightdecay1e-4_multiplicative"
+# METHOD = "10d_unet2_lr1e-4_weightdecay1e-4_gaussian_fractionoutput0.1"
+# args.model = "unet2"
 
 
-# Parameters
-OPTIMIZER_TYPE = "Adam"
-LEARNING_RATE = 1e-4
-WEIGHT_DECAY = 1e-4
-NUM_EPOCHS = 500
-EARLY_STOPPING_PATIENCE = 5
-BATCH_SIZE = 100
-NUM_WORKERS = 8
-FROM_PRETRAINED = False
-CROP_TYPE_LOSS = False
-PRETRAIN_CONTRASTIVE = False
-FREEZE_PIXEL_ENCODER = False
-MIN_SIF = None
-MAX_SIF = None
-MIN_SIF_CLIP = 0.1
-MIN_INPUT = -3
-MAX_INPUT = 3
-REDUCED_CHANNELS = None
-RECON_LOSS = False
-GRADIENT_PENALTY = False
 
-# Which bands
-# BANDS = list(range(0, 43))
-# BANDS = list(range(0, 9)) + list(range(12, 42))
-BANDS = list(range(0, 12)) + [12, 13, 14, 16, 17, 19, 23, 24, 25, 28, 34] + [42]
-RECONSTRUCTION_BANDS = list(range(0, 9)) + [12, 13, 14, 16, 17, 19, 23, 24, 25, 28, 34]
-# BANDS = list(range(0, 12)) + list(range(12, 27)) + [28] + [42]
-INPUT_CHANNELS = len(BANDS)
-OUTPUT_CHANNELS = 1 + len(RECONSTRUCTION_BANDS)
-CROP_TYPE_INDICES = list(range(12, 42))
-MISSING_REFLECTANCE_IDX = len(BANDS) - 1
-
-# Augmentations
-AUGMENTATIONS = ['flip_and_rotate', 'jigsaw', 'multiplicative_noise']  # 'gaussian_noise'] # ['cutout', 'flip_and_rotate', 'gaussian_noise', 'jigsaw']
-RESIZE_DIM = 100
-CROP_DIM = 80
-MULTIPLICATIVE_NOISE = 0.2
-GAUSSIAN_NOISE = 0.2
-FRACTION_OUTPUTS_TO_AVERAGE = 1
-CUTOUT_DIM = 10
-CUTOUT_PROB = 0 # 0.5
-
+# Dataset params
 # OCO-2 filtering
 MIN_OCO2_SOUNDINGS = 3
 MAX_OCO2_CLOUD_COVER = 0.5
@@ -189,21 +254,21 @@ MIN_CDL_COVERAGE = 0.5
 TRAIN_DATES = ['2016-06-15', '2016-08-01'] #, '2016-08-01', "2018-06-10", "2018-06-24", "2018-07-08", "2018-07-22", "2018-08-05", "2018-08-19"]
 TEST_DATES = ['2016-06-15', '2016-08-01'] #['2016-06-15', '2016-08-01']
 
-# Contrastive training settings
-CONTRASTIVE_NUM_EPOCHS = 50
-CONTRASTIVE_LEARNING_RATE = 1e-3
-CONTRASTIVE_WEIGHT_DECAY = 1e-3
-CONTRASTIVE_TEMP = 0.2
-PIXEL_PAIRS_PER_IMAGE = 5
-CONTRASTIVE_BATCH_SIZE = BATCH_SIZE * PIXEL_PAIRS_PER_IMAGE
-
 ALL_COVER_COLUMNS = ['grassland_pasture', 'corn', 'soybean',
                     'deciduous_forest', 'evergreen_forest', 'developed_open_space',
                     'woody_wetlands', 'open_water', 'alfalfa',
                     'developed_low_intensity', 'developed_med_intensity']
 
-# Gradient penalty
-LAMBDA = 1
+# Which bands
+# BANDS = list(range(0, 43))
+# BANDS = list(range(0, 9)) + list(range(12, 42))
+BANDS = list(range(0, 12)) + [12, 13, 14, 16, 17, 19, 23, 24, 25, 28, 34] + [42]
+RECONSTRUCTION_BANDS = list(range(0, 9)) + [12, 13, 14, 16, 17, 19, 23, 24, 25, 28, 34]
+# BANDS = list(range(0, 12)) + list(range(12, 27)) + [28] + [42]
+INPUT_CHANNELS = len(BANDS)
+OUTPUT_CHANNELS = 1 + len(RECONSTRUCTION_BANDS)
+CROP_TYPE_INDICES = list(range(12, 42))
+MISSING_REFLECTANCE_IDX = len(BANDS) - 1
 
 
 # # Print params for reference
@@ -216,13 +281,13 @@ LAMBDA = 1
 # print("Output model:", os.path.basename(MODEL_FILE))
 # print("Bands:", BANDS)
 # print("---------------------------------")
-# print("Model:", MODEL_TYPE)
-# print("Optimizer:", OPTIMIZER_TYPE)
+# print("Model:", args.model)
+# print("Optimizer:", args.optimizer)
 # print("Learning rate:", LEARNING_RATE)
 # print("Weight decay:", WEIGHT_DECAY)
 # print("Num workers:", NUM_WORKERS)
 # print("Batch size:", BATCH_SIZE)
-# print("Num epochs:", NUM_EPOCHS)
+# print("Num epochs:", args.max_epoch)
 # print("Augmentations:", AUGMENTATIONS)
 # if 'gaussian_noise' in AUGMENTATIONS:
 #     print("Gaussian noise (std deviation):", NOISE)
@@ -281,9 +346,9 @@ def get_neighbor_pixel_indices(images, radius=10, pixel_pairs_per_image=10, num_
 
 
 
-def train_contrastive(model, dataloader, criterion, optimizer, device, pixel_pairs_per_image, num_epochs=100):
+def train_contrastive(args, model, dataloader, criterion, optimizer, device, pixel_pairs_per_image):
     model.train()
-    for epoch in range(num_epochs):
+    for epoch in range(args.contrastive_epochs):
         train_loss, total = 0, 0
         pbar = tqdm.tqdm(dataloader, total=len(dataloader), desc='train epoch {}'.format(epoch))
         for combined_sample in pbar:
@@ -324,7 +389,7 @@ def train_contrastive(model, dataloader, criterion, optimizer, device, pixel_pai
                 pbar.set_postfix(avg_loss=train_loss/total)
     return model
 
-def calc_gradient_penalty(model, predicted_fine_sifs, input_tiles_std):
+def calc_gradient_penalty(model, predicted_fine_sifs, input_tiles_std, lambduh):
     # # Get predicted pixel SIFs
     # input_tiles_std.requires_grad_(True)
     # outputs = model(input_tiles_std)  # predicted_fine_sifs_std: (batch size, output dim, H, W)
@@ -340,11 +405,11 @@ def calc_gradient_penalty(model, predicted_fine_sifs, input_tiles_std):
     gradients = gradients[:, 0:9, :, :]
     gradients = gradients.view(gradients.size(0), -1)
     gradient_norms = gradients.norm(2, dim=1)
-    gradient_penalty = (torch.max(torch.zeros_like(gradient_norms), gradient_norms - 1) ** 2).mean() * LAMBDA
+    gradient_penalty = (torch.max(torch.zeros_like(gradient_norms), gradient_norms - 1) ** 2).mean() * lambduh
     return gradient_penalty
 
 
-def train_model(model, dataloaders, criterion, optimizer, device, sif_mean, sif_std, num_epochs=100):
+def train_model(args, model, dataloaders, criterion, optimizer, device, sif_mean, sif_std):
     since = time.time()
     best_model_wts = copy.deepcopy(model.state_dict())
 
@@ -374,8 +439,8 @@ def train_model(model, dataloaders, criterion, optimizer, device, sif_mean, sif_
     # best_val_coarse_loss = float('inf')
     # best_val_fine_loss = float('inf')
 
-    for epoch in range(num_epochs):
-        print('Epoch {}/{}'.format(epoch, num_epochs - 1))
+    for epoch in range(args.max_epoch):
+        print('Epoch {}/{}'.format(epoch, args.max_epoch - 1))
         print('-' * 10)
         epoch_start = time.time()
 
@@ -418,7 +483,7 @@ def train_model(model, dataloaders, criterion, optimizer, device, sif_mean, sif_
 
                     with torch.set_grad_enabled(phase == 'train' and dataset_name in COARSE_SIF_DATASETS[phase]):
                         # If penalizing gradient of pixel SIF w.r.t inputs, require gradient for input
-                        if GRADIENT_PENALTY:
+                        if args.gradient_penalty:
                             input_tiles_std.requires_grad_(True)
 
                         # Pass tile through model to obtain fine-resolution SIF predictions
@@ -432,7 +497,7 @@ def train_model(model, dataloaders, criterion, optimizer, device, sif_mean, sif_
 
                         # As a regularization technique, randomly choose more pixels to ignore.
                         if phase == 'train':
-                            pixels_to_include = torch.rand(valid_fine_sif_mask.shape, device=device) > (1 - FRACTION_OUTPUTS_TO_AVERAGE)
+                            pixels_to_include = torch.rand(valid_fine_sif_mask.shape, device=device) > (1 - args.fraction_outputs_to_average)
                             valid_fine_sif_mask = valid_fine_sif_mask * pixels_to_include
 
                         # In the extremely rare case where there are no valid pixels, choose
@@ -465,16 +530,15 @@ def train_model(model, dataloaders, criterion, optimizer, device, sif_mean, sif_
                         # print("Flattened", reconstruction_target.flatten(start_dim=1).shape)
                         reconstruction_loss = criterion(outputs[:, 1:, :, :].flatten(start_dim=1),
                                                         reconstruction_target.flatten(start_dim=1))
-                        if RECON_LOSS:
+                        if args.recon_loss:
                             loss = coarse_loss + reconstruction_loss
                         else:
                             loss = coarse_loss
-                        
-                        if GRADIENT_PENALTY and phase == 'train':
-                            gradient_penalty = calc_gradient_penalty(model, predicted_fine_sifs, input_tiles_std)
+
+                        if args.gradient_penalty and phase == 'train':
+                            gradient_penalty = calc_gradient_penalty(model, predicted_fine_sifs, input_tiles_std, args.lambduh)
                             print("Coarse loss", coarse_loss.item(), "--- Gradient penalty", gradient_penalty.item())
                             loss += gradient_penalty
-
 
                         # Backpropagate coarse loss
                         if phase == 'train' and random.random() < UPDATE_FRACTIONS[dataset_name] and dataset_name in COARSE_SIF_DATASETS[phase]: # and not np.isnan(fine_loss.item()):
@@ -499,11 +563,13 @@ def train_model(model, dataloaders, criterion, optimizer, device, sif_mean, sif_
                                 fine_soundings = sample['fine_soundings'].to(device)
 
                                 # Extract the fine SIF data points where we have labels, and compute loss (just for information, not used during training)
-                                non_noisy_mask = (fine_soundings >= MIN_FINE_CFIS_SOUNDINGS) & (true_fine_sifs >= MIN_SIF_CLIP)
+                                non_noisy_mask = (fine_soundings >= MIN_FINE_CFIS_SOUNDINGS) & (true_fine_sifs >= args.min_sif_clip)
                                 valid_fine_sif_mask_flat = valid_fine_sif_mask.flatten() & non_noisy_mask.flatten()
                                 true_fine_sifs_filtered = true_fine_sifs.flatten()[valid_fine_sif_mask_flat]
+                                if true_fine_sifs_filtered.shape[0] == 0:  # If there are no non-noisy pixels in this batch, skip it
+                                    continue
                                 predicted_fine_sifs_filtered = predicted_fine_sifs.flatten()[valid_fine_sif_mask_flat]
-                                predicted_fine_sifs_filtered = torch.clamp(predicted_fine_sifs_filtered, min=MIN_SIF_CLIP)
+                                predicted_fine_sifs_filtered = torch.clamp(predicted_fine_sifs_filtered, min=args.min_sif_clip)
                                 fine_loss = criterion(true_fine_sifs_filtered, predicted_fine_sifs_filtered)
 
                                 # # Backpropagate fine loss (SHOULD NOT BE USED EXCEPT FOR FULLY-SUPERVISED TRAINING)
@@ -618,7 +684,12 @@ def train_model(model, dataloaders, criterion, optimizer, device, sif_mean, sif_
                 if phase == 'train':
                     train_fine_losses[fine_dataset].append(epoch_fine_nrmse)
                 else:
+                    if np.isnan(epoch_fine_nrmse):
+                        print("EPOCH FINE NRMSE was NAN!\nRunning fine loss", running_fine_loss[fine_dataset])
+                        print("Num fine datapoints", num_fine_datapoints[fine_dataset])
+                        print("Sif mean", sif_mean)
                     val_fine_losses[fine_dataset].append(epoch_fine_nrmse)
+
                 true_fine = np.concatenate(all_true_fine_sifs[fine_dataset])
                 predicted_fine = np.concatenate(all_predicted_fine_sifs[fine_dataset])
                 print('===== ', phase, fine_dataset, 'Fine stats ====')
@@ -629,8 +700,7 @@ def train_model(model, dataloaders, criterion, optimizer, device, sif_mean, sif_
             # If the model performed better on "MODEL_SELECTION_DATASET" validation set than the
             # best previous model, record losses for this epoch, and save this model
             if phase == 'val' and val_coarse_losses[MODEL_SELECTION_DATASET][-1] < val_coarse_loss_at_best_val_coarse[MODEL_SELECTION_DATASET]:
-                best_model_wts = copy.deepcopy(model.state_dict())
-                torch.save(model.state_dict(), MODEL_FILE)
+                torch.save(model.state_dict(), MODEL_FILE + '_best_val_coarse')
                 for coarse_dataset in train_coarse_losses:
                     train_coarse_loss_at_best_val_coarse[coarse_dataset] = train_coarse_losses[coarse_dataset][-1]
                 for coarse_dataset in val_coarse_losses:
@@ -643,7 +713,8 @@ def train_model(model, dataloaders, criterion, optimizer, device, sif_mean, sif_
 
             if phase == 'val' and 'CFIS_2016' in val_fine_losses:
                 if val_fine_losses[MODEL_SELECTION_DATASET][-1] < val_fine_loss_at_best_val_fine[MODEL_SELECTION_DATASET]:
-                    torch.save(model.state_dict(), MODEL_FILE + '_best_val_fine')
+                    best_model_wts = copy.deepcopy(model.state_dict())
+                    torch.save(model.state_dict(), MODEL_FILE)
                     for coarse_dataset in train_coarse_losses:
                         train_coarse_loss_at_best_val_fine[coarse_dataset] = train_coarse_losses[coarse_dataset][-1]
                     for coarse_dataset in val_coarse_losses:
@@ -653,6 +724,11 @@ def train_model(model, dataloaders, criterion, optimizer, device, sif_mean, sif_
                     for fine_dataset in val_fine_losses:
                         val_fine_loss_at_best_val_fine[fine_dataset] = val_fine_losses[fine_dataset][-1]
                     best_val_fine_epoch = epoch
+
+                # Write results to file
+                with open(os.path.join(results_dir, "csv_row.csv"), mode='w') as f:
+                    csv_writer = csv.writer(f, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+                    csv_writer.writerow([args.model, GIT_COMMIT, COMMAND_STRING, args.optimizer, args.learning_rate, args.weight_decay, val_fine_loss_at_best_val_fine['CFIS_2016'], MODEL_FILE])
 
             # if phase == 'train' and epoch_coarse_nrmse < best_train_coarse_loss:
             #     best_train_coarse_loss = epoch_coarse_nrmse
@@ -670,13 +746,16 @@ def train_model(model, dataloaders, criterion, optimizer, device, sif_mean, sif_
             num_epochs_no_improvement = 0
         else:
             num_epochs_no_improvement += 1
-            if num_epochs_no_improvement > EARLY_STOPPING_PATIENCE:
+            if num_epochs_no_improvement > args.patience:
                 break
 
 
     time_elapsed = time.time() - since
     print('Training complete in {:.0f}m {:.0f}s'.format(
         time_elapsed // 60, time_elapsed % 60))
+    print("==== All losses =====")
+    print('train fine:', train_fine_losses["CFIS_2016"])
+    print("val fine:", val_fine_losses["CFIS_2016"])
     print('=================== At best val fine (epoch ' + str(best_val_fine_epoch) + ') ========================')
     print('train coarse losses:', train_coarse_loss_at_best_val_fine)
     print('train fine loss:', train_fine_loss_at_best_val_fine)
@@ -687,6 +766,12 @@ def train_model(model, dataloaders, criterion, optimizer, device, sif_mean, sif_
     print('train fine loss:', train_fine_loss_at_best_val_coarse)
     print('val coarse loss:', val_coarse_loss_at_best_val_coarse)
     print('val fine loss:', val_fine_loss_at_best_val_coarse)
+
+    # Write results to file
+    with open(RESULTS_SUMMARY_FILE, "a+") as f:
+        csv_writer = csv.writer(f, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+        csv_writer.writerow([args.model, GIT_COMMIT, COMMAND_STRING, args.optimizer, args.learning_rate, args.weight_decay, val_fine_loss_at_best_val_fine['CFIS_2016'], MODEL_FILE, best_val_fine_epoch])
+
 
     # load best model weights
     model.load_state_dict(best_model_wts)
@@ -713,46 +798,47 @@ sif_mean = train_means[-1]
 band_stds = train_stds[:-1]
 sif_std = train_stds[-1]
 
+
 # Constrain predicted SIF to be between certain values (unstandardized), if desired
 # Don't forget to standardize
-if MIN_SIF is not None and MAX_SIF is not None:
-    min_output = (MIN_SIF - sif_mean) / sif_std
-    max_output = (MAX_SIF - sif_mean) / sif_std
+if args.min_sif is not None and args.max_sif is not None:
+    min_output = (args.min_sif - sif_mean) / sif_std
+    max_output = (args.max_sif - sif_mean) / sif_std
 else:
     min_output = None
     max_output = None
 
 # Set up image transforms / augmentations
 standardize_transform = tile_transforms.StandardizeTile(band_means, band_stds) #, min_input=MIN_INPUT, max_input=MAX_INPUT)
-clip_transform = tile_transforms.ClipTile(min_input=MIN_INPUT, max_input=MAX_INPUT)
-color_distortion_transform = tile_transforms.ColorDistortion(continuous_bands=list(range(0, 12)), standard_deviation=MULTIPLICATIVE_NOISE)
-noise_transform = tile_transforms.GaussianNoise(continuous_bands=list(range(0, 9)), standard_deviation=MULTIPLICATIVE_NOISE)
-multiplicative_noise_transform = tile_transforms.MultiplicativeGaussianNoise(continuous_bands=list(range(0, 9)), standard_deviation=MULTIPLICATIVE_NOISE)
+clip_transform = tile_transforms.ClipTile(min_input=args.min_input, max_input=args.max_input)
+# color_distortion_transform = tile_transforms.ColorDistortion(continuous_bands=list(range(0, 12)), standard_deviation=args.color_distortion_std)
+noise_transform = tile_transforms.GaussianNoise(continuous_bands=list(range(0, 9)), standard_deviation=args.gaussian_noise_std)
+multiplicative_noise_transform = tile_transforms.MultiplicativeGaussianNoise(continuous_bands=list(range(0, 9)), standard_deviation=args.mult_noise_std)
 flip_and_rotate_transform = tile_transforms.RandomFlipAndRotate()
 jigsaw_transform = tile_transforms.RandomJigsaw()
-resize_transform = tile_transforms.ResizeTile(target_dim=[RESIZE_DIM, RESIZE_DIM])
-random_crop_transform = tile_transforms.RandomCrop(crop_dim=CROP_DIM)
-cutout_transform = tile_transforms.Cutout(cutout_dim=CUTOUT_DIM, prob=CUTOUT_PROB)
+resize_transform = tile_transforms.ResizeTile(target_dim=[args.resize_dim, args.resize_dim])
+random_crop_transform = tile_transforms.RandomCrop(crop_dim=args.crop_dim)
+cutout_transform = tile_transforms.Cutout(cutout_dim=args.cutout_dim, prob=args.cutout_prob)
 transform_list_train = [standardize_transform, clip_transform] # [standardize_transform, noise_transform]
 transform_list_val = [standardize_transform, clip_transform] #[standardize_transform]
 
 # Apply cutout at beginning, since it is supposed to zero pixels out BEFORE standardizing
-if 'cutout' in AUGMENTATIONS:
+if args.cutout:
     transform_list_train.insert(0, cutout_transform)
 
 # Add multiplicative noise at beginning
-if 'multiplicative_noise' in AUGMENTATIONS:
+if args.multiplicative_noise:
     transform_list_train.insert(0, multiplicative_noise_transform)
 
-if 'resize' in AUGMENTATIONS:
+if args.resize:
     transform_list_train.append(resize_transform)
-if 'flip_and_rotate' in AUGMENTATIONS:
+if args.flip_and_rotate:
     transform_list_train.append(flip_and_rotate_transform)
-if 'gaussian_noise' in AUGMENTATIONS:
+if args.gaussian_noise:
     transform_list_train.append(noise_transform)
-if 'jigsaw' in AUGMENTATIONS:
+if args.jigsaw:
     transform_list_train.append(jigsaw_transform)
-if 'random_crop' in AUGMENTATIONS:
+if args.random_crop:
     transform_list_train.append(random_crop_transform)
 
 train_transform = transforms.Compose(transform_list_train)
@@ -769,13 +855,13 @@ for dataset_name, dataset_file in DATASET_FILES.items():
     if 'CFIS' in dataset_name:
         # Only include CFIS tiles with enough valid pixels
         metadata = metadata[(metadata['fraction_valid'] >= MIN_COARSE_FRACTION_VALID_PIXELS) &
-                                            (metadata['SIF'] >= MIN_SIF_CLIP) &
+                                            (metadata['SIF'] >= args.min_sif_clip) &
                                             (metadata['missing_reflectance'] <= MAX_CFIS_CLOUD_COVER)]
 
     else:
         metadata = metadata[(metadata['num_soundings'] >= MIN_OCO2_SOUNDINGS) &
                                         (metadata['missing_reflectance'] <= MAX_OCO2_CLOUD_COVER) &
-                                        (metadata['SIF'] >= MIN_SIF_CLIP)]
+                                        (metadata['SIF'] >= args.min_sif_clip)]
 
     metadata = metadata[metadata[ALL_COVER_COLUMNS].sum(axis=1) >= MIN_CDL_COVERAGE]
 
@@ -854,49 +940,53 @@ for dataset_name, dataset in val_datasets.items():
 PARAM_STRING += ('Train dates: ' + str(TRAIN_DATES) + '\n')
 PARAM_STRING += ('Test dates: ' + str(TEST_DATES) + '\n')
 PARAM_STRING += ('Min soundings (fine CFIS): ' + str(MIN_FINE_CFIS_SOUNDINGS) + '\n')
-PARAM_STRING += ('Min SIF clip: ' + str(MIN_SIF_CLIP) + '\n')
+PARAM_STRING += ('Min SIF clip: ' + str(args.min_sif_clip) + '\n')
 PARAM_STRING += ('Max cloud cover (coarse CFIS): ' + str(MAX_CFIS_CLOUD_COVER) + '\n')
 PARAM_STRING += ('Min fraction valid pixels in CFIS tile: ' + str(MIN_COARSE_FRACTION_VALID_PIXELS) + '\n')
 PARAM_STRING += ('Train features: ' + str(BANDS) + '\n')
-PARAM_STRING += ("Clip input features: " + str(MIN_INPUT) + " to " + str(MAX_INPUT) + " standard deviations from mean\n")
+PARAM_STRING += ("Clip input features: " + str(args.min_input) + " to " + str(args.max_input) + " standard deviations from mean\n")
 # if REMOVE_PURE_TRAIN:
 #     PARAM_STRING += ('Removing pure train tiles above ' + str(PURE_THRESHOLD_TRAIN) + '\n')
 PARAM_STRING += ('================= METHOD ===============\n')
-if FROM_PRETRAINED:
+if args.from_pretrained:
     PARAM_STRING += ('From pretrained model: ' + os.path.basename(PRETRAINED_MODEL_FILE) + '\n')
 else:
     PARAM_STRING += ("Training from scratch\n")
-if RECON_LOSS:
+if args.recon_loss:
     PARAM_STRING += ("Using reconstruction loss!\n")
-PARAM_STRING += ("Model name: " + os.path.basename(MODEL_FILE) + '\n')
-PARAM_STRING += ("Model type: " + MODEL_TYPE + '\n')
-PARAM_STRING += ("Optimizer: " + OPTIMIZER_TYPE + '\n')
-PARAM_STRING += ("Learning rate: " + str(LEARNING_RATE) + '\n')
-PARAM_STRING += ("Weight decay: " + str(WEIGHT_DECAY) + '\n')
-PARAM_STRING += ("Num workers: " + str(NUM_WORKERS) + '\n')
-PARAM_STRING += ("Batch size: " + str(BATCH_SIZE) + '\n')
-PARAM_STRING += ("Num epochs: " + str(NUM_EPOCHS) + '\n')
-PARAM_STRING += ("Augmentations: " + str(AUGMENTATIONS) + '\n')
-if 'resize' in AUGMENTATIONS:
-    PARAM_STRING += ('Resize images to: ' + str(RESIZE_DIM) + '\n')
-if 'gaussian_noise' in AUGMENTATIONS:
-    PARAM_STRING += ("Gaussian noise (std deviation): " + str(MULTIPLICATIVE_NOISE) + '\n')
-if 'multiplicative_noise' in AUGMENTATIONS:
-    PARAM_STRING += ("Multiplicative noise: Gaussian (std deviation): " + str(MULTIPLICATIVE_NOISE) + '\n')
-if 'random_crop' in AUGMENTATIONS:
-    PARAM_STRING += ("Random crop size: " + str(CROP_DIM) + '\n')
-if 'cutout' in AUGMENTATIONS:
-    PARAM_STRING += ("Cutout: size " + str(CUTOUT_DIM) + ", prob " + str(CUTOUT_PROB) + '\n')
-PARAM_STRING += ("Fraction outputs to average: " + str(FRACTION_OUTPUTS_TO_AVERAGE) + '\n')
-PARAM_STRING += ("SIF range: " + str(MIN_SIF) + " to " + str(MAX_SIF) + '\n')
+PARAM_STRING += ("Param string: " + PARAM_SETTING + '\n')
+PARAM_STRING += ("Model type: " + args.model + '\n')
+PARAM_STRING += ("Optimizer: " + args.optimizer + '\n')
+PARAM_STRING += ("Learning rate: " + str(args.learning_rate) + '\n')
+PARAM_STRING += ("Weight decay: " + str(args.weight_decay) + '\n')
+PARAM_STRING += ("Num workers: " + str(args.num_workers) + '\n')
+PARAM_STRING += ("Batch size: " + str(args.batch_size) + '\n')
+PARAM_STRING += ("Num epochs: " + str(args.max_epoch) + '\n')
+PARAM_STRING += ("Augmentations:\n")
+if args.flip_and_rotate:
+    PARAM_STRING += ('\tRandom flip and rotate\n')
+if args.jigsaw:
+    PARAM_STRING += ('\tJigsaw\n')
+if args.resize:
+    PARAM_STRING += ('\tResize images to: ' + str(args.resize_dim) + '\n')
+if args.gaussian_noise:
+    PARAM_STRING += ("\tGaussian noise (std deviation): " + str(args.gaussian_noise_std) + '\n')
+if args.multiplicative_noise:
+    PARAM_STRING += ("\tMultiplicative noise: Gaussian (std deviation): " + str(args.mult_noise_std) + '\n')
+if args.random_crop:
+    PARAM_STRING += ("\tRandom crop size: " + str(args.crop_dim) + '\n')
+if args.cutout:
+    PARAM_STRING += ("\tCutout: size " + str(args.cutout_dim) + ", prob " + str(args.cutout_prob) + '\n')
+PARAM_STRING += ("Fraction outputs to average: " + str(args.fraction_outputs_to_average) + '\n')
+PARAM_STRING += ("SIF range: " + str(args.min_sif) + " to " + str(args.max_sif) + '\n')
 PARAM_STRING += ("SIF statistics: mean " + str(sif_mean) + ", std " + str(sif_std) + '\n')
-if PRETRAIN_CONTRASTIVE:
+if args.pretrain_contrastive:
     PARAM_STRING += ('============ CONTRASTIVE PARAMS ===========\n')
-    PARAM_STRING += ("Learning rate: " + str(CONTRASTIVE_LEARNING_RATE) + '\n')
-    PARAM_STRING += ("Weight decay: " + str(CONTRASTIVE_WEIGHT_DECAY) + '\n')
-    PARAM_STRING += ("Batch size: " + str(CONTRASTIVE_BATCH_SIZE) + '\n')
-    PARAM_STRING += ("Num epochs: " + str(CONTRASTIVE_NUM_EPOCHS) + '\n')
-    PARAM_STRING += ("Temperature: " + str(CONTRASTIVE_TEMP) + '\n')
+    PARAM_STRING += ("Learning rate: " + str(args.contrastive_learning_rate) + '\n')
+    PARAM_STRING += ("Weight decay: " + str(args.contrastive_weight_decay) + '\n')
+    PARAM_STRING += ("Batch size: " + str(args.contrastive_batch_size) + '\n')
+    PARAM_STRING += ("Num epochs: " + str(args.contrastive_epochs) + '\n')
+    PARAM_STRING += ("Temperature: " + str(args.contrastive_temp) + '\n')
 PARAM_STRING += ("==============================================================\n")
 print(PARAM_STRING)
 
@@ -904,58 +994,60 @@ print(PARAM_STRING)
 # Create dataset/dataloaders
 datasets = {'train': CombinedDataset(train_datasets),
             'val': CombinedDataset(val_datasets)}
-dataloaders = {x: torch.utils.data.DataLoader(datasets[x], batch_size=BATCH_SIZE,
-                                              shuffle=True, num_workers=NUM_WORKERS)
+dataloaders = {x: torch.utils.data.DataLoader(datasets[x], batch_size=args.batch_size,
+                                              shuffle=True, num_workers=args.num_workers)
                for x in ['train', 'val']}
 
 # Initialize model
-if MODEL_TYPE == 'unet_small':
-    unet_model = UNetSmall(n_channels=INPUT_CHANNELS, n_classes=OUTPUT_CHANNELS, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)
-elif MODEL_TYPE == 'pixel_nn':
+if args.model == 'unet_small':
+    unet_model = UNetSmall(n_channels=INPUT_CHANNELS, n_classes=OUTPUT_CHANNELS, reduced_channels=args.reduced_channels, min_output=min_output, max_output=max_output).to(device)
+elif args.model == 'pixel_nn':
     unet_model = simple_cnn.PixelNN(input_channels=INPUT_CHANNELS, output_dim=OUTPUT_CHANNELS, min_output=min_output, max_output=max_output).to(device)
-elif MODEL_TYPE == 'unet2':
-    unet_model = UNet2(n_channels=INPUT_CHANNELS, n_classes=OUTPUT_CHANNELS, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)
-elif MODEL_TYPE == 'unet2_larger':
-    unet_model = UNet2Larger(n_channels=INPUT_CHANNELS, n_classes=OUTPUT_CHANNELS, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)
-elif MODEL_TYPE == 'unet2_pixel_embedding':
-    unet_model = UNet2PixelEmbedding(n_channels=INPUT_CHANNELS, n_classes=OUTPUT_CHANNELS, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)
-elif MODEL_TYPE == 'unet':
-    unet_model = UNet(n_channels=INPUT_CHANNELS, n_classes=OUTPUT_CHANNELS, reduced_channels=REDUCED_CHANNELS, min_output=min_output, max_output=max_output).to(device)   
+elif args.model == 'unet2':
+    unet_model = UNet2(n_channels=INPUT_CHANNELS, n_classes=OUTPUT_CHANNELS, reduced_channels=args.reduced_channels, min_output=min_output, max_output=max_output).to(device)
+elif args.model == 'unet2_larger':
+    unet_model = UNet2Larger(n_channels=INPUT_CHANNELS, n_classes=OUTPUT_CHANNELS, reduced_channels=args.reduced_channels, min_output=min_output, max_output=max_output).to(device)
+elif args.model == 'unet2_pixel_embedding':
+    unet_model = UNet2PixelEmbedding(n_channels=INPUT_CHANNELS, n_classes=OUTPUT_CHANNELS, reduced_channels=args.reduced_channels, min_output=min_output, max_output=max_output).to(device)
+elif args.model == 'unet':
+    unet_model = UNet(n_channels=INPUT_CHANNELS, n_classes=OUTPUT_CHANNELS, reduced_channels=args.reduced_channels, min_output=min_output, max_output=max_output).to(device)   
 else:
     print('Model type not supported')
     exit(1)
 
 # If we're loading a pre-trained model, read model params from file
-if FROM_PRETRAINED:
+if args.from_pretrained:
     unet_model.load_state_dict(torch.load(PRETRAINED_MODEL_FILE, map_location=device))
 
 # Initialize loss and optimizer
 criterion = nn.MSELoss(reduction='mean')
 # criterion = nn.SmoothL1Loss(reduction='mean')
-if OPTIMIZER_TYPE == "Adam":
-    optimizer = optim.Adam(unet_model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
+if args.optimizer == "Adam":
+    optimizer = optim.Adam(unet_model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
+elif args.optimizer == "AdamW":
+    optimizer = optim.AdamW(unet_model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
 else:
     print("Optimizer not supported")
     exit(1)
 
-if PRETRAIN_CONTRASTIVE:
-    contrastive_loss = nt_xent.NTXentLoss(device, CONTRASTIVE_BATCH_SIZE, CONTRASTIVE_TEMP, True)
-    contrastive_optimizer = optim.Adam(unet_model.parameters(), lr=CONTRASTIVE_LEARNING_RATE, weight_decay=CONTRASTIVE_WEIGHT_DECAY)
-    contrastive_dataloader = torch.utils.data.DataLoader(datasets['train'], batch_size=BATCH_SIZE, 
-                                                         shuffle=True, num_workers=NUM_WORKERS, drop_last=True)
+if args.pretrain_contrastive:
+    contrastive_loss = nt_xent.NTXentLoss(device, CONTRASTIVE_BATCH_SIZE, args.contrastive_temp, True)
+    contrastive_optimizer = optim.Adam(unet_model.parameters(), lr=args.contrastive_learning_rate, weight_decay=args.contrastive_weight_decay)
+    contrastive_dataloader = torch.utils.data.DataLoader(datasets['train'], batch_size=args.batch_size, 
+                                                         shuffle=True, num_workers=args.num_workers, drop_last=True)
     print('Contrastive training!')
     # Train pixel embedding
-    unet_model = train_contrastive(unet_model, contrastive_dataloader, contrastive_loss, contrastive_optimizer, device,
-                                   pixel_pairs_per_image=PIXEL_PAIRS_PER_IMAGE, num_epochs=CONTRASTIVE_NUM_EPOCHS)
+    unet_model = train_contrastive(args, unet_model, contrastive_dataloader, contrastive_loss, contrastive_optimizer, device,
+                                   pixel_pairs_per_image=args.pixel_pairs_per_image)
 
 # Freeze pixel embedding layers
-if FREEZE_PIXEL_ENCODER:
+if args.freeze_pixel_encoder:
     unet_model.dimensionality_reduction_1.requires_grad = False
     unet_model.inc.requires_grad = False
     # unet_model.dimensionality_reduction_2.requires_grad = False
 
 # Train model to predict SIF
-unet_model, train_coarse_losses, val_coarse_losses, train_fine_losses, val_fine_losses, train_reconstruction_losses, val_reconstruction_losses = train_model(unet_model, dataloaders, criterion, optimizer, device, sif_mean, sif_std, num_epochs=NUM_EPOCHS)
+unet_model, train_coarse_losses, val_coarse_losses, train_fine_losses, val_fine_losses, train_reconstruction_losses, val_reconstruction_losses = train_model(args, unet_model, dataloaders, criterion, optimizer, device, sif_mean, sif_std)
 torch.save(unet_model.state_dict(), MODEL_FILE)
 
 # Plot loss curves: NRMSE
@@ -997,6 +1089,6 @@ print('============== Train: Fine vs Coarse Losses ===============')
 sif_utils.print_stats(train_fine_losses['CFIS_2016'], train_coarse_losses['CFIS_2016'], sif_mean, ax=plt.gca())
 plt.xlabel('Train Coarse Losses')
 plt.ylabel('Train Fine Losses')
-plt.title('Fine vs Coarse train losses' + METHOD)
+plt.title('Fine vs Coarse train losses: ' + args.model)
 plt.savefig(LOSS_PLOT + '_scatter_fine_vs_coarse.png')
 plt.close()
