@@ -101,7 +101,7 @@ MIN_COARSE_FRACTION_VALID_PIXELS = 0.1
 TRAIN_DATES = ['2016-06-15', '2016-08-01']
 TEST_DATES = ['2016-06-15', '2016-08-01'] #['2016-06-15', '2016-08-01']
 
-RESULTS_DIR = os.path.dirname(args.model_path)  # + "_BEST_VAL_COARSE"
+RESULTS_DIR = os.path.join(os.path.dirname(args.model_path), "BEST_VAL_COARSE")
 if not os.path.exists(RESULTS_DIR):
     os.makedirs(RESULTS_DIR)
 CFIS_TRUE_VS_PREDICTED_PLOT = os.path.join(RESULTS_DIR, "true_vs_predicted_sif_cfis_" + args.model)
