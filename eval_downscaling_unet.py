@@ -101,7 +101,9 @@ MIN_COARSE_FRACTION_VALID_PIXELS = 0.1
 TRAIN_DATES = ['2016-06-15', '2016-08-01']
 TEST_DATES = ['2016-06-15', '2016-08-01'] #['2016-06-15', '2016-08-01']
 
-RESULTS_DIR = os.path.dirname(args.model_path)
+RESULTS_DIR = os.path.dirname(args.model_path)  # + "_BEST_VAL_COARSE"
+if not os.path.exists(RESULTS_DIR):
+    os.makedirs(RESULTS_DIR)
 CFIS_TRUE_VS_PREDICTED_PLOT = os.path.join(RESULTS_DIR, "true_vs_predicted_sif_cfis_" + args.model)
 RESULTS_SUMMARY_FILE = os.path.join("unet_results", "results_summary_EVAL_" + args.test_set + ".csv")
 BATCH_SIZE = 100
@@ -434,7 +436,7 @@ def compare_unet_to_others(args, model, dataloader, device, sif_mean, sif_std, r
                     predicted_sif_tiles = [predicted_eval_sifs_linear,
                                         predicted_eval_sifs_mlp,
                                         predicted_eval_sifs_unet]
-                    prediction_methods = ['Linear', 'ANN', 'U-Net']
+                    prediction_methods = ['Linear', 'ANN', 'CSR-U-Net']
                     average_sifs = []
                     tile_description = 'lat_' + str(round(large_tile_lat, 4)) + '_lon_' + str(round(large_tile_lon, 4)) + '_' \
                                         + date + '_' + str(resolution_meters) + 'm_soundings' + str(min_eval_cfis_soundings) + '_fractionvalid' + str(MIN_EVAL_FRACTION_VALID) + '_best_fine'
@@ -592,8 +594,8 @@ def main():
 
         if not args.use_precomputed_results:
             # Train averages models - TODO change parameters
-            linear_model = Ridge(alpha=0).fit(X_coarse_train, Y_coarse_train)
-            mlp_model = MLPRegressor(hidden_layer_sizes=(100, 100, 100), learning_rate_init=1e-3, max_iter=10000).fit(X_coarse_train, Y_coarse_train) 
+            linear_model = Ridge(alpha=100).fit(X_coarse_train, Y_coarse_train)
+            mlp_model = MLPRegressor(hidden_layer_sizes=(100, 100), learning_rate_init=1e-3, max_iter=10000).fit(X_coarse_train, Y_coarse_train) 
 
             # Initialize model
             if args.model == 'unet_small':
@@ -664,7 +666,7 @@ def main():
 
                 print('========= Fine pixels: True vs U-Net predictions ==================')
                 r2, nrmse, corr = sif_utils.print_stats(eval_results_df_filtered['true_sif'].values.ravel(), eval_results_df_filtered['predicted_sif_unet'].values.ravel(), sif_mean, ax=plt.gca())
-                plt.title('True vs predicted (U-Net)')
+                plt.title('True vs predicted SIF (CSR-U-Net): ' + str(int(RESOLUTION_METERS)) + 'm pixels, ' + args.test_set + ' tiles')
                 plt.xlim(left=MIN_SIF_PLOT, right=MAX_SIF_PLOT)
                 plt.ylim(bottom=MIN_SIF_PLOT, top=MAX_SIF_PLOT)
                 plt.savefig(PLOT_PREFIX + '_unet.png')

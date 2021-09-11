@@ -119,7 +119,7 @@ parser.add_argument('-model', "--model", default='unet2', type=str, help='model 
 parser.add_argument('-seed', "--seed", default=0, type=int)
 
 # Optimizer params
-parser.add_argument('-optimizer', "--optimizer", default='Adam', choices=["Adam", "AdamW"], type=str, help='optimizer type')
+parser.add_argument('-optimizer', "--optimizer", default='AdamW', choices=["Adam", "AdamW"], type=str, help='optimizer type')
 parser.add_argument('-lr', "--learning_rate", default=1e-4, type=float, help='initial learning rate')
 parser.add_argument('-wd', "--weight_decay", default=1e-4, type=float, help='weight decay rate')
 parser.add_argument('-sche', "--scheduler", default='cosine', choices=['cosine', 'step', 'plateau', 'exp', 'const'], help='lr scheduler')
@@ -153,7 +153,7 @@ parser.add_argument('-max_sif', "--max_sif", default=None, type=float, help="If 
 parser.add_argument('-min_sif_clip', "--min_sif_clip", default=0.1, type=float, help="Before computing loss, clip outputs below this to this value.")
 parser.add_argument('-min_input', "--min_input", default=-3, type=float, help="Clip extreme input values to this many standard deviations below mean")
 parser.add_argument('-max_input', "--max_input", default=3, type=float, help="Clip extreme input values to this many standard deviations above mean")
-parser.add_argument('-reduced_channels', "--reduced_channels", default=None, type=float, help="If this is set, add a 'dimensionality reduction' layer to the front of the model, to reduce the number of channels to this.")
+parser.add_argument('-reduced_channels', "--reduced_channels", default=None, type=int, help="If this is set, add a 'dimensionality reduction' layer to the front of the model, to reduce the number of channels to this.")
 
 # Augmentations. None are enabled by default.
 parser.add_argument('-fraction_outputs_to_average', "--fraction_outputs_to_average", default=0.2, type=float, help="Fraction of outputs to average when computing loss.")
@@ -992,6 +992,13 @@ print(PARAM_STRING)
 
 
 # Create dataset/dataloaders
+def seed_worker(worker_id):
+    worker_seed = torch.initial_seed() % 2**32
+    numpy.random.seed(worker_seed)
+    random.seed(worker_seed)
+
+g = torch.Generator()
+g.manual_seed(args.seed)
 datasets = {'train': CombinedDataset(train_datasets),
             'val': CombinedDataset(val_datasets)}
 dataloaders = {x: torch.utils.data.DataLoader(datasets[x], batch_size=args.batch_size,
@@ -1044,7 +1051,6 @@ if args.pretrain_contrastive:
 if args.freeze_pixel_encoder:
     unet_model.dimensionality_reduction_1.requires_grad = False
     unet_model.inc.requires_grad = False
-    # unet_model.dimensionality_reduction_2.requires_grad = False
 
 # Train model to predict SIF
 unet_model, train_coarse_losses, val_coarse_losses, train_fine_losses, val_fine_losses, train_reconstruction_losses, val_reconstruction_losses = train_model(args, unet_model, dataloaders, criterion, optimizer, device, sif_mean, sif_std)
@@ -1057,8 +1063,9 @@ plots = []
 train_coarse_plot, = plt.plot(epoch_list, train_coarse_losses['CFIS_2016'], color='blue', label='Coarse Train NRMSE (CFIS)')
 plots.append(train_coarse_plot)
 # print("Coarse train recon loss:", train_reconstruction_losses['CFIS_2016'])
-train_recon_plot, = plt.plot(epoch_list, train_reconstruction_losses['CFIS_2016'], color='black', label='Train reconstruction loss')
-plots.append(train_recon_plot)
+if args.recon_loss:
+    train_recon_plot, = plt.plot(epoch_list, train_reconstruction_losses['CFIS_2016'], color='black', label='Train reconstruction loss')
+    plots.append(train_recon_plot)
 if 'OCO2_2016' in COARSE_SIF_DATASETS:
     # print("OCO2 Train NRMSE:", train_coarse_losses['OCO2_2016'])
     train_oco2_plot, = plt.plot(epoch_list, train_coarse_losses['OCO2_2016'], color='purple', label='Coarse Train NRMSE (OCO-2)')
@@ -1067,8 +1074,9 @@ if 'OCO2_2016' in COARSE_SIF_DATASETS:
 val_coarse_plot, = plt.plot(epoch_list, val_coarse_losses['CFIS_2016'], color='green', label='Coarse Val NRMSE')
 plots.append(val_coarse_plot)
 # print("Coarse val recon loss:", val_reconstruction_losses['CFIS_2016'])
-val_recon_plot, = plt.plot(epoch_list, val_reconstruction_losses['CFIS_2016'], color='gray', label='Val reconstruction loss')
-plots.append(val_recon_plot)
+if args.recon_loss:
+    val_recon_plot, = plt.plot(epoch_list, val_reconstruction_losses['CFIS_2016'], color='gray', label='Val reconstruction loss')
+    plots.append(val_recon_plot)
 # print("Fine Train NRMSE:", train_fine_losses['CFIS_2016'])
 train_fine_plot, = plt.plot(epoch_list, train_fine_losses['CFIS_2016'], color='red', label='Fine Train (Interpolated) NRMSE')
 plots.append(train_fine_plot)

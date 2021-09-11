@@ -346,7 +346,7 @@ def density_scatter(x, y, ax=None, sort=True, bins=20, **kwargs):
         idx = z.argsort()
         x, y, z = x[idx], y[idx], z[idx]
 
-    ax.scatter( x, y, c=z, cmap=plt.get_cmap("Greys"), **kwargs )
+    ax.scatter( x, y, c=z, **kwargs )  # cmap=plt.get_cmap("Greys"),
 
     norm = Normalize(vmin = np.min(z), vmax = np.max(z))
     # cbar = fig.colorbar(cm.ScalarMappable(norm = norm), ax=ax)
@@ -375,7 +375,7 @@ def print_stats(true, predicted, average_sif, print_report=True, ax=None, fit_in
         intercept = predicted_to_true.intercept_
     predicted_rescaled = predicted_to_true.predict(predicted)
     predicted = predicted.flatten()
-    r2 = r2_score(true, predicted_rescaled)
+    r2_scaled = r2_score(true, predicted_rescaled)
     r2_unscaled = r2_score(true, predicted)
     corr, _ = pearsonr(true, predicted)
 
@@ -408,8 +408,8 @@ def print_stats(true, predicted, average_sif, print_report=True, ax=None, fit_in
         else:
             ax.scatter(predicted, true, color="k", s=5)
 
-        ax.plot(predicted, line, 'r', label=equation_string + ' (R^2={:.3f}, unscaled NRMSE={:.3f})'.format(r2, nrmse_unscaled))
-        # ax.plot(predicted, line, 'r', label='y={:.2f}x+{:.2f} (R^2={:.3f}, unscaled NRMSE={:.3f})'.format(slope, intercept, r2, nrmse_unscaled))
+        ax.plot(predicted, line, 'r', label=equation_string + ' (R^2={:.3f}, unscaled NRMSE={:.3f})'.format(r2_unscaled, nrmse_unscaled))
+        # ax.plot(predicted, line, 'r', label='y={:.2f}x+{:.2f} (R^2={:.3f}, unscaled NRMSE={:.3f})'.format(slope, intercept, r2_scaled, nrmse_unscaled))
         ax.set(xlabel='Predicted', ylabel='True')
         if predicted.size > 1000:
             loc = 'lower right'
@@ -419,10 +419,10 @@ def print_stats(true, predicted, average_sif, print_report=True, ax=None, fit_in
 
     if print_report:
         print('(num datapoints)', true.size)
-        print('True vs predicted regression:', equation_string)
-        # print('R2:', round(r2, 3))
-        print('R2 (unscaled):', round(r2_unscaled, 3))
+        # print('True vs predicted regression:', equation_string)
+        # print('R2:', round(r2_scaled, 3))
         print('NRMSE (unscaled):', round(nrmse_unscaled, 3))
+        print('R2 (unscaled):', round(r2_unscaled, 3))
         # print('NRMSE (scaled):', round(nrmse_scaled, 3))
 
     return r2_unscaled, nrmse_unscaled, corr

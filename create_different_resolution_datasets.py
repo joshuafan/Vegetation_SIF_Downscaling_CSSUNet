@@ -7,9 +7,7 @@ import torch
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
 CFIS_DIR = os.path.join(DATA_DIR, "CFIS")
-# COARSE_AVERAGES_FILES = {'train': os.path.join(CFIS_DIR, 'cfis_coarse_averages_train.csv'),
-#                          'val': os.path.join(CFIS_DIR, 'cfis_coarse_averages_val.csv'),
-#                          'test': os.path.join(CFIS_DIR, 'cfis_coarse_averages_test.csv')}
+
 COARSE_AVERAGE_FILE = os.path.join(CFIS_DIR, 'cfis_coarse_metadata.csv')
 FINE_AVERAGE_FILE = os.path.join(CFIS_DIR, 'cfis_fine_metadata.csv')
 
