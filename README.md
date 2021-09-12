@@ -7,6 +7,8 @@ To run baselines, run
 
 `./run_baselines.sh`
 
+A summary of the results will be written to `baseline_results/results_summary_BASELINE.csv` (inside `src`). 
+
 To train CSR-U-Net, run
 
 `./run_train.sh`
@@ -15,7 +17,9 @@ To evaluate CSR-U-Net, run
 
 `./run_eval.sh`
 
-This code was tested on Python 3.7 using the following libraries:
+A summary of the results will be written to `unet_results/results_summary_EVAL_train.csv` (inside `src`).
+
+This code was tested on Python 3.7 on Linux (CentOS 7), using the following libraries:
 
 - Matplotlib 3.3.4
 - Numpy 1.18.1

@@ -513,7 +513,7 @@ for resolution in RESOLUTION_METERS:
                 true = Y_fine_train_filtered[fine_train_set_filtered[crop_type] > PURE_THRESHOLD]
                 ax = axeslist.ravel()[idx]
                 if len(predicted) >= 2:
-                    print('===== (TRIVIAL: PREDICT COARSE) - CROP: ', crop_type, '====')
+                    print('===== (TRIVIAL: PREDICT COARSE) - CROP:s', crop_type, '====')
                     print_stats(true, predicted, sif_mean, ax=ax)
                     ax.set_xlim(left=MIN_SIF_PLOT, right=MAX_SIF_PLOT)
                     ax.set_ylim(bottom=MIN_SIF_PLOT, top=MAX_SIF_PLOT)
