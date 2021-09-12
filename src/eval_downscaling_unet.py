@@ -465,7 +465,7 @@ def main():
         transform = transforms.Compose(transform_list)
 
         # Create dataset/dataloader
-        dataset = FineSIFDataset(coarse_test_set, transform)  # CombinedCfisOco2Dataset(coarse_train_set, None, transform, MIN_EVAL_CFIS_SOUNDINGS)
+        dataset = FineSIFDataset(coarse_test_set, transform)
         dataloader = torch.utils.data.DataLoader(dataset, batch_size=BATCH_SIZE,
                                                 shuffle=False, num_workers=NUM_WORKERS)
 
@@ -523,12 +523,12 @@ def main():
         print('===================================================================================================')
         print('*** RESOLUTION: ' + str(RESOLUTION_METERS))
         print('===================================================================================================')
-        PLOT_PREFIX = CFIS_TRUE_VS_PREDICTED_PLOT + '_res' + str(RESOLUTION_METERS) + '_finesoundings' + str(MIN_EVAL_CFIS_SOUNDINGS) + '_finefractionvalid' + str(MIN_EVAL_FRACTION_VALID)
+        PLOT_PREFIX = CFIS_TRUE_VS_PREDICTED_PLOT + '_res' + str(RESOLUTION_METERS)  # + '_finesoundings' + str(MIN_EVAL_CFIS_SOUNDINGS) + '_finefractionvalid' + str(MIN_EVAL_FRACTION_VALID)
 
+        # Further filter for evaluation purposes
         eval_results_df_filtered = eval_results_df[(eval_results_df['num_soundings'] >= MIN_EVAL_CFIS_SOUNDINGS) &
-                                                    (eval_results_df['fraction_valid'] >= MIN_EVAL_FRACTION_VALID) &
-                                                    (eval_results_df["true_sif"] >= MIN_SIF_CLIP)]
-
+                                                   (eval_results_df['fraction_valid'] >= MIN_EVAL_FRACTION_VALID) &
+                                                   (eval_results_df["true_sif"] >= MIN_SIF_CLIP)]
 
 
         print('============== (CFIS fine) True vs U-Net predictions, ALL ==================')
@@ -596,7 +596,7 @@ def main():
         plt.savefig(PLOT_PREFIX + '_dates.png')
         plt.close()
 
-    header = ["model_path", "MIN_EVAL_CFIS_SOUNDINGS", "min_fraction_valid", "30m_nrmse", "30m_r2", "30m_corr", "30m_grassland_nrmse", "30m_corn_nrmse", "30m_soybean_nrmse",
+    header = ["model_path", "min_eval_cfis_soundings", "min_fraction_valid", "30m_nrmse", "30m_r2", "30m_corr", "30m_grassland_nrmse", "30m_corn_nrmse", "30m_soybean_nrmse",
               "90m_nrmse", "150m_nrmse", "300m_nrmse", "600m_nrmse"]
     if not os.path.isfile(RESULTS_SUMMARY_FILE):
         with open(RESULTS_SUMMARY_FILE, mode='w') as f:
