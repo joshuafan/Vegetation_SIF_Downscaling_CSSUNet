@@ -22,57 +22,13 @@ from sklearn.metrics import mean_squared_error, r2_score
 
 
 def get_git_revision_hash():
-    return subprocess.check_output(['git', 'rev-parse', 'HEAD']).decode('ascii').strip()
+    try:
+        git_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD']).decode('ascii').strip()
+    except subprocess.CalledProcessError:
+        git_hash = "None (not a part of git repo)"                      
+    return git_hash
 
 
-# Encourages predictions to be similar within a single crop type, and
-# different across crop types.
-def crop_type_loss(predicted_fine_sifs, tiles, valid_masks, crop_type_indices=list(range(12, 42)),
-                   min_fraction=0.01):
-    loss = 0
-    for i in range(predicted_fine_sifs.shape[0]):
-        predicted = predicted_fine_sifs[i]
-        tile = tiles[i]
-        valid_mask = valid_masks[i]
-        crop_type_sif_means = [] #torch.empty((len(crop_type_indices)))
-        crop_type_sif_stds = [] #torch.empty((len(crop_type_indices)))
-        total_pixels = predicted_fine_sifs.shape[1] * predicted_fine_sifs.shape[2]
-        # print('Total pixels', total_pixels)
-        for i, idx in enumerate(crop_type_indices):
-            valid_crop_type_pixels = tile[idx].bool() & valid_mask
-            # print('Crop type', i, '# pixels', torch.count_nonzero(valid_crop_type_pixels))
-            if torch.count_nonzero(valid_crop_type_pixels) < min_fraction * total_pixels:
-                continue
-            predicted_sif_crop_type = predicted[valid_crop_type_pixels].flatten()
-            loss += torch.std(predicted_sif_crop_type)
-        #     print('Predicted sif crop type shape', predicted_sif_crop_type.shape)
-        #     crop_type_sif_means.append(torch.mean(predicted_sif_crop_type).item())
-        #     crop_type_sif_stds.append(torch.std(predicted_sif_crop_type))
-        # print('Crop type sif means', crop_type_sif_means)
-        # print('Crop type sif stds', crop_type_sif_stds)
-        # loss += (np.std(crop_type_sif_means) - np.mean(crop_type_sif_stds))
-    return loss
-
-
-
-
-def remove_pure_tiles(df, threshold=0.5):
-    CROP_TYPES = ['grassland_pasture', 'corn', 'soybean', 'shrubland',
-                    'deciduous_forest', 'evergreen_forest', 'spring_wheat', 'developed_open_space',
-                    'other_hay_non_alfalfa', 'winter_wheat', 'herbaceous_wetlands',
-                    'woody_wetlands', 'open_water', 'alfalfa', 'fallow_idle_cropland',
-                    'sorghum', 'developed_low_intensity', 'barren', 'durum_wheat',
-                    'canola', 'sunflower', 'dry_beans', 'developed_med_intensity',
-                    'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
-                    'lentils']
-    mixed_pixels = df[CROP_TYPES[0]] < threshold
-    # print('Total tiles', len(df))
-    for idx in range(1, len(CROP_TYPES)):
-        # print('Num tiles with a lot of ', CROP_TYPES[idx], len(df[df[CROP_TYPES[idx]] > threshold]))
-        mixed_pixels = mixed_pixels & (df[CROP_TYPES[idx]] < threshold)
-    df = df[mixed_pixels]
-    # print('Mixed (non-pure) tiles', len(df))
-    return df
     
 # Returns the upper-left corner of the large (1x1 degree) grid area
 def get_large_grid_area_coordinates(lon, lat, grid_area_degrees, decimal_places=1):
@@ -165,9 +121,6 @@ def extract_input_subtile(min_lon, max_lon, min_lat, max_lat, input_tiles_dir, s
     # Go through lats from top to bottom, because indices are numbered from top to bottom
     file_top_lats = np.linspace(min_lat_tile_top, max_lat_tile_top, num_tiles_lat,
                                 endpoint=True)[::-1]
-    # print("File left lons", file_left_lons)
-    # print("File top lats", file_top_lats)
-
 
     # Because a sub-tile could span multiple files, patch together all of the files that
     # contain any portion of the sub-tile
@@ -189,7 +142,6 @@ def extract_input_subtile(min_lon, max_lon, min_lat, max_lat, input_tiles_dir, s
                 missing_tile[-1, :, :] = 1
                 rows.append(missing_tile)
             else:
-                # print('Large tile filename', large_tile_filename)
                 large_tile = np.load(large_tile_filename)
                 rows.append(large_tile)
                 FILE_EXISTS = True
@@ -202,14 +154,12 @@ def extract_input_subtile(min_lon, max_lon, min_lat, max_lat, input_tiles_dir, s
         return None
 
     combined_large_tiles = np.concatenate(columns, axis=2)
-    # print('All large tiles shape', combined_large_tiles.shape)
 
     # Find indices of bounding box within this combined large tile
     top_idx, left_idx = lat_long_to_index(max_lat, min_lon, max_lat_tile_top,
                                           min_lon_tile_left, res)
     bottom_idx = top_idx + subtile_size_pixels
     right_idx = left_idx + subtile_size_pixels
-    # print('From combined large tile: Top', top_idx, 'Bottom', bottom_idx, 'Left', left_idx, 'Right', right_idx)
 
     # If the selected region (box) goes outside the range of the cover or reflectance dataset, that's a bug!
     if top_idx < 0 or left_idx < 0:
@@ -229,9 +179,6 @@ def downsample_sif(sif_array, valid_sif_mask, soundings_array, resolution_pixels
     # Now, only VALID pixels contain a non-zero SIF.
     sif_array[valid_sif_mask == 0] = 0
     soundings_array[valid_sif_mask == 0] = 0
-    # print('Sif array', sif_array.shape)
-    # print('valid sif mask', valid_sif_mask.shape)
-    # print('soundings array', soundings_array.shape)
 
     # For each coarse-SIF sub-region, compute the fraction of valid pixels.
     # Each square of "fraction_valid" is: (# valid fine pixels) / (# total fine pixels)
@@ -241,8 +188,6 @@ def downsample_sif(sif_array, valid_sif_mask, soundings_array, resolution_pixels
     # Average together fine SIF predictions for each coarse SIF area.
     # Each square of "coarse_sifs" is: (sum SIF over valid fine pixels) / (# total fine pixels)
     coarse_sifs = avg_pool(sif_array)
-    # print('Coarse sifs', coarse_sifs.shape)
-    # print('Fraction valid', fraction_valid.shape)
 
     # Instead of dividing by the total number of fine pixels, we want to divide by the number of VALID fine pixels.
     # Each square is now: (sum SIF over valid fine pixels) / (# valid fine pixels), which is what we want.
@@ -361,14 +306,9 @@ def print_stats(true, predicted, average_sif, print_report=True, ax=None, fit_in
     if isinstance(predicted, list):
         predicted = np.array(predicted)
 
-    # true = true.reshape(-1, 1)
-    # true_to_predicted = LinearRegression().fit(true, predicted)
-    # slope = true_to_predicted.coef_[0]
-    # intercept = true_to_predicted.intercept_
-    # true_rescaled = true_to_predicted.predict(true)
-    # r2 = r2_score(true_rescaled, predicted)
-
     predicted = predicted.reshape(-1, 1)
+
+    # Fit a predicted-to-true linear regression
     predicted_to_true = LinearRegression(fit_intercept=fit_intercept).fit(predicted, true)
     slope = predicted_to_true.coef_[0]
     if fit_intercept:
@@ -395,21 +335,10 @@ def print_stats(true, predicted, average_sif, print_report=True, ax=None, fit_in
         true = true.ravel()
         if predicted.size > 500:
             ax = density_scatter(predicted, true, bins=[40, 40], ax=ax, s=5)
-            # # Calculate the point density
-            # xy = np.vstack([predicted, true])
-            # z = gaussian_kde(xy)(xy)
-
-            # # Sort the points by density, so that the densest points are plotted last
-            # idx = z.argsort()
-            # x, y, z = predicted[idx], true[idx], z[idx]
-
-            # fig, ax = plt.subplots()
-            # ax.scatter(x, y, c=z, s=50, edgecolor='')
         else:
             ax.scatter(predicted, true, color="k", s=5)
 
         ax.plot(predicted, line, 'r', label=equation_string + ' (R^2={:.3f}, unscaled NRMSE={:.3f})'.format(r2_unscaled, nrmse_unscaled))
-        # ax.plot(predicted, line, 'r', label='y={:.2f}x+{:.2f} (R^2={:.3f}, unscaled NRMSE={:.3f})'.format(slope, intercept, r2_scaled, nrmse_unscaled))
         ax.set(xlabel='Predicted', ylabel='True')
         if predicted.size > 1000:
             loc = 'lower right'
@@ -419,21 +348,11 @@ def print_stats(true, predicted, average_sif, print_report=True, ax=None, fit_in
 
     if print_report:
         print('(num datapoints)', true.size)
-        # print('True vs predicted regression:', equation_string)
-        # print('R2:', round(r2_scaled, 3))
         print('NRMSE (unscaled):', round(nrmse_unscaled, 3))
         print('R2 (unscaled):', round(r2_unscaled, 3))
-        # print('NRMSE (scaled):', round(nrmse_scaled, 3))
 
     return r2_unscaled, nrmse_unscaled, corr
 
-    # corr, _ = pearsonr(true, predicted_rescaled)
-    # nrmse_unstd = math.sqrt(mean_squared_error(true, predicted)) / average_sif
-    # spearman_rank_corr, _ = spearmanr(true, predicted_rescaled)
-    #print('NRMSE (unstandardized):', round(nrmse_unstd, 3))
-    #print('Pearson correlation:', round(corr, 3))
-    #print('Pearson (unstandardized):', round(pearsonr(true, predicted)[0], 3))
-    #print('Spearman rank corr:', round(spearman_rank_corr, 3))
 
 
 # For the given tile, returns a list of subtiles.

@@ -1,3 +1,7 @@
+"""
+Tile augmentations. In the paper we only use StandardizeTile, ClipTile, MultiplicativeGaussianNoise, RandomJigsaw, RandomFlipAndRotate, Cutout.
+"""
+
 import numpy as np
 import random
 import torch
@@ -56,11 +60,9 @@ class GaussianNoise(object):
         self.standard_deviation = standard_deviation
 
     def __call__(self, tile):
-        #print('Before noise', tile[self.continuous_bands, 0:3, 0:3])
         continuous_bands_shape = tile[self.continuous_bands, :, :].shape
         noise = np.random.normal(loc=0, scale=self.standard_deviation, size=continuous_bands_shape)
         tile[self.continuous_bands, :, :] = tile[self.continuous_bands, :, :] + noise
-        #print('After noise', tile[self.continuous_bands, 0:3, 0:3])
         return tile
 
 class MultiplicativeGaussianNoise(object):
@@ -70,7 +72,7 @@ class MultiplicativeGaussianNoise(object):
 
     def __call__(self, tile):
         tile_shape = tile.shape[1:3]
-        noise = np.random.normal(loc=0, scale=self.standard_deviation) #, size=tile_shape)
+        noise = np.random.normal(loc=0, scale=self.standard_deviation)
         tile[self.continuous_bands, :, :] = tile[self.continuous_bands, :, :] * (1 + noise)
         return tile
 
@@ -83,7 +85,6 @@ class ColorDistortion(object):
         noise = np.random.normal(loc=0, scale=self.standard_deviation, size=(len(self.continuous_bands)))
         noise = noise[:, np.newaxis, np.newaxis].astype(np.float32)
         tile[self.continuous_bands, :, :] = tile[self.continuous_bands, :, :] + noise
-        #print('After noise', tile[self.continuous_bands, 0:3, 0:3])
         return tile
 
 class GaussianNoiseSubtiles(object):
@@ -92,11 +93,9 @@ class GaussianNoiseSubtiles(object):
         self.standard_deviation = standard_deviation
 
     def __call__(self, subtiles):
-        #print('Before noise', tile[self.continuous_bands, 0:3, 0:3])
         continuous_bands_shape = subtiles[:, self.continuous_bands, :, :].shape
         noise = np.random.normal(loc=0, scale=self.standard_deviation, size=continuous_bands_shape)
         subtiles[:, self.continuous_bands, :, :] = subtiles[:, self.continuous_bands, :, :] + noise
-        #print('After noise', tile[self.continuous_bands, 0:3, 0:3])
         return subtiles
 
 
@@ -154,13 +153,6 @@ class RandomFlipAndRotateSubtiles(object):
         # represents how many times that sub-tile should be rotated.
         rotations = np.random.choice(4, size=subtiles.shape[0])
 
-        # print('=================================')
-        # print('subtile shape', subtiles.shape)
-        # print('10th sub-tile: horizontal', horizontal_flips[10], 'vertical', vertical_flips[10],
-        #       'rotations', rotations[10])
-        # print('Before transformation:', subtiles[10, 0, :, :])
-        # print('Upper left pixel:', subtiles[10, :, 0, 0])
-
         # Randomly horizontal flip
         subtiles[horizontal_flips == 1] = np.flip(subtiles[horizontal_flips == 1], axis=3).copy()
  
@@ -170,8 +162,6 @@ class RandomFlipAndRotateSubtiles(object):
         for i in [1, 2, 3]:
             subtiles[rotations == i] = np.rot90(subtiles[rotations == i], k=i, axes=(2, 3)).copy()
  
-        # print('After transformation:', subtiles[10, 0, :, :])
-        # print('Upper left pixel:', subtiles[10, :, 0, 0])
         return subtiles  
 
 
@@ -187,20 +177,10 @@ class ResizeTile(object):
 
         # Convert tile into Scikit learn order (channels as last dimension, not first)
         tile_numpy = np.moveaxis(tile, 0, -1)
-        #print('Numpy tile shape', tile_numpy.shape)
         resized_tile = resize(tile_numpy, self.target_dim, mode='edge')
-        #print('After reize', resized_tile.shape)
         resized_tile = np.moveaxis(resized_tile, -1, 0)
-        #print('Resized tile shape', resized_tile.shape)
         resized_tile[self.discrete_bands, :, :] = np.round(resized_tile[self.discrete_bands, :, :])
         
-        #new_shape = [num_bands] + self.target_dim
-        #print('New shape', new_shape)
-        #tile = torch.from_numpy(tile).float().unsqueeze(0)
-        #print('SHape', tile.shape)
-
-        #resized_tile = F.interpolate(tile, size=self.target_dim, mode='bilinear')
-        #resized_tile[self.discrete_bands, :, :] = torch.round(resized_tile[self.discrete_bands, :, :])
         return resized_tile
 
 class ResizeTileRandom(object):
@@ -233,7 +213,7 @@ class RandomCrop(object):
         return tile[:, top_index:top_index+self.crop_dim, left_index:left_index+self.crop_dim]
 
 class Cutout(object):
-    def __init__(self, cutout_dim, prob, reflectance_indices=list(range(0, 9)), missing_reflectance_idx=42):
+    def __init__(self, cutout_dim, prob, reflectance_indices=list(range(0, 9)), missing_reflectance_idx=23):
         self.cutout_dim = cutout_dim
         self.prob = prob
         self.reflectance_indices = reflectance_indices
@@ -320,8 +300,6 @@ class ShrinkTile(object):
                 if pixels_without_reflectance > pixels_with_reflectance:
                     resized_tile[self.missing_band, i, j] = 1
 
-        #print('Random pixel', resized_tile[:, 2, 6])
-        #print('Random pixel', resized_tile[:, 3, 8])
         return resized_tile
 
 if __name__ == '__main__':
