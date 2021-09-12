@@ -531,7 +531,7 @@ def main():
 
 
 
-        print('========= Fine pixels: True vs U-Net predictions ==================')
+        print('============== (CFIS fine) True vs U-Net predictions, ALL ==================')
         r2, nrmse, corr = sif_utils.print_stats(eval_results_df_filtered['true_sif'].values.ravel(), eval_results_df_filtered['predicted_sif_unet'].values.ravel(), sif_mean, ax=plt.gca())
         plt.title('True vs predicted SIF (CSR-U-Net): ' + str(int(RESOLUTION_METERS)) + 'm pixels, ' + args.test_set + ' tiles')
         plt.xlim(left=MIN_SIF_PLOT, right=MAX_SIF_PLOT)
@@ -553,7 +553,7 @@ def main():
             predicted = predictions_fine_val[eval_results_df_filtered[crop_type] > PURE_THRESHOLD]
             true = Y_fine_val[eval_results_df_filtered[crop_type] > PURE_THRESHOLD]
             ax = axeslist.ravel()[idx]
-            print('======================= (CFIS fine) CROP: ', crop_type, '==============================')
+            print('================= (CFIS fine) CROP: ', crop_type, '===================')
             print(len(predicted), 'pixels that are pure', crop_type)
             crop_r2, crop_nrmse, crop_corr = sif_utils.print_stats(true, predicted, sif_mean, ax=ax)
             ax.set_xlim(left=MIN_SIF_PLOT, right=MAX_SIF_PLOT)
@@ -575,7 +575,7 @@ def main():
             # Obtain global model's predictions for data points with this date
             predicted = predictions_fine_val[eval_results_df_filtered['date'] == date]
             true = Y_fine_val[eval_results_df_filtered['date'] == date]
-            print('=================== Date ' + date + ' ======================')
+            print('================== (CFIS fine) DATE: ' + date + ' ===================')
             print('Number of rows', len(predicted))
             assert(len(predicted) == len(true))
             if len(predicted) < 2:

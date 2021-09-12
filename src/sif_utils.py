@@ -22,10 +22,12 @@ from sklearn.metrics import mean_squared_error, r2_score
 
 
 def get_git_revision_hash():
+    print("hi")
     try:
-        git_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD']).decode('ascii').strip()
+        git_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD'], stderr=subprocess.STDOUT).decode('ascii').strip()
     except subprocess.CalledProcessError:
-        git_hash = "None (not a part of git repo)"                      
+        print("hi2")
+        git_hash = "None (not a part of git repo)"                    
     return git_hash
 
 
