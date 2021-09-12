@@ -2,7 +2,7 @@
 
 Code for the paper "Super Fine-Resolution SIF via Coarsely-Supervised U-Net Regression", as well as a subset of the dataset. (Because CMT limits file size to 100MB, we can only upload 500 tiles, even though our paper uses over 3000 tiles.)
 
-To run the code, first change to the `src` directory.
+**To run the code, first change to the `src` directory.**
 
 ## Baselines
 
