@@ -17,11 +17,9 @@ import torch.optim as optim
 from torch import autograd
 from torch.autograd import grad
 
-import simple_cnn
 from reflectance_cover_sif_dataset import CombinedDataset, CoarseSIFDataset, FineSIFDataset
-from unet.unet_model import UNet, UNetSmall, UNet2, UNet2PixelEmbedding, UNet2Larger
+from unet.unet_model import UNet, UNetSmall, UNet2, UNet2PixelEmbedding, UNet2Larger, PixelNN
 import visualization_utils
-import nt_xent
 import sif_utils
 import tile_transforms
 import tqdm
@@ -1009,7 +1007,7 @@ dataloaders = {x: torch.utils.data.DataLoader(datasets[x], batch_size=args.batch
 if args.model == 'unet_small':
     unet_model = UNetSmall(n_channels=INPUT_CHANNELS, n_classes=OUTPUT_CHANNELS, reduced_channels=args.reduced_channels, min_output=min_output, max_output=max_output).to(device)
 elif args.model == 'pixel_nn':
-    unet_model = simple_cnn.PixelNN(input_channels=INPUT_CHANNELS, output_dim=OUTPUT_CHANNELS, min_output=min_output, max_output=max_output).to(device)
+    unet_model = PixelNN(input_channels=INPUT_CHANNELS, output_dim=OUTPUT_CHANNELS, min_output=min_output, max_output=max_output).to(device)
 elif args.model == 'unet2':
     unet_model = UNet2(n_channels=INPUT_CHANNELS, n_classes=OUTPUT_CHANNELS, reduced_channels=args.reduced_channels, min_output=min_output, max_output=max_output).to(device)
 elif args.model == 'unet2_larger':

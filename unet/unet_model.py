@@ -322,3 +322,28 @@ class UNet2PixelEmbedding(nn.Module):
         if self.restrict_output:
             logits = (self.tanh(logits) * self.scale_factor) + self.mean_output
         return logits, x1
+
+
+class PixelNN(nn.Module):
+    def __init__(self, input_channels, output_dim, min_output=None, max_output=None):
+        super(PixelNN, self).__init__()
+        self.conv1 = nn.Conv2d(input_channels, 100, kernel_size=1, stride=1, padding=0)
+        # self.conv2 = nn.Conv2d(100, 100, kernel_size=1, stride=1, padding=0)
+        # self.conv3 = nn.Conv2d(100, 100, kernel_size=1, stride=1, padding=0)
+        self.conv2 = nn.Conv2d(100, 1, kernel_size=1, stride=1, padding=0)
+
+        if min_output is not None and max_output is not None:
+            self.restrict_output = True
+            self.mean_output = (min_output + max_output) / 2
+            self.scale_factor = (max_output - min_output) / 2
+        else:
+            self.restrict_output = False
+
+    def forward(self, x):
+        x = F.relu(self.conv1(x))
+        x = self.conv2(x)
+        if self.restrict_output:
+            x = (F.tanh(x) * self.scale_factor) + self.mean_output
+        return x
+
+

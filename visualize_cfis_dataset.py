@@ -199,7 +199,6 @@ for date in DATES:
                                  "histogram_train_tiles_SIF_" + cover_col + "_" + date + "_weighted.png",
                                  title='SIF: ' + cover_col + ', ' + date,
                                  weights=date_tiles[cover_col])
-exit(0)
 
 # Read mean/standard deviation for each band, for standardization purposes
 train_statistics = pd.read_csv(BAND_STATISTICS_FILE)
