@@ -6,6 +6,7 @@ import shutil
 # Directories
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
 NEW_DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets/SIF_AAAI/test_data"
+NEW_DATA_DIR_RELATIVE = "../data/tiles"
 CFIS_DIR = os.path.join(DATA_DIR, "CFIS")
 OCO2_DIR = os.path.join(DATA_DIR, "OCO2")
 
@@ -143,8 +144,8 @@ def copy_tile(file_path, target_dir):
     # np.save(new_file_path + "_continuous", tile[0:12])
     # np.save(new_file_path + "_mask", tile[12:].astype(bool))
     # exit(1)
-
-    return new_file_path
+    relative_path = os.path.join(NEW_DATA_DIR_RELATIVE, os.path.basename(file_path))
+    return relative_path
 
 def copy_other_file(file_path, target_dir):
     new_file_path = os.path.join(target_dir, os.path.basename(file_path))
@@ -157,7 +158,8 @@ def copy_other_file(file_path, target_dir):
     #     if np.max(tile) > 65535:
     #         print("more than 2^16 soundings", np.max(tile))
     #     np.save(new_file_path, tile)
-    return new_file_path
+    relative_path = os.path.join(NEW_DATA_DIR_RELATIVE, os.path.basename(file_path))
+    return relative_path
 
 
 
