@@ -87,7 +87,7 @@ def plot_band_images(image_rows, image_filename_column, output_file_prefix):
 
 
 # Note there's a lot of redundant code here
-def plot_cdl_layers_multiple(image_rows, image_filename_column, output_file, cdl_bands=list(range(12, 42))):
+def plot_cdl_layers_multiple(image_rows, image_filename_column, output_file, cdl_bands):
     # Load all tiles and store the CDL bands
     images = {}
     for idx, image_row in image_rows.iterrows():
@@ -123,7 +123,7 @@ def plot_cdl_layers_multiple(image_rows, image_filename_column, output_file, cdl
 
 
 def plot_cdl_layers(tile, title, center_lon, center_lat, tile_size_degrees, plot_file,
-                    cdl_bands=range(12, 42), num_grid_squares=4, decimal_places=3):
+                    cdl_bands, num_grid_squares=4, decimal_places=3):
     eps = tile_size_degrees / 2
     num_ticks = num_grid_squares + 1
     cover_bands = tile[cdl_bands, :, :]
@@ -135,7 +135,7 @@ def plot_cdl_layers(tile, title, center_lon, center_lat, tile_size_degrees, plot
 
     crop_cmap = matplotlib.colors.ListedColormap(CDL_COLORS)
 
-    # Weird bounds because if there len(CDL_COLORS) is 31, the range of
+    # Weird bounds because if len(CDL_COLORS) is 31, the range of
     # possible values is [0, 1, ..., 30]. Therefore, the bounds should
     # be [-0.5, 30.5], because if this interval is split into 31 sections,
     # 0 will map to the first section [-0.5, 0.5], 1 will map to the second
@@ -173,29 +173,42 @@ def plot_2d_array(fig, ax, array, title, center_lon, center_lat, tile_size_degre
 
 
 # For a single tile, plot each band in its own plot
-def plot_individual_bands(tile, title, center_lon, center_lat, tile_size_degrees, plot_file,
-                          num_grid_squares=4, decimal_places=3, min_feature=-3, max_feature=3,
-                          crop_type_start_idx=12):
+def plot_individual_bands(tile, title, center_lon, center_lat, tile_size_degrees, plot_file, crop_type_start_idx,
+                          num_grid_squares=4, decimal_places=3, min_feature=-3, max_feature=3, diverging_cmap=False):
 
-    fig, axeslist = plt.subplots(ncols=6, nrows=8, figsize=(36, 48))
+    # Set up a plot for each band
+    num_bands = tile.shape[0]
+    num_cols, num_rows = 6, math.ceil(num_bands/6)
+    fig, axeslist = plt.subplots(ncols=num_cols, nrows=num_rows, figsize=(6*num_cols, 6*num_rows))
     fig.suptitle('All bands: ' + title)
+
+    if diverging_cmap:
+        cmap = ""
 
     for band in range(0, tile.shape[0]): #range(0, 43):
         layer = tile[band, :, :]
         ax = axeslist.ravel()[band]
         title = 'Band' + str(band)
+
+        # Get colorbar bounds for this band
         if band >= crop_type_start_idx:
             # Binary masks (crop type or missing reflectance) range from 0 to 1
-            min_feature = 0
-            max_feature = 1
+            vmin = 0
+            vmax = 1
         else:
-            # Other channels range from -3 to 3
-            min_feature = -3
-            max_feature = 3
+            if min_feature is not None:
+                vmin = min_feature
+            else:
+                vmin = np.nanmin(layer)
+            if max_feature is not None:
+                vmax = max_feature
+            else:
+                vmax = np.nanmax(layer)
+
         
         # Plot band (channel)
         plot_2d_array(fig, ax, layer, title, center_lon, center_lat, tile_size_degrees,
-                      num_grid_squares, decimal_places, min_feature, max_feature)
+                      num_grid_squares, decimal_places, vmin, vmax)
 
     plt.tight_layout() # optional
     fig.subplots_adjust(top=0.94)
@@ -230,7 +243,7 @@ def add_grid_lines(ax, center_lon, center_lat, tile_width, tile_height, tile_siz
 def plot_tile(tile, center_lon, center_lat, date, tile_size_degrees,
               tile_description=None, title=None,
               num_grid_squares=4, decimal_places=3, rgb_bands=[3, 2, 1], cdl_bands=range(12, 42),
-              plot_dir="/mnt/beegfs/bulk/mirror/jyf6/datasets/exploratory_plots"):
+              plot_dir="/mnt/beegfs/bulk/mirror/jyf6/datasets/SIF/exploratory_plots"):
 
     if tile_description is None:
         tile_description = 'lat_' + str(round(center_lat, 4)) + '_lon_' + str(round(center_lon, 4)) + '_' + date
@@ -239,6 +252,7 @@ def plot_tile(tile, center_lon, center_lat, date, tile_size_degrees,
 
     # Plot individual bands
     plot_individual_bands(tile, title, center_lon, center_lat, tile_size_degrees,
+                          crop_type_start_idx=cdl_bands[0],
                           plot_file=os.path.join(plot_dir, tile_description + '_all_bands.png'),
                           num_grid_squares=4, decimal_places=3)
 
@@ -260,7 +274,7 @@ def plot_tile(tile, center_lon, center_lat, date, tile_size_degrees,
 def plot_tile_prediction_only(tile, predicted_sif_tile, valid_mask, center_lon, center_lat, date, tile_size_degrees,
                               tile_description=None, title=None,
                               num_grid_squares=4, decimal_places=3, rgb_bands=[3, 2, 1], cdl_bands=range(12, 42),
-                              plot_dir="/mnt/beegfs/bulk/mirror/jyf6/datasets/exploratory_plots"):    
+                              plot_dir="/mnt/beegfs/bulk/mirror/jyf6/datasets/SIF/exploratory_plots"):    
     if tile_description is None:
         tile_description = 'lat_' + str(round(center_lat, 4)) + '_lon_' + str(round(center_lon, 4)) + '_' + date
     if title is None:
@@ -308,7 +322,7 @@ def plot_tile_predictions(tile, tile_description, true_sif_tile, predicted_sif_t
                           center_lon, center_lat, date, tile_size_degrees,
                           res, soundings_tile=None, num_grid_squares=4, decimal_places=3, rgb_bands=[3, 2, 1],
                           cdl_bands=range(12, 42),
-                          plot_dir="/mnt/beegfs/bulk/mirror/jyf6/datasets/exploratory_plots"): 
+                          plot_dir="/mnt/beegfs/bulk/mirror/jyf6/datasets/SIF/exploratory_plots"): 
 
     # Plot an augmented version of the tile
     flip_and_rotate_transform = tile_transforms.RandomFlipAndRotate()
@@ -330,6 +344,7 @@ def plot_tile_predictions(tile, tile_description, true_sif_tile, predicted_sif_t
 
     # Plot individual bands
     plot_individual_bands(tile, title, center_lon, center_lat, tile_size_degrees,
+                          crop_type_start_idx=cdl_bands[0],
                           plot_file=os.path.join(plot_dir, tile_description + '_all_bands.png'),
                           num_grid_squares=4, decimal_places=3)
 

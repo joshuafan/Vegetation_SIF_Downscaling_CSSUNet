@@ -11,14 +11,13 @@ from shapely.geometry import Point, Polygon
 import matplotlib.patches as patches
 
 
-DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-CFIS_DIR = os.path.join(DATA_DIR, "CFIS")
-OCO2_DIR = os.path.join(DATA_DIR, "OCO2")
+DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets/SIF"
+METADATA_DIR = os.path.join(DATA_DIR, "metadata/CFIS_OCO2_dataset")
+RAW_CFIS_DIR = os.path.join(DATA_DIR, "raw_data/SIF_CFIS")
 PLOT_DIR = os.path.join(DATA_DIR, "exploratory_plots")
-CFIS_COARSE_METADATA_FILE = os.path.join(CFIS_DIR, 'cfis_coarse_metadata.csv')
-# CFIS_FINE_METADATA_FILE = os.path.join(CFIS_DIR, 'cfis_fine_metadata.csv')
-CFIS_FINE_METADATA_FILE = os.path.join(CFIS_DIR, 'cfis_metadata_30m.csv')
-OCO2_METADATA_FILE = os.path.join(OCO2_DIR, 'oco2_metadata_overlap.csv')
+CFIS_COARSE_METADATA_FILE = os.path.join(METADATA_DIR, 'cfis_coarse_metadata.csv')
+CFIS_FINE_METADATA_FILE = os.path.join(METADATA_DIR, 'cfis_metadata_30m.csv')
+OCO2_METADATA_FILE = os.path.join(METADATA_DIR, 'oco2_metadata.csv')
 DATES = ["2016-06-15", "2016-08-01"]
 NUM_FOLDS = 5
 RES = (0.00026949458523585647, 0.00026949458523585647)  # Degrees per Landsat pixel
@@ -47,7 +46,7 @@ STATISTICS_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref
                       'canola', 'sunflower', 'dry_beans', 'developed_med_intensity',
                       'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
                       'lentils', 'missing_reflectance', 'SIF']
-BAND_STATISTICS_FILE = os.path.join(CFIS_DIR, 'cfis_band_statistics_train.csv')
+BAND_STATISTICS_FILE = os.path.join(METADATA_DIR, 'cfis_band_statistics_train.csv')
 # COVER_COLUMN_NAMES = ['grassland_pasture', 'corn', 'soybean', 'deciduous_forest']
 COVER_COLUMN_NAMES = ['grassland_pasture', 'corn', 'soybean',
                     'deciduous_forest', 'evergreen_forest', 'developed_open_space',
@@ -81,7 +80,7 @@ print('Total fine CFIS', len(cfis_fine_metadata_df))
 
 
 # Read county map
-MAP_FILE = "/mnt/beegfs/bulk/mirror/jyf6/datasets/exploratory_plots/States_21basic/geo_export_ac3fb136-4f60-4584-8fd2-5d077cc8bc7e.shp"  # /mnt/beegfs/bulk/mirror/jyf6/datasets/crop_forecast/data/gz_2010_us_050_00_20m/"
+MAP_FILE = os.path.join(DATA_DIR, "exploratory_plots/States_21basic/geo_export_ac3fb136-4f60-4584-8fd2-5d077cc8bc7e.shp")  # /mnt/beegfs/bulk/mirror/jyf6/datasets/crop_forecast/data/gz_2010_us_050_00_20m/"
 state_map = gpd.read_file(MAP_FILE)
 # print("State map", state_map)
 
@@ -110,7 +109,6 @@ ax.set_title("CFIS and OCO-2 locations", fontsize=14)
 ax.legend(loc="lower right", fontsize=12)
 plt.savefig(os.path.join(PLOT_DIR, "locations_cfis_and_oco2.png"))
 plt.close()
-exit(0)
 
 # Choose arbitrary tile, load data
 single_metadata = cfis_coarse_metadata_df.iloc[0]
@@ -143,9 +141,9 @@ plt.close()
 
 # Print scatterplot of soundings in this area, from original CFIS data
 MONTH = "Jun"
-lons = np.load(os.path.join(CFIS_DIR, "lons_" + MONTH + ".npy"), allow_pickle=True).flatten()
-lats = np.load(os.path.join(CFIS_DIR, "lats_" + MONTH + ".npy"), allow_pickle=True).flatten()
-sifs = np.load(os.path.join(CFIS_DIR, "dcsif_" + MONTH + ".npy"), allow_pickle=True).flatten()
+lons = np.load(os.path.join(RAW_CFIS_DIR, "lons_" + MONTH + ".npy"), allow_pickle=True).flatten()
+lats = np.load(os.path.join(RAW_CFIS_DIR, "lats_" + MONTH + ".npy"), allow_pickle=True).flatten()
+sifs = np.load(os.path.join(RAW_CFIS_DIR, "dcsif_" + MONTH + ".npy"), allow_pickle=True).flatten()
 # print('Lons', lons.shape, 'Lats', lats.shape, 'SIFs', sifs.shape)
 eps = TILE_SIZE_DEGREES / 2
 indices = (lons > single_metadata['lon']-eps) & (lons < single_metadata['lon']+eps) & \
@@ -190,13 +188,16 @@ for date in DATES:
         print('Cover', cover_col, 'date', date, 'num pixels', len(cover_date_pixels))
         sif_utils.plot_histogram(cover_date_pixels['SIF'].to_numpy(),
                                  "histogram_train_pixels_SIF_" + cover_col + "_" + date + ".png",
+                                 plot_dir=PLOT_DIR,
                                  title='SIF: ' + cover_col + ', ' + date)        
         sif_utils.plot_histogram(date_pixels['SIF'].to_numpy(),
                                  "histogram_train_pixels_SIF_" + cover_col + "_" + date + "_weighted.png",
+                                 plot_dir=PLOT_DIR,
                                  title='SIF: ' + cover_col + ', ' + date,
                                  weights=date_pixels[cover_col])
         sif_utils.plot_histogram(date_tiles['SIF'].to_numpy(),
                                  "histogram_train_tiles_SIF_" + cover_col + "_" + date + "_weighted.png",
+                                 plot_dir=PLOT_DIR,
                                  title='SIF: ' + cover_col + ', ' + date,
                                  weights=date_tiles[cover_col])
 

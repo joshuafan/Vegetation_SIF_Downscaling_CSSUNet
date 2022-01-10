@@ -18,13 +18,14 @@ RANDOM_STATE = 1
 np.random.seed(RANDOM_STATE)
 random.seed(RANDOM_STATE)
 
-DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-CFIS_DIR = os.path.join(DATA_DIR, "CFIS")
-OCO2_DIR = os.path.join(DATA_DIR, "OCO2")
+DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets/SIF"
+RAW_CFIS_DIR = os.path.join(DATA_DIR, "raw_data/SIF_CFIS")
+RAW_OCO2_DIR = os.path.join(DATA_DIR, "raw_data/SIF_OCO2")
+METADATA_DIR = os.path.join(DATA_DIR, "metadata/CFIS_OCO2_dataset")
 MONTHS = ["Jun", "Aug"]
 DATES = ["2016-06-15", "2016-08-01"]
-OCO2_FILES = [os.path.join(OCO2_DIR, "oco2_20160615_20160629_3km.nc"),
-              os.path.join(OCO2_DIR, "oco2_20160801_20160816_3km.nc")]
+OCO2_FILES = [os.path.join(RAW_OCO2_DIR, "oco2_20160615_20160629_3km.nc"),
+              os.path.join(RAW_OCO2_DIR, "oco2_20160801_20160816_3km.nc")]
 
 MIN_SOUNDINGS_FINE = 1
 MIN_FRACTION_VALID_PIXELS = 0.1  # Max fraction of invalid pixels when computing coarse-resolution SIF
@@ -46,11 +47,8 @@ NUM_FOLDS = 5
 TRAIN_FOLDS = [0, 1, 2]  # 0-indexed
 
 # OCO-2 tile datasets to output to
-OCO2_METADATA_FILE = os.path.join(OCO2_DIR, 'oco2_metadata_overlap.csv')
+OCO2_METADATA_FILE = os.path.join(METADATA_DIR, 'oco2_metadata.csv')
 oco2_metadata = []
-# OCO2_METADATA_TRAIN_FILE = os.path.join(OCO2_DIR, 'oco2_metadata_train.csv')
-# OCO2_METADATA_VAL_FILE = os.path.join(OCO2_DIR, 'oco2_metadata_val.csv')
-# OCO2_METADATA_TEST_FILE = os.path.join(OCO2_DIR, 'oco2_metadata_test.csv')
 
 # Columns for "band average" datasets, at both fine/coarse resolution
 BAND_AVERAGE_COLUMNS = ['fold', 'grid_fold', 'lon', 'lat', 'date', 'tile_file', 'ref_1', 'ref_2', 'ref_3', 'ref_4',
@@ -68,24 +66,10 @@ FINE_CFIS_AVERAGE_COLUMNS = BAND_AVERAGE_COLUMNS + ['coarse_sif']
 COARSE_CFIS_AVERAGE_COLUMNS = BAND_AVERAGE_COLUMNS + ['fraction_valid', 'fine_sif_file', 'fine_soundings_file']
 
 # CFIS coarse/fine averages
-CFIS_FINE_METADATA_FILE = os.path.join(CFIS_DIR, 'cfis_fine_metadata.csv')
+CFIS_FINE_METADATA_FILE = os.path.join(METADATA_DIR, 'cfis_fine_metadata.csv')
 cfis_fine_metadata = []
-# FINE_AVERAGES_TRAIN_FILE = os.path.join(CFIS_DIR, 'cfis_fine_averages_train.csv')
-# FINE_AVERAGES_VAL_FILE = os.path.join(CFIS_DIR, 'cfis_fine_averages_val.csv')
-# FINE_AVERAGES_TEST_FILE = os.path.join(CFIS_DIR, 'cfis_fine_averages_test.csv')
-# fine_averages_folds = []
-# fine_averages_val = []
-# fine_averages_test = []
-
-CFIS_COARSE_METADATA_FILE = os.path.join(CFIS_DIR, 'cfis_coarse_metadata.csv')
+CFIS_COARSE_METADATA_FILE = os.path.join(METADATA_DIR, 'cfis_coarse_metadata.csv')
 cfis_coarse_metadata = []
-# COARSE_AVERAGES_TRAIN_FILE = os.path.join(CFIS_DIR, 'cfis_coarse_averages_train.csv')
-# COARSE_AVERAGES_VAL_FILE = os.path.join(CFIS_DIR, 'cfis_coarse_averages_val.csv')
-# COARSE_AVERAGES_TEST_FILE = os.path.join(CFIS_DIR, 'cfis_coarse_averages_test.csv')
-# coarse_averages_train = []
-# coarse_averages_val = []
-# coarse_averages_test = []
-
 
 # Columns to compute statistics for
 STATISTICS_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
@@ -99,7 +83,7 @@ STATISTICS_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref
                       'canola', 'sunflower', 'dry_beans', 'developed_med_intensity',
                       'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
                       'lentils', 'missing_reflectance', 'SIF']
-BAND_STATISTICS_FILE = os.path.join(CFIS_DIR, 'cfis_band_statistics_train.csv')
+BAND_STATISTICS_FILE = os.path.join(METADATA_DIR, 'cfis_band_statistics_train.csv')
 
 # Lat/lon bounds. Note: *region indices* refer to the pixel index relative to the
 # top left corner (TOP_BOUND, LEFT_BOUND). (0, 0) is the top-left pixel, and
@@ -170,12 +154,12 @@ for date_idx, DATE in enumerate(DATES):
 
     # Data directories for this date
     MONTH = MONTHS[date_idx]
-    INPUT_TILES_DIR = os.path.join(DATA_DIR, "tiles_" + DATE)
-    OUTPUT_TILES_DIR = os.path.join(DATA_DIR, "tiles_cfis_" + DATE)
+    INPUT_TILES_DIR = os.path.join(DATA_DIR, "tiles/tiles_" + DATE)
+    OUTPUT_TILES_DIR = os.path.join(DATA_DIR, "tiles/cfis_tiles_" + DATE)
     if not os.path.exists(OUTPUT_TILES_DIR):
         os.makedirs(OUTPUT_TILES_DIR)
 
-    # Output tile prefixes
+    # Output tile prefixes. TODO turn to relative path!
     INPUT_TILE_PREFIX = os.path.join(OUTPUT_TILES_DIR, 'input_tile_')
     FINE_SIF_PREFIX = os.path.join(OUTPUT_TILES_DIR, 'fine_sif_')
     FINE_SOUNDINGS_PREFIX = os.path.join(OUTPUT_TILES_DIR, 'fine_soundings_')

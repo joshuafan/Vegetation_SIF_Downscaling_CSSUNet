@@ -5,6 +5,16 @@ import torch.nn.functional as F
 from skimage.transform import resize
 
 
+class NormalizeReflectance(object):
+    """
+    Normalizes reflectance bands (listed in "reflectance_bands") so that over those bands, each *pixel* has norm 1.
+    """
+    def __init__(self, reflectance_bands=list(range(0, 9))):
+        self.reflectance_bands = reflectance_bands
+    def __call__(self, tile):
+        normalized_bands = tile[self.reflectance_bands, :, :] / np.linalg.norm(tile[self.reflectance_bands, :, :], axis=0, keepdims=True)
+        tile[self.reflectance_bands, :, :] = np.nan_to_num(normalized_bands, nan=0, posinf=0, neginf=0)
+        return tile
 
 
 class StandardizeTile(object):
@@ -13,13 +23,14 @@ class StandardizeTile(object):
     mean 0, standard deviation 1.
     Note: do not standardize bands that are already binary masks.
     """
-    def __init__(self, band_means, band_stds, bands_to_transform=list(range(0,12))):
+    def __init__(self, band_means, band_stds, bands_to_transform=list(range(0, 12))):
         self.bands_to_transform = bands_to_transform 
         self.band_means = band_means[bands_to_transform, np.newaxis, np.newaxis]
         self.band_stds = band_stds[bands_to_transform, np.newaxis, np.newaxis]
 
     def __call__(self, tile):
-        tile[self.bands_to_transform, :, :] = (tile[self.bands_to_transform, :, :] - self.band_means) / self.band_stds
+        # TODO - change the 0.1
+        tile[self.bands_to_transform, :, :] = 0.1 * (tile[self.bands_to_transform, :, :] - self.band_means) / self.band_stds
         return tile
 
 
@@ -233,7 +244,7 @@ class RandomCrop(object):
         return tile[:, top_index:top_index+self.crop_dim, left_index:left_index+self.crop_dim]
 
 class Cutout(object):
-    def __init__(self, cutout_dim, prob, reflectance_indices=list(range(0, 9)), missing_reflectance_idx=42):
+    def __init__(self, cutout_dim, prob, reflectance_indices=list(range(0, 9)), missing_reflectance_idx=42):  # TODO Change!
         self.cutout_dim = cutout_dim
         self.prob = prob
         self.reflectance_indices = reflectance_indices
@@ -247,7 +258,40 @@ class Cutout(object):
             tile[self.reflectance_indices, top_index:top_index+self.cutout_dim, left_index:left_index+self.cutout_dim] = 0
             tile[self.missing_reflectance_idx, top_index:top_index+self.cutout_dim, left_index:left_index+self.cutout_dim] = 1
         return tile
-  
+
+
+#https://www.usgs.gov/core-science-systems/nli/landsat/landsat-surface-reflectance-derived-spectral-indices?qt-science_support_page_related_con=0#qt-science_support_page_related_con
+class ComputeVegetationIndices(object):
+    def __call__(self, tile):
+        ndvi = (tile[4] - tile[3]) / (tile[4] + tile[3])
+        evi = 2.5 * ((tile[4] - tile[3]) / (tile[4] + 6 * tile[3] - 7.5 * tile[1] + 1))
+        savi = ((tile[4] - tile[3]) / (tile[4] + tile[3] + 0.5)) * 1.5
+        msavi = (2 * tile[4] + 1 - np.sqrt((2 * tile[4] + 1) ** 2 - 8 * (tile[4] - tile[3]))) / 2
+        ndmi = (tile[4] - tile[5]) / (tile[4] + tile[5])
+        # if np.isfinite(ndvi).any():
+        #     print("NDVI nan", ndvi)
+        # if np.isfinite(evi).any():
+        #     print("EVI nan", evi)
+        # if np.isfinite(savi).any():
+        #     print("SAVI nan", savi)
+        # if np.isfinite(msavi).any():
+        #     print("MSAVI nan", msavi)
+        # if np.isfinite(ndmi).any():
+        #     print("NDMI nan", ndmi)
+        
+        new_tile = np.concatenate((tile[0:12],
+                                   np.expand_dims(ndvi, axis=0),
+                                   np.expand_dims(evi, axis=0),
+                                   np.expand_dims(savi, axis=0),
+                                   np.expand_dims(msavi, axis=0),
+                                   np.expand_dims(ndmi, axis=0),
+                                   tile[12:]), axis=0)
+        new_tile = np.nan_to_num(new_tile, nan=0., posinf=0., neginf=0.)
+
+        return new_tile
+
+
+
 class ToFloatTensor(object):
     def __call__(self, tile):
         return torch.from_numpy(tile).float()

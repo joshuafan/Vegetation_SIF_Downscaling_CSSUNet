@@ -19,14 +19,16 @@ from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.neural_network import MLPRegressor
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from sklearn.tree import DecisionTreeRegressor
-
+from sklearn.neighbors import KNeighborsRegressor
 from sif_utils import plot_histogram, print_stats
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-method', "--method", choices=["Ridge_Regression", "Gradient_Boosting_Regressor", "MLP"], type=str, help='Method type. MLP is the fully-connected artificial neural netwoprk.')
+parser.add_argument('-method', "--method", choices=["Ridge_Regression", "Gradient_Boosting_Regressor", "MLP", "Nearest_Neighbors"], type=str, help='Method type. MLP is the fully-connected artificial neural netwoprk.')
 parser.add_argument('-multiplicative_noise', "--multiplicative_noise", action='store_true')
 parser.add_argument('-mult_noise_std', "--mult_noise_std", default=0.2, type=float, help="If the 'multiplicative_noise' augmentation is used, multiply each channel by (1+eps), where eps ~ N(0, mult_noise_std)")
 parser.add_argument('-mult_noise_repeats', "--mult_noise_repeats", default=10, type=int, help="How many times to repeat each example (with different multiplicative noise)")
+parser.add_argument('-normalize', "--normalize", action='store_true', help='Whether to normalize the reflectance bands to have norm 1. If this is enabled, the reflectance bands are NOT standardized.')
+
 args = parser.parse_args()
 METHOD_READABLE = args.method.replace("_", " ")
 if not args.multiplicative_noise:
@@ -47,24 +49,14 @@ VAL_FOLDS = [3]
 TEST_FOLDS = [4]
 
 # Directories
-DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-CFIS_DIR = os.path.join(DATA_DIR, "CFIS")
-OCO2_DIR = os.path.join(DATA_DIR, "OCO2")
+DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets/SIF"
+METADATA_DIR = os.path.join(DATA_DIR, "metadata/CFIS_OCO2_dataset")
 
 # Train files
-# FINE_AVERAGES_TRAIN_FILE = os.path.join(CFIS_DIR, 'cfis_fine_averages_train.csv')
-# FINE_AVERAGES_VAL_FILE = os.path.join(CFIS_DIR, 'cfis_fine_averages_val.csv')
-# FINE_AVERAGES_TEST_FILE = os.path.join(CFIS_DIR, 'cfis_fine_averages_test.csv')
-# COARSE_AVERAGES_TRAIN_FILE = os.path.join(CFIS_DIR, 'cfis_coarse_averages_train.csv')
-# COARSE_AVERAGES_VAL_FILE = os.path.join(CFIS_DIR, 'cfis_coarse_averages_val.csv')
-# COARSE_AVERAGES_TEST_FILE = os.path.join(CFIS_DIR, 'cfis_coarse_averages_test.csv')
-# OCO2_METADATA_TRAIN_FILE = os.path.join(OCO2_DIR, 'oco2_metadata_train.csv')
-# OCO2_METADATA_VAL_FILE = os.path.join(OCO2_DIR, 'oco2_metadata_val.csv')
-# OCO2_METADATA_TEST_FILE = os.path.join(OCO2_DIR, 'oco2_metadata_test.csv')
-CFIS_COARSE_METADATA_FILE = os.path.join(CFIS_DIR, 'cfis_coarse_metadata.csv')
-CFIS_FINE_METADATA_FILE = os.path.join(CFIS_DIR, 'cfis_fine_metadata.csv')
-OCO2_METADATA_FILE = os.path.join(OCO2_DIR, 'oco2_metadata_overlap.csv')
-BAND_STATISTICS_FILE = os.path.join(CFIS_DIR, 'cfis_band_statistics_train.csv')
+CFIS_COARSE_METADATA_FILE = os.path.join(METADATA_DIR, 'cfis_coarse_metadata.csv')
+CFIS_FINE_METADATA_FILE = os.path.join(METADATA_DIR, 'cfis_fine_metadata.csv')
+OCO2_METADATA_FILE = os.path.join(METADATA_DIR, 'oco2_metadata.csv')
+BAND_STATISTICS_FILE = os.path.join(METADATA_DIR, 'cfis_band_statistics_train.csv')
 
 # Only include CFIS tiles where at least this fraction of pixels have CFIS
 # fine-resolution data
@@ -79,7 +71,7 @@ eps = 1e-5
 MIN_FINE_FRACTION_VALID_PIXELS = [0.9-eps] #[0.1, 0.3, 0.5, 0.7] # [0.5] #[0.5]
 
 # Resolutions to consider
-RESOLUTION_METERS = [30, 90, 150, 300, 600]
+RESOLUTION_METERS = [30]  #, 90, 150, 300, 600]
 
 # Dates/sources
 DATES = ["2016-06-15", "2016-08-01"]
@@ -126,7 +118,7 @@ MIN_SIF_PLOT = 0
 MAX_SIF_PLOT = 1.5
 
 # Result plots and files
-RESULTS_DIR = "baseline_results"
+RESULTS_DIR = os.path.join(DATA_DIR, "baseline_results")
 if not os.path.exists(RESULTS_DIR):
     os.makedirs(RESULTS_DIR)
 if not os.path.exists(RESULTS_DIR + "/plots"):
@@ -142,7 +134,6 @@ INPUT_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
                     'deciduous_forest', 'evergreen_forest', 'developed_open_space',
                     'woody_wetlands', 'open_water', 'alfalfa',
                     'developed_low_intensity', 'developed_med_intensity', 'missing_reflectance']
-# INPUT_COLUMNS = ["NDVI"]
 ALL_COVER_COLUMNS = ['grassland_pasture', 'corn', 'soybean',
                     'deciduous_forest', 'evergreen_forest', 'developed_open_space',
                     'woody_wetlands', 'open_water', 'alfalfa',
@@ -172,6 +163,7 @@ REFLECTANCE_BANDS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_
 
 COLUMNS_TO_STANDARDIZE = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
                     'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg']
+COLUMNS_TO_LOG = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7', 'ref_10', 'ref_11']
 OUTPUT_COLUMN = ['SIF']
 
 
@@ -197,7 +189,7 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
         cfis_coarse_metadata = cfis_coarse_metadata[cfis_coarse_metadata[ALL_COVER_COLUMNS].sum(axis=1) >= 0.5]
 
         # Read fine metadata at particular resolution, and do initial filtering
-        CFIS_FINE_METADATA_FILE = os.path.join(CFIS_DIR, 'cfis_metadata_' + str(resolution) + 'm.csv')
+        CFIS_FINE_METADATA_FILE = os.path.join(METADATA_DIR, 'cfis_metadata_' + str(resolution) + 'm.csv')
         cfis_fine_metadata = pd.read_csv(CFIS_FINE_METADATA_FILE)
         cfis_fine_metadata = cfis_fine_metadata[(cfis_fine_metadata['SIF'] >= MIN_SIF_CLIP) &
                                         (cfis_fine_metadata['tile_file'].isin(set(cfis_coarse_metadata['tile_file'])))]
@@ -382,7 +374,24 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
                 # print(train_set.loc[idx, REFLECTANCE_BANDS])
 
         # Standardize data
+        # TODO - try normalizing instead
+
+        
         for idx, column in enumerate(COLUMNS_TO_STANDARDIZE):
+            # TODO just testing out log
+            if column in COLUMNS_TO_LOG:
+                log_column = "log_" + column
+                print("Column", column, "max", np.max(fine_train_set[column]), "min", np.min(fine_train_set[column]))
+                train_set[log_column] = np.log(train_set[column] + 1e-5)
+                log_mean = np.mean(train_set[log_column])
+                log_std = np.std(train_set[log_column])
+                train_set[log_column] = np.clip((train_set[log_column] - log_mean) / log_std, a_min=MIN_INPUT, a_max=MAX_INPUT)
+                coarse_val_set[log_column] = np.clip((np.log(coarse_val_set[column] + 1e-5) - log_mean) / log_std, a_min=MIN_INPUT, a_max=MAX_INPUT)
+                fine_train_set[log_column] = np.clip((np.log(fine_train_set[column] + 1e-5) - log_mean) / log_std, a_min=MIN_INPUT, a_max=MAX_INPUT)
+                fine_val_set[log_column] = np.clip((np.log(fine_val_set[column] + 1e-5) - log_mean) / log_std, a_min=MIN_INPUT, a_max=MAX_INPUT)
+                fine_test_set[log_column] = np.clip((np.log(fine_test_set[column] + 1e-5) - log_mean) / log_std, a_min=MIN_INPUT, a_max=MAX_INPUT)
+                INPUT_COLUMNS.append(log_column)
+
             train_set[column] = np.clip((train_set[column] - band_means[idx]) / band_stds[idx], a_min=MIN_INPUT, a_max=MAX_INPUT)
             coarse_val_set[column] = np.clip((coarse_val_set[column] - band_means[idx]) / band_stds[idx], a_min=MIN_INPUT, a_max=MAX_INPUT)
             fine_train_set[column] = np.clip((fine_train_set[column] - band_means[idx]) / band_stds[idx], a_min=MIN_INPUT, a_max=MAX_INPUT)
@@ -444,6 +453,13 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
                     param_string = 'hidden_layer_sizes=' + str(hidden_layer_size) + ', learning_rate_init=' + str(learning_rate_init)
                     print(param_string)
                     regression_models[param_string] = models
+        elif "nearest_neighbors" in args.method:
+            num_neighbors = [5, 10, 20]
+            for n in num_neighbors:
+                models = [KNeighborsRegressor(n_neighbors=n, weights="distance").fit(X_train, Y_train)]
+                param_string = "n_neighbors=" + str(n)
+                print(param_string)
+                regression_models[param_string] = models
         else:
             raise ValueError("Unsupported method. Options for --method are 'Ridge_Regression', 'Gradient_Boosting_Regressor', 'MLP'.")
 

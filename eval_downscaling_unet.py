@@ -24,12 +24,11 @@ from sklearn.neural_network import MLPRegressor
 
 
 
-DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
-CFIS_DIR = os.path.join(DATA_DIR, "CFIS")
-OCO2_DIR = os.path.join(DATA_DIR, "OCO2")
-CFIS_COARSE_METADATA_FILE = os.path.join(CFIS_DIR, 'cfis_coarse_metadata.csv')
-OCO2_METADATA_FILE = os.path.join(OCO2_DIR, 'oco2_metadata_overlap.csv')
-BAND_STATISTICS_FILE = os.path.join(CFIS_DIR, 'cfis_band_statistics_train.csv')
+DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets/SIF"
+METADATA_DIR = os.path.join(DATA_DIR, "metadata/CFIS_OCO2_dataset")
+CFIS_COARSE_METADATA_FILE = os.path.join(METADATA_DIR, 'cfis_coarse_metadata.csv')
+OCO2_METADATA_FILE = os.path.join(METADATA_DIR, 'oco2_metadata.csv')
+BAND_STATISTICS_FILE = os.path.join(METADATA_DIR, 'cfis_band_statistics_train.csv')
 
 # Parse command-line arguments
 parser = argparse.ArgumentParser()
@@ -436,7 +435,7 @@ def compare_unet_to_others(args, model, dataloader, device, sif_mean, sif_std, r
                     predicted_sif_tiles = [predicted_eval_sifs_linear,
                                         predicted_eval_sifs_mlp,
                                         predicted_eval_sifs_unet]
-                    prediction_methods = ['Linear', 'ANN', 'CSR-U-Net']
+                    prediction_methods = ['Ridge', 'ANN', 'CSR-U-Net']
                     average_sifs = []
                     tile_description = 'lat_' + str(round(large_tile_lat, 4)) + '_lon_' + str(round(large_tile_lon, 4)) + '_' \
                                         + date + '_' + str(resolution_meters) + 'm_soundings' + str(min_eval_cfis_soundings) + '_fractionvalid' + str(MIN_EVAL_FRACTION_VALID) + '_best_fine'
@@ -508,7 +507,7 @@ def main():
 
     # Iterate through resolutions
     for RESOLUTION_METERS in RESOLUTIONS:
-        CFIS_EVAL_METADATA_FILE = os.path.join(CFIS_DIR, 'cfis_metadata_' + str(RESOLUTION_METERS) + 'm.csv')
+        CFIS_EVAL_METADATA_FILE = os.path.join(METADATA_DIR, 'cfis_metadata_' + str(RESOLUTION_METERS) + 'm.csv')
         COARSE_CFIS_RESULTS_CSV_FILE = os.path.join(RESULTS_DIR, 'cfis_results_' + args.model + '_coarse_' + args.test_set + '.csv')
         EVAL_CFIS_RESULTS_CSV_FILE = os.path.join(RESULTS_DIR, 'cfis_results_' + args.model + '_' + str(RESOLUTION_METERS) + 'm_' + args.test_set + '.csv')
 

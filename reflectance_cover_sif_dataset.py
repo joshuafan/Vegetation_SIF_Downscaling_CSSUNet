@@ -136,6 +136,7 @@ class FineSIFDataset(Dataset):
                                                 np.expand_dims(fine_sif_tile.data, axis=0),
                                                 np.expand_dims(fine_sif_tile.mask, axis=0),
                                                 np.expand_dims(fine_soundings_tile, axis=0)], axis=0)
+            # original_input_channels = input_tile.shape[0]
             # print('random', consolidated_tile[:, 0, 0])
             # print('random', consolidated_tile[:, 1, 1])
             # print('random', consolidated_tile[:, 2, 2])

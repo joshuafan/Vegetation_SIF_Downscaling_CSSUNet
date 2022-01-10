@@ -15,7 +15,7 @@ class UNet2(nn.Module):
     # transform) to the start, to reduce the dimensionality of each pixel.
     # If "min_output" and "max_output" are set, the model's prediction will be constrained by the
     # Tanh function to fall within the range (min_output, max_output).
-    def __init__(self, n_channels, n_classes, reduced_channels, min_output=None, max_output=None):
+    def __init__(self, n_channels, n_classes, recon_channels, reduced_channels, min_output=None, max_output=None):
         super(UNet2, self).__init__()
         self.n_channels = n_channels
         self.n_classes = n_classes
@@ -33,7 +33,7 @@ class UNet2(nn.Module):
         self.down2 = Down(128, 128)
         self.up1 = Up(256, 64, bilinear=True)
         self.up2 = Up(128, 64, bilinear=True)
-        self.outc = OutConv(64, n_classes)
+        self.outc = OutConv(64, n_classes + recon_channels)
 
         # Optionally restrict the range of the predictions using Tanh
         if min_output is not None and max_output is not None:
@@ -61,11 +61,71 @@ class UNet2(nn.Module):
         # Addition: restrict output 
         if self.restrict_output:
             logits = (self.tanh(logits) * self.scale_factor) + self.mean_output
-        return logits
+        return logits[:, 0:self.n_classes, :, :], logits[:, self.n_classes:, :, :]  # First n_classes entries are predictions. Rest are reconstruction output
+
+
+
+class UNet2WithReconstruction(nn.Module):
+    # If "reduced_channels" is set, add another 1x1 convolution (basically a pixel-wise nonlinear
+    # transform) to the start, to reduce the dimensionality of each pixel.
+    # If "min_output" and "max_output" are set, the model's prediction will be constrained by the
+    # Tanh function to fall within the range (min_output, max_output).
+    def __init__(self, n_channels, n_classes, recon_channels, reduced_channels, min_output=None, max_output=None):
+        super(UNet2WithReconstruction, self).__init__()
+        self.n_channels = n_channels
+        self.n_classes = n_classes
+
+        if reduced_channels is not None:
+            self.dimensionality_reduction = nn.Conv2d(n_channels, reduced_channels, kernel_size=1, stride=1)
+            self.inc = nn.Conv2d(reduced_channels, 64, kernel_size=1, stride=1)
+        else:
+            self.dimensionality_reduction = None
+            self.inc = nn.Conv2d(n_channels, 64, kernel_size=1, stride=1)
+        # self.dropout = nn.Dropout2d()
+
+        # self.inc = DoubleConv(n_channels, 64)
+        self.down1 = Down(64, 128)
+        self.down2 = Down(128, 128)
+        self.up1 = Up(256, 64, bilinear=True)
+        self.up2 = Up(128, 64, bilinear=True)
+        self.outc = OutConv(64, n_classes)
+
+        self.recon1 = nn.Conv2d(n_classes, recon_channels // 2, kernel_size=1, stride=1)
+        self.recon2 = nn.Conv2d(recon_channels // 2, recon_channels, kernel_size=1, stride=1)
+
+        # Optionally restrict the range of the predictions using Tanh
+        if min_output is not None and max_output is not None:
+            self.restrict_output = True
+            self.mean_output = (min_output + max_output) / 2
+            self.scale_factor = (max_output - min_output) / 2
+            self.tanh = nn.Tanh()
+        else:
+            self.restrict_output = False
+
+
+    def forward(self, x):
+        if self.dimensionality_reduction is not None:
+            x = self.dimensionality_reduction(x)
+            x = F.relu(x)
+        x1 = self.inc(x)
+        # x1 = self.dropout(x1)
+        x1 = F.relu(x1)
+        x2 = self.down1(x1)
+        x3 = self.down2(x2)
+        x = self.up1(x3, x2)
+        x = self.up2(x, x1)
+        logits = self.outc(x)
+
+        # Addition: restrict output 
+        if self.restrict_output:
+            logits = (self.tanh(logits) * self.scale_factor) + self.mean_output
+        
+        recon = self.recon2(F.relu(self.recon1(logits)))
+        return logits, recon
 
 
 class UNet(nn.Module):
-    def __init__(self, n_channels, n_classes, reduced_channels, min_output=None, max_output=None, bilinear=True, crop_type_start_idx=12, crop_type_embedding_dim=10):
+    def __init__(self, n_channels, n_classes, reduced_channels, recon_channels, min_output=None, max_output=None, bilinear=True, crop_type_start_idx=12, crop_type_embedding_dim=10):
         super(UNet, self).__init__()
         self.n_channels = n_channels
         self.n_classes = n_classes
@@ -101,7 +161,7 @@ class UNet(nn.Module):
         self.up2 = Up(512, 256 // factor, bilinear)
         self.up3 = Up(256, 128 // factor, bilinear)
         self.up4 = Up(128, 64, bilinear)
-        self.outc = OutConv(64, n_classes)
+        self.outc = OutConv(64, n_classes + recon_channels)
 
         if min_output is not None and max_output is not None:
             self.restrict_output = True
@@ -140,7 +200,8 @@ class UNet(nn.Module):
         # Addition: restrict output 
         if self.restrict_output:
             logits = (self.tanh(logits) * self.scale_factor) + self.mean_output
-        return logits, x1
+
+        return logits[:, 0:self.n_classes, :, :], logits[:, self.n_classes:, :, :]  # First n_classes entries are predictions. Rest are reconstruction output
 
 
 class UNetSmall(nn.Module):
@@ -330,7 +391,7 @@ class PixelNN(nn.Module):
         self.conv1 = nn.Conv2d(input_channels, 100, kernel_size=1, stride=1, padding=0)
         # self.conv2 = nn.Conv2d(100, 100, kernel_size=1, stride=1, padding=0)
         # self.conv3 = nn.Conv2d(100, 100, kernel_size=1, stride=1, padding=0)
-        self.conv2 = nn.Conv2d(100, 1, kernel_size=1, stride=1, padding=0)
+        self.conv2 = nn.Conv2d(100, output_dim, kernel_size=1, stride=1, padding=0)
 
         if min_output is not None and max_output is not None:
             self.restrict_output = True
@@ -344,6 +405,6 @@ class PixelNN(nn.Module):
         x = self.conv2(x)
         if self.restrict_output:
             x = (F.tanh(x) * self.scale_factor) + self.mean_output
-        return x
+        return x, None
 
 

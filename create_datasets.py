@@ -48,8 +48,8 @@ def plot_and_print_covers(covers, filename):
         print(str(crop) + ': ' + str(round((count / total_pixels) * 100, 2)) + '%')
 
 
-# Root directory of datasets
-DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
+# Root directory of dataset
+DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets/SIF"
 
 # Columns for unlabeled images
 IMAGE_COLUMNS = ['lon', 'lat', 'date', 'tile_file', 'ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
@@ -111,39 +111,36 @@ for DATE_RANGE in DATE_RANGES:
     month = month.rjust(2, '0')  # Pad month to 2-digits (e.g. 5 becomes 05)
 
     # Directory containing Landsat data (may contain multiple .tif files)
-    REFLECTANCE_DIR = os.path.join(DATA_DIR, "LandsatReflectance", start_date_string)
+    REFLECTANCE_DIR = os.path.join(DATA_DIR, "raw_data/LandsatReflectance", start_date_string)
 
     # File containing FLDAS data
-    FLDAS_FILE = os.path.join(DATA_DIR, "FLDAS/FLDAS_NOAH01_C_GL_M.A" + year + month + ".001.nc.SUB.nc4")
+    FLDAS_FILE = os.path.join(DATA_DIR, "raw_data/FLDAS/FLDAS_NOAH01_C_GL_M.A" + year + month + ".001.nc.SUB.nc4")
     print("FLDAS file", FLDAS_FILE)
     FLDAS_VARS = ["Rainf_f_tavg", "SWdown_f_tavg", "Tair_f_tavg"]
 
     # Directory containing CDL (crop type) data
-    COVER_DIR = os.path.join(DATA_DIR, "CDL_" + year)
+    COVER_DIR = os.path.join(DATA_DIR, "raw_data/CDL_" + year)
 
     # File containing SIF data
-    SIF_FILE = os.path.join(DATA_DIR, "TROPOMI_SIF/TROPO-SIF_01deg_biweekly_Apr18-Jan20.nc")
+    SIF_FILE = os.path.join(DATA_DIR, "raw_data/SIF_TROPOMI/TROPO-SIF_01deg_biweekly_Apr18-Jan20.nc")
 
     # Output directories
-    OUTPUT_DATASET_DIR = os.path.join(DATA_DIR, "dataset_" + start_date_string)  # Directory containing list of tiles
-    OUTPUT_IMAGES_DIR = os.path.join(DATA_DIR, "images_" + start_date_string)  # Directory containing large images
-    OUTPUT_TILES_DIR = os.path.join(DATA_DIR, "tiles_" + start_date_string)  # Directory containing 0.1x0.1 degree tiles
+    OUTPUT_DATASET_DIR = os.path.join(DATA_DIR, "metadata/dataset_" + start_date_string)  # Directory containing list of tiles
+    OUTPUT_TILES_DIR = os.path.join(DATA_DIR, "tiles/tiles_" + start_date_string)  # Directory containing 0.1x0.1 degree tiles
     OUTPUT_CSV_FILE = os.path.join(OUTPUT_DATASET_DIR, "reflectance_cover_to_sif.csv")  # Output csv file referencing all tiles
-    OUTPUT_IMAGES_CSV_FILE = os.path.join(OUTPUT_DATASET_DIR, "images.csv")
     if not os.path.exists(OUTPUT_DATASET_DIR):
         os.makedirs(OUTPUT_DATASET_DIR)
     if not os.path.exists(OUTPUT_TILES_DIR):
         os.makedirs(OUTPUT_TILES_DIR)
-    # if not os.path.exists(OUTPUT_IMAGES_DIR):
-    #     os.makedirs(OUTPUT_IMAGES_DIR)
+
 
     # Dataset format: lon/lat, date, image file name, SIF
     dataset_rows = []
     if not APPEND:
         dataset_rows.append(SIF_TILE_COLUMNS)
-    image_rows = []
-    if not APPEND:
-        image_rows.append(IMAGE_COLUMNS)
+    # image_rows = []
+    # if not APPEND:
+    #     image_rows.append(IMAGE_COLUMNS)
 
     # For each tile, keep track of how much reflectance data is present
     reflectance_coverage = []

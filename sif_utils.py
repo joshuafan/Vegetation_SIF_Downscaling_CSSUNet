@@ -308,7 +308,7 @@ def masked_average_numpy(array, mask, dims_to_average):
     return np.sum(wanted_values, axis=dims_to_average) / np.sum(mask, axis=dims_to_average)
 
 
-def plot_histogram(column, plot_filename, plot_dir="/mnt/beegfs/bulk/mirror/jyf6/datasets/exploratory_plots", title=None, weights=None):
+def plot_histogram(column, plot_filename, plot_dir="/mnt/beegfs/bulk/mirror/jyf6/datasets/SIF/exploratory_plots", title=None, weights=None):
     column = column.flatten()
     column = column[~np.isnan(column)]
     print(plot_filename)
