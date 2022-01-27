@@ -80,3 +80,54 @@ class OutConv(nn.Module):
 
     def forward(self, x):
         return self.conv(x)
+
+
+class PixelProjectionHead(nn.Module):
+    """Per-pixel projection head
+    """
+    def __init__(self, dim_in, proj_dim=32, proj='mlp'):
+        super(PixelProjectionHead, self).__init__()
+
+        if proj == 'linear':
+            self.proj = nn.Conv2d(dim_in, proj_dim, kernel_size=1)
+        elif proj == 'mlp':
+            self.proj = nn.Sequential(
+                nn.Conv2d(dim_in, dim_in, kernel_size=1),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(dim_in, proj_dim, kernel_size=1)
+            )
+
+    def forward(self, x):
+        return F.normalize(self.proj(x), p=2, dim=1)
+
+
+class PixelRegressionHead(nn.Module):
+    """Per-pixel regression head
+    """
+    def __init__(self, dim_in, output_dim=1, regressor_type='mlp', min_output=None, max_output=None):
+        super(PixelRegressionHead, self).__init__()
+
+        # Define pixel regressor
+        if regressor_type == 'linear':
+            self.regressor = nn.Conv2d(dim_in, output_dim, kernel_size=1)
+        elif regressor_type == 'mlp':
+            self.regressor = nn.Sequential(
+                nn.Conv2d(dim_in, dim_in, kernel_size=1),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(dim_in, output_dim, kernel_size=1)
+            )
+
+        # Optionally restrict the range of the predictions using Tanh
+        if min_output is not None and max_output is not None:
+            self.restrict_output = True
+            self.mean_output = (min_output + max_output) / 2
+            self.scale_factor = (max_output - min_output) / 2
+            self.tanh = nn.Tanh()
+        else:
+            self.restrict_output = False
+
+    def forward(self, x):
+        logits = self.regressor(x)
+        if self.restrict_output:
+            logits = (self.tanh(logits) * self.scale_factor) + self.mean_output
+        return logits

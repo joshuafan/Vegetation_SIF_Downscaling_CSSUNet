@@ -321,8 +321,12 @@ def plot_histogram(column, plot_filename, plot_dir="/mnt/beegfs/bulk/mirror/jyf6
     # print('Max:', round(np.max(column), 4))
     # print('Min:', round(np.min(column), 4))
     n, bins, patches = plt.hist(column, 40, facecolor='blue', alpha=0.5, weights=weights)
-    if title is not None:
-        plt.title(title)
+    if title is None:
+        title = ""
+    else:
+        title += "\n"
+    title += ("(Mean = " + str(round(np.mean(column), 3)) + ", Std = " + str(round(np.std(column), 3)) + ", Num datapoints = " + str(len(column)) + ")")
+    plt.title(title)
     plt.savefig(os.path.join(plot_dir, plot_filename))
     plt.close()
 

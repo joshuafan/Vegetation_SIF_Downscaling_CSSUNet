@@ -65,6 +65,46 @@ class UNet2(nn.Module):
 
 
 
+class UNet2Contrastive(nn.Module):
+    """U-Net with pixel projection & prediction heads. The projection is normalized to have L2 norm 1.
+    """
+    def __init__(self, n_channels, n_classes, proj_dim=32, proj="mlp", min_output=None, max_output=None):
+        """Initializes a U-Net contrastive model.
+        
+        Args:
+            n_channels: number of channels in input image
+            n_classes: number of output variables
+            proj_dim: dimension of pixel projection
+            proj: type of projection and prediction head. Can be "mlp" or "linear".
+            min_output, max_output: bounds on the output predictions. If these are set, model's predictions
+                                    will be constrained by the Tanh function to fall within this range.
+                                    Otherwise, there is no constraint on model predictions.
+        """
+        super(UNet2Contrastive, self).__init__()
+        self.n_channels = n_channels
+        self.n_classes = n_classes
+        self.inc = nn.Conv2d(n_channels, 64, kernel_size=1, stride=1)
+        self.down1 = Down(64, 128)
+        self.down2 = Down(128, 128)
+        self.up1 = Up(256, 64, bilinear=True)
+        self.up2 = Up(128, 64, bilinear=True)
+        self.regression_head = PixelRegressionHead(64, output_dim=1, regressor_type=proj, min_output=min_output, max_output=max_output)
+        self.projection_head = PixelProjectionHead(64, proj_dim=proj_dim, proj=proj)
+
+
+    def forward(self, x):
+        x1 = self.inc(x)
+        x1 = F.relu(x1)
+        x2 = self.down1(x1)
+        x3 = self.down2(x2)
+        x = self.up1(x3, x2)
+        representations = self.up2(x, x1)
+        predictions = self.regression_head(representations)
+        projections = self.projection_head(representations)
+        return predictions, projections
+
+
+
 class UNet2WithReconstruction(nn.Module):
     # If "reduced_channels" is set, add another 1x1 convolution (basically a pixel-wise nonlinear
     # transform) to the start, to reduce the dimensionality of each pixel.

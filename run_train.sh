@@ -17,8 +17,16 @@
     # --similarity_loss --similarity_temp 0.2
     # --cutout --cutout_dim 20 --cutout_prob 0.5 --recon_loss
 
-for l in 0.01 0.1 1 10 0
+# for l in 0.1 0.01 1 # 0.001 # 0.01 0.1 1 0
+# do
+#     python3 train_downscaling_unet.py --prefix 10d --model unet2 --optimizer AdamW -lr 1e-4 -wd 0 -sche const -epoch 100 -bs 64 \
+#         --fraction_outputs_to_average 1 --smoothness_loss_contrastive --lambduh $l --flip_and_rotate --multiplicative_noise --mult_noise_std 0.2
+# done
+
+
+# Full supervision
+for l in 1e-4 2e-4 5e-4 1e-3
 do
-    python3 train_downscaling_unet.py --prefix 10d --model unet2 --optimizer AdamW -lr 1e-4 -wd 0 -sche const -epoch 100 -bs 64 \
-        --fraction_outputs_to_average 1 --smoothness_loss --lambduh $l --flip_and_rotate --multiplicative_noise --mult_noise_std 0.2
+    python3 train_downscaling_unet.py --prefix 10d_FINE --model unet2 --optimizer AdamW -lr $l -wd 1e-4 -sche const -epoch 100 -bs 64 \
+        --fraction_outputs_to_average 1 --flip_and_rotate --fine_supervision  #  --multiplicative_noise --mult_noise_std 0.2
 done

@@ -134,6 +134,7 @@ INPUT_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
                     'deciduous_forest', 'evergreen_forest', 'developed_open_space',
                     'woody_wetlands', 'open_water', 'alfalfa',
                     'developed_low_intensity', 'developed_med_intensity', 'missing_reflectance']
+# INPUT_COLUMNS = ["NDVI"]
 ALL_COVER_COLUMNS = ['grassland_pasture', 'corn', 'soybean',
                     'deciduous_forest', 'evergreen_forest', 'developed_open_space',
                     'woody_wetlands', 'open_water', 'alfalfa',

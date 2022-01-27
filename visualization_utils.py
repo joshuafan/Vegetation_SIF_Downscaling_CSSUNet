@@ -17,24 +17,40 @@ COVERS_TO_MASK = [176, 1, 5, 152, 141,
                   6, 42, 123, 29, 41,
                   28, 143, 53, 21, 52]  # [176, 152, 1, 5, 141, 142, 23, 121, 37, 190, 195, 111, 36, 24, 61, 0]
 
-# Names of cover types (same order,plus none first)
+# # Names of cover types (same order,plus none first)
+# COVER_NAMES = ['none',
+#                'grassland_pasture', 'corn', 'soybean', 'shrubland', 'deciduous_forest',
+#                'evergreen_forest', 'spring_wheat', 'developed_open_space', 'other_hay_non_alfalfa', 'winter_wheat',
+#                'herbaceous_wetlands', 'woody_wetlands', 'open_water', 'alfalfa', 'fallow_idle_cropland',
+#                'sorghum', 'developed_low_intensity', 'barren', 'durum_wheat', 'canola',
+#                'sunflower', 'dry_beans', 'developed_med_intensity', 'millet', 'sugarbeets',
+#                'oats', 'mixed_forest', 'peas', 'barley', 'lentils']
+
+# # Colors (same order, plus white for zeros)
+# CDL_COLORS = ["white", 
+#               "#e8ffbf", "#ffd300", "#267000", "#c6d69e", "#93cc93",
+#               "#93cc93", "#d8b56b", "#999999", "#a5f28c", "#a57000",
+#               "#7cafaf", "#7cafaf", "#4970a3", "#ffa5e2", "#bfbf77",
+#               "#ff9e0a", "#999999", "#ccbfa3", "#896054", "#d1ff00",
+#               "#ffff00", "#a50000", "#999999", "#700049", "#a800e2",
+#               "#a05989", "#93cc93", "#54ff00", "#e2007c", "#00ddaf"]
+
+
+# Names of cover types (adjusted for reduced # of crops)
 COVER_NAMES = ['none',
-               'grassland_pasture', 'corn', 'soybean', 'shrubland', 'deciduous_forest',
-               'evergreen_forest', 'spring_wheat', 'developed_open_space', 'other_hay_non_alfalfa', 'winter_wheat',
-               'herbaceous_wetlands', 'woody_wetlands', 'open_water', 'alfalfa', 'fallow_idle_cropland',
-               'sorghum', 'developed_low_intensity', 'barren', 'durum_wheat', 'canola',
-               'sunflower', 'dry_beans', 'developed_med_intensity', 'millet', 'sugarbeets',
-               'oats', 'mixed_forest', 'peas', 'barley', 'lentils']
+               'grassland_pasture', 'corn', 'soybean', 'deciduous_forest',
+               'evergreen_forest', 'developed_open_space',
+               'woody_wetlands', 'open_water', 'alfalfa',
+               'developed_low_intensity', 
+               'developed_med_intensity']
 
 # Colors (same order, plus white for zeros)
 CDL_COLORS = ["white", 
-              "#e8ffbf", "#ffd300", "#267000", "#c6d69e", "#93cc93",
-              "#93cc93", "#d8b56b", "#999999", "#a5f28c", "#a57000",
-              "#7cafaf", "#7cafaf", "#4970a3", "#ffa5e2", "#bfbf77",
-              "#ff9e0a", "#999999", "#ccbfa3", "#896054", "#d1ff00",
-              "#ffff00", "#a50000", "#999999", "#700049", "#a800e2",
-              "#a05989", "#93cc93", "#54ff00", "#e2007c", "#00ddaf"]
-
+              "#e8ffbf", "#ffd300", "#267000", "#93cc93",
+              "#93cc93", "#999999", 
+              "#7cafaf", "#4970a3", "#ffa5e2",
+              "#999999",
+              "#999999"]
 
 # Taken from https://stackoverflow.com/questions/11159436/multiple-figures-in-a-single-window
 def plot_figures(output_file, figures, nrows = 1, ncols=1, cmap=None):

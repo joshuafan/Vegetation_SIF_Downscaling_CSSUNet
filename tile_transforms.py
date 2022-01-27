@@ -29,8 +29,7 @@ class StandardizeTile(object):
         self.band_stds = band_stds[bands_to_transform, np.newaxis, np.newaxis]
 
     def __call__(self, tile):
-        # TODO - change the 0.1
-        tile[self.bands_to_transform, :, :] = 0.1 * (tile[self.bands_to_transform, :, :] - self.band_means) / self.band_stds
+        tile[self.bands_to_transform, :, :] = (tile[self.bands_to_transform, :, :] - self.band_means) / self.band_stds
         return tile
 
 
@@ -244,7 +243,7 @@ class RandomCrop(object):
         return tile[:, top_index:top_index+self.crop_dim, left_index:left_index+self.crop_dim]
 
 class Cutout(object):
-    def __init__(self, cutout_dim, prob, reflectance_indices=list(range(0, 9)), missing_reflectance_idx=42):  # TODO Change!
+    def __init__(self, cutout_dim, prob, reflectance_indices=list(range(0, 9)), missing_reflectance_idx=-1):  # TODO Change!
         self.cutout_dim = cutout_dim
         self.prob = prob
         self.reflectance_indices = reflectance_indices

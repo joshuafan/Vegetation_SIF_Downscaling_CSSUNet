@@ -32,7 +32,7 @@ MIN_SIF_CLIP = 0.1
 
 # CFIS filtering
 MAX_CFIS_CLOUD_COVER = 0.5
-MIN_FINE_CFIS_SOUNDINGS = 1 #30
+MIN_FINE_CFIS_SOUNDINGS = 30
 MIN_COARSE_FRACTION_VALID_PIXELS = 0.1
 
 STATISTICS_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
@@ -47,12 +47,13 @@ STATISTICS_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref
                       'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
                       'lentils', 'missing_reflectance', 'SIF']
 BAND_STATISTICS_FILE = os.path.join(METADATA_DIR, 'cfis_band_statistics_train.csv')
-# COVER_COLUMN_NAMES = ['grassland_pasture', 'corn', 'soybean', 'deciduous_forest']
-COVER_COLUMN_NAMES = ['grassland_pasture', 'corn', 'soybean',
-                    'deciduous_forest', 'evergreen_forest', 'developed_open_space',
-                    'woody_wetlands', 'open_water', 'alfalfa',
-                    'developed_low_intensity', 'developed_med_intensity']
-
+COVER_COLUMN_NAMES = ['grassland_pasture', 'corn', 'soybean', 'deciduous_forest']
+# COVER_COLUMN_NAMES = ['grassland_pasture', 'corn', 'soybean',
+#                     'deciduous_forest', 'evergreen_forest', 'developed_open_space',
+#                     'woody_wetlands', 'open_water', 'alfalfa',
+#                     'developed_low_intensity', 'developed_med_intensity']
+FEATURES_FOR_EACH_CROP_TYPE = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
+                      'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg', 'SIF']
 # Read datasets from files
 cfis_fine_metadata_df = pd.read_csv(CFIS_FINE_METADATA_FILE)
 cfis_coarse_metadata_df = pd.read_csv(CFIS_COARSE_METADATA_FILE)
@@ -162,94 +163,115 @@ plt.savefig(os.path.join(PLOT_DIR, tile_description + '_soundings_plot.png'))
 plt.close()
 
 
-# Print crop type distribution of each fold
-for fold_num in range(NUM_FOLDS):
-    oco2_fold = oco2_metadata_df[oco2_metadata_df['fold'] == fold_num]
-    cfis_fold = cfis_coarse_metadata_df[cfis_coarse_metadata_df['fold'] == fold_num]
-    fine_cfis_fold = cfis_fine_metadata_df[cfis_fine_metadata_df['fold'] == fold_num]
-    print('=============== OCO-2 Fold', fold_num, '===============')
-    print('Num OCO2 datapoints', len(oco2_fold))
-    print(oco2_fold[COVER_COLUMN_NAMES + ['SIF']].mean(axis=0))
-    print('=============== CFIS Fold', fold_num, '===============')
-    print('Num CFIS datapoints', len(cfis_fold))
-    print(cfis_fold[COVER_COLUMN_NAMES + ['SIF']].mean(axis=0))
-    print('Num fine CFIS pixels', len(fine_cfis_fold))
+# # Print crop type distribution of each fold
+# for fold_num in range(NUM_FOLDS):
+#     oco2_fold = oco2_metadata_df[oco2_metadata_df['fold'] == fold_num]
+#     cfis_fold = cfis_coarse_metadata_df[cfis_coarse_metadata_df['fold'] == fold_num]
+#     fine_cfis_fold = cfis_fine_metadata_df[cfis_fine_metadata_df['fold'] == fold_num]
+#     print('=============== OCO-2 Fold', fold_num, '===============')
+#     print('Num OCO2 datapoints', len(oco2_fold))
+#     print(oco2_fold[COVER_COLUMN_NAMES + ['SIF']].mean(axis=0))
+#     print('=============== CFIS Fold', fold_num, '===============')
+#     print('Num CFIS datapoints', len(cfis_fold))
+#     print(cfis_fold[COVER_COLUMN_NAMES + ['SIF']].mean(axis=0))
+#     print('Num fine CFIS pixels', len(fine_cfis_fold))
 
-# Print histogram for each crop type and date
+# Print SIF histogram for each crop type and date
 cfis_coarse_metadata_train = cfis_coarse_metadata_df[cfis_coarse_metadata_df['fold'].isin(TRAIN_FOLDS)].copy()
 cfis_fine_metadata_train = cfis_fine_metadata_df[cfis_fine_metadata_df['fold'].isin(TRAIN_FOLDS)].copy()
 
-for date in DATES:
-    date_tiles = cfis_coarse_metadata_train[cfis_coarse_metadata_train['date'] == date].copy()
-    date_pixels = cfis_fine_metadata_train[cfis_fine_metadata_train['date'] == date].copy()
-    for cover_col in COVER_COLUMN_NAMES:
-        cover_date_pixels = cfis_fine_metadata_train[(cfis_fine_metadata_train[cover_col] > 0.5) &
-                                                     (cfis_fine_metadata_train['date'] == date)].copy()
-        print('Cover', cover_col, 'date', date, 'num pixels', len(cover_date_pixels))
-        sif_utils.plot_histogram(cover_date_pixels['SIF'].to_numpy(),
-                                 "histogram_train_pixels_SIF_" + cover_col + "_" + date + ".png",
-                                 plot_dir=PLOT_DIR,
-                                 title='SIF: ' + cover_col + ', ' + date)        
-        sif_utils.plot_histogram(date_pixels['SIF'].to_numpy(),
-                                 "histogram_train_pixels_SIF_" + cover_col + "_" + date + "_weighted.png",
-                                 plot_dir=PLOT_DIR,
-                                 title='SIF: ' + cover_col + ', ' + date,
-                                 weights=date_pixels[cover_col])
-        sif_utils.plot_histogram(date_tiles['SIF'].to_numpy(),
-                                 "histogram_train_tiles_SIF_" + cover_col + "_" + date + "_weighted.png",
-                                 plot_dir=PLOT_DIR,
-                                 title='SIF: ' + cover_col + ', ' + date,
-                                 weights=date_tiles[cover_col])
+# for date in DATES:
+#     date_tiles = cfis_coarse_metadata_train[cfis_coarse_metadata_train['date'] == date].copy()
+#     date_pixels = cfis_fine_metadata_train[cfis_fine_metadata_train['date'] == date].copy()
+#     for cover_col in COVER_COLUMN_NAMES:
+#         cover_date_pixels = cfis_fine_metadata_train[(cfis_fine_metadata_train[cover_col] > 0.5) &
+#                                                      (cfis_fine_metadata_train['date'] == date)].copy()
+#         print('Cover', cover_col, 'date', date, 'num pixels', len(cover_date_pixels))
+#         sif_utils.plot_histogram(cover_date_pixels['SIF'].to_numpy(),
+#                                  "histogram_train_pixels_SIF_" + cover_col + "_" + date + ".png",
+#                                  plot_dir=PLOT_DIR,
+#                                  title='SIF: ' + cover_col + ', ' + date)        
+#         sif_utils.plot_histogram(date_pixels['SIF'].to_numpy(),
+#                                  "histogram_train_pixels_SIF_" + cover_col + "_" + date + "_weighted.png",
+#                                  plot_dir=PLOT_DIR,
+#                                  title='SIF: ' + cover_col + ', ' + date,
+#                                  weights=date_pixels[cover_col])
+#         sif_utils.plot_histogram(date_tiles['SIF'].to_numpy(),
+#                                  "histogram_train_tiles_SIF_" + cover_col + "_" + date + "_weighted.png",
+#                                  plot_dir=PLOT_DIR,
+#                                  title='SIF: ' + cover_col + ', ' + date,
+#                                  weights=date_tiles[cover_col])
 
 # Read mean/standard deviation for each band, for standardization purposes
 train_statistics = pd.read_csv(BAND_STATISTICS_FILE)
 band_means = train_statistics['mean'].values
 band_stds = train_statistics['std'].values
 
+# For each cover type and date, plot the distribution of each band over fine-resolution pixels
+if not os.path.exists(os.path.join(PLOT_DIR, "feature_distributions")):
+    os.makedirs(os.path.join(PLOT_DIR, "feature_distributions"))
+for cover_col in COVER_COLUMN_NAMES:
+    for date in DATES:
+        cover_date_pixels = cfis_fine_metadata_train[(cfis_fine_metadata_train[cover_col] > 0.5) &
+                                                     (cfis_fine_metadata_train['date'] == date)].copy()
+        for idx, column in enumerate(FEATURES_FOR_EACH_CROP_TYPE):
+            raw_pixel_values = cover_date_pixels[column]
+            sif_utils.plot_histogram(raw_pixel_values.to_numpy(),
+                                    "histogram_pixels_" + column + "_" + cover_col + "_" + date + ".png",
+                                    title=column + ' (' + cover_col + ', ' + date + ')',
+                                    plot_dir=os.path.join(PLOT_DIR, "feature_distributions"))
+            if column != "SIF":
+                standardized_pixel_values = (cover_date_pixels[column] - band_means[idx]) / band_stds[idx]
+                sif_utils.plot_histogram(standardized_pixel_values.to_numpy(),
+                                        "histogram_pixels_std_" + column + "_" + cover_col + "_" + date + ".png",
+                                        title=column + ' STANDARDIZED (' + cover_col + ', ' + date + ')',
+                                        plot_dir=os.path.join(PLOT_DIR, "feature_distributions"))
+exit(1)
 
-# Plot distribution of each band
-for fold in range(NUM_FOLDS):
-    cfis_fine_metadata_fold = cfis_fine_metadata_df[cfis_fine_metadata_df['fold'] == fold]
-    cfis_coarse_metadata_fold = cfis_coarse_metadata_df[cfis_coarse_metadata_df['fold'] == fold]
-    oco2_metadata_fold = oco2_metadata_df[oco2_metadata_df['fold'] == fold]
 
-    for idx, column in enumerate(STATISTICS_COLUMNS):
-        if band_stds[idx] == 0:
-            continue
-        sif_utils.plot_histogram(cfis_fine_metadata_fold[column].to_numpy(),
-                                "histogram_pixels_" + column + "_cfis_fold" + str(fold) + ".png",
-                                title=column + ' (CFIS pixels, fold ' + str(fold) + ')')
-        sif_utils.plot_histogram(cfis_coarse_metadata_fold[column].to_numpy(),
-                                "histogram_coarse_" + column + "_cfis_fold" + str(fold) + ".png",
-                                title=column + ' (CFIS coarse subregions, fold ' + str(fold) + ')')
-        sif_utils.plot_histogram(oco2_metadata_fold[column].to_numpy(),
-                                "histogram_coarse_" + column + "_oco2_fold" + str(fold) + ".png",
-                                title=column + ' (OCO-2, fold ' + str(fold) + ')')
-        standardized_pixel_values = (cfis_fine_metadata_fold[column] - band_means[idx]) / band_stds[idx]
-        sif_utils.plot_histogram(standardized_pixel_values.to_numpy(),
-                                "histogram_pixels_" + column + "_cfis_fold" + str(fold) + "_std.png",
-                                title=column + ' (CFIS pixels, std. by pixel std dev, fold ' + str(fold) + ')')
-        standardized_coarse_values = (cfis_coarse_metadata_fold[column] - band_means[idx]) / band_stds[idx]
-        sif_utils.plot_histogram(standardized_coarse_values.to_numpy(),
-                                "histogram_coarse_" + column + "_cfis_fold" + str(fold) + "_std.png",
-                                title=column + ' (CFIS coarse subregions, std. by pixel std dev, fold ' + str(fold) + ')')
-        standardized_oco2_values = (oco2_metadata_fold[column] - band_means[idx]) / band_stds[idx]
-        sif_utils.plot_histogram(standardized_oco2_values.to_numpy(),
-                                "histogram_coarse_" + column + "_oco2_fold" + str(fold) + "_std.png",
-                                title=column + ' (OCO-2, std. by pixel std dev, fold ' + str(fold) + 's)')
+# # Plot distribution of each band
+# for fold in range(NUM_FOLDS):
+#     cfis_fine_metadata_fold = cfis_fine_metadata_df[cfis_fine_metadata_df['fold'] == fold]
+#     cfis_coarse_metadata_fold = cfis_coarse_metadata_df[cfis_coarse_metadata_df['fold'] == fold]
+#     oco2_metadata_fold = oco2_metadata_df[oco2_metadata_df['fold'] == fold]
 
-sif_utils.plot_histogram(cfis_fine_metadata_df['num_soundings'].to_numpy(),
-                         "histogram_pixels_num_soundings.png",
-                         title='Num soundings (CFIS pixels)')
-sif_utils.plot_histogram(cfis_coarse_metadata_df['num_soundings'].to_numpy(),
-                         "histogram_coarse_num_soundings.png",
-                         title='Num soundings (CFIS coarse subregions)')
-sif_utils.plot_histogram(oco2_metadata_df['num_soundings'].to_numpy(),
-                         "histogram_oco2_num_soundings.png",
-                         title='Num soundings (OCO-2)')
-sif_utils.plot_histogram(cfis_coarse_metadata_df['fraction_valid'].to_numpy(),
-                         "histogram_coarse_fraction_valid.png",
-                         title='Num valid pixels (CFIS coarse subregions)')
+#     for idx, column in enumerate(STATISTICS_COLUMNS):
+#         if band_stds[idx] == 0:
+#             continue
+#         sif_utils.plot_histogram(cfis_fine_metadata_fold[column].to_numpy(),
+#                                 "histogram_pixels_" + column + "_cfis_fold" + str(fold) + ".png",
+#                                 title=column + ' (CFIS pixels, fold ' + str(fold) + ')')
+#         sif_utils.plot_histogram(cfis_coarse_metadata_fold[column].to_numpy(),
+#                                 "histogram_coarse_" + column + "_cfis_fold" + str(fold) + ".png",
+#                                 title=column + ' (CFIS coarse subregions, fold ' + str(fold) + ')')
+#         sif_utils.plot_histogram(oco2_metadata_fold[column].to_numpy(),
+#                                 "histogram_coarse_" + column + "_oco2_fold" + str(fold) + ".png",
+#                                 title=column + ' (OCO-2, fold ' + str(fold) + ')')
+#         standardized_pixel_values = (cfis_fine_metadata_fold[column] - band_means[idx]) / band_stds[idx]
+#         sif_utils.plot_histogram(standardized_pixel_values.to_numpy(),
+#                                 "histogram_pixels_" + column + "_cfis_fold" + str(fold) + "_std.png",
+#                                 title=column + ' (CFIS pixels, std. by pixel std dev, fold ' + str(fold) + ')')
+#         standardized_coarse_values = (cfis_coarse_metadata_fold[column] - band_means[idx]) / band_stds[idx]
+#         sif_utils.plot_histogram(standardized_coarse_values.to_numpy(),
+#                                 "histogram_coarse_" + column + "_cfis_fold" + str(fold) + "_std.png",
+#                                 title=column + ' (CFIS coarse subregions, std. by pixel std dev, fold ' + str(fold) + ')')
+#         standardized_oco2_values = (oco2_metadata_fold[column] - band_means[idx]) / band_stds[idx]
+#         sif_utils.plot_histogram(standardized_oco2_values.to_numpy(),
+#                                 "histogram_coarse_" + column + "_oco2_fold" + str(fold) + "_std.png",
+#                                 title=column + ' (OCO-2, std. by pixel std dev, fold ' + str(fold) + 's)')
+
+# sif_utils.plot_histogram(cfis_fine_metadata_df['num_soundings'].to_numpy(),
+#                          "histogram_pixels_num_soundings.png",
+#                          title='Num soundings (CFIS pixels)')
+# sif_utils.plot_histogram(cfis_coarse_metadata_df['num_soundings'].to_numpy(),
+#                          "histogram_coarse_num_soundings.png",
+#                          title='Num soundings (CFIS coarse subregions)')
+# sif_utils.plot_histogram(oco2_metadata_df['num_soundings'].to_numpy(),
+#                          "histogram_oco2_num_soundings.png",
+#                          title='Num soundings (OCO-2)')
+# sif_utils.plot_histogram(cfis_coarse_metadata_df['fraction_valid'].to_numpy(),
+#                          "histogram_coarse_fraction_valid.png",
+#                          title='Num valid pixels (CFIS coarse subregions)')
 
 
 # Display tiles with largest/smallest OCO-2 SIFs
