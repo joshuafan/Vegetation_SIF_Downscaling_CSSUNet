@@ -343,7 +343,7 @@ def plot_tile_predictions(tile, tile_description, true_sif_tile, predicted_sif_t
     # Plot an augmented version of the tile
     flip_and_rotate_transform = tile_transforms.RandomFlipAndRotate()
     jigsaw_transform = tile_transforms.RandomJigsaw()
-    multiplicative_noise_transform = tile_transforms.MultiplicativeGaussianNoise(continuous_bands=list(range(0, 9)), standard_deviation=0.2)
+    multiplicative_noise_transform = tile_transforms.MultiplicativeGaussianNoiseRaw(bands_to_transform=list(range(0, 9)), standard_deviation=0.2)
     # transform_list_train = [flip_and_rotate_transform] #, jigsaw_transform, multiplicative_noise_transform]
     # train_transform = transforms.Compose(transform_list_train)
     augmented_tile = None # multiplicative_noise_transform(flip_and_rotate_transform(tile))

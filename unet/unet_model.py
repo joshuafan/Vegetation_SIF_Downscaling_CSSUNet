@@ -7,7 +7,7 @@ Full assembly of the parts to form the complete network
 import torch.nn.functional as F
 import torch.nn as nn
 from .unet_parts import *
-
+from torch.nn.utils.parametrizations import spectral_norm
 
 # Smaller version of U-Net with 2 blocks going up and down. This version is used for the paper's results.
 class UNet2(nn.Module):
@@ -66,9 +66,9 @@ class UNet2(nn.Module):
 
 
 class UNet2Contrastive(nn.Module):
-    """U-Net with pixel projection & prediction heads. The projection is normalized to have L2 norm 1.
+    """Smaller U-Net with pixel projection & prediction heads. The projection is normalized to have L2 norm 1.
     """
-    def __init__(self, n_channels, n_classes, proj_dim=32, proj="mlp", min_output=None, max_output=None):
+    def __init__(self, n_channels, n_classes, proj_dim=64, proj="linear", min_output=None, max_output=None):
         """Initializes a U-Net contrastive model.
         
         Args:
@@ -88,8 +88,95 @@ class UNet2Contrastive(nn.Module):
         self.down2 = Down(128, 128)
         self.up1 = Up(256, 64, bilinear=True)
         self.up2 = Up(128, 64, bilinear=True)
-        self.regression_head = PixelRegressionHead(64, output_dim=1, regressor_type=proj, min_output=min_output, max_output=max_output)
+        self.regression_head = PixelRegressionHead(64, output_dim=n_classes, regressor_type=proj, min_output=min_output, max_output=max_output)
         self.projection_head = PixelProjectionHead(64, proj_dim=proj_dim, proj=proj)
+
+
+    def forward(self, x):
+        x1 = self.inc(x)
+        x1 = F.relu(x1)
+        x2 = self.down1(x1)
+        x3 = self.down2(x2)
+        x = self.up1(x3, x2)
+        representations = self.up2(x, x1)
+        predictions = self.regression_head(representations)
+        projections = self.projection_head(representations)
+        return predictions, projections
+
+
+class UNetContrastive(nn.Module):
+    """Large U-Net with pixel projection & prediction heads. The projection is normalized to have L2 norm 1.
+    """
+    def __init__(self, n_channels, n_classes, proj_dim=64, proj="linear", min_output=None, max_output=None, bilinear=True):
+        """Initializes a U-Net contrastive model.
+        
+        Args:
+            n_channels: number of channels in input image
+            n_classes: number of output variables
+            proj_dim: dimension of pixel projection
+            proj: type of projection and prediction head. Can be "mlp" or "linear".
+            min_output, max_output: bounds on the output predictions. If these are set, model's predictions
+                                    will be constrained by the Tanh function to fall within this range.
+                                    Otherwise, there is no constraint on model predictions.
+        """
+        super(UNetContrastive, self).__init__()
+        self.n_channels = n_channels
+        self.n_classes = n_classes
+        self.bilinear = bilinear
+        self.inc = DoubleConv(n_channels, 64)
+        self.down1 = Down(64, 128)
+        self.down2 = Down(128, 256)
+        self.down3 = Down(256, 512)
+        factor = 2 if bilinear else 1
+        self.down4 = Down(512, 1024 // factor)
+        self.up1 = Up(1024, 512 // factor, bilinear)
+        self.up2 = Up(512, 256 // factor, bilinear)
+        self.up3 = Up(256, 128 // factor, bilinear)
+        self.up4 = Up(128, 64, bilinear)
+        self.regression_head = PixelRegressionHead(64, output_dim=n_classes, regressor_type=proj, min_output=min_output, max_output=max_output)
+        self.projection_head = PixelProjectionHead(64, proj_dim=proj_dim, proj=proj)
+
+
+    def forward(self, x):
+        x1 = self.inc(x)
+        x2 = self.down1(x1)
+        x3 = self.down2(x2)
+        x4 = self.down3(x3)
+        x5 = self.down4(x4)
+        x = self.up1(x5, x4)
+        x = self.up2(x, x3)
+        x = self.up3(x, x2)
+        representations = self.up4(x, x1)
+        predictions = self.regression_head(representations)
+        projections = self.projection_head(representations)
+        return predictions, projections
+
+
+class UNet2Spectral(nn.Module):
+    """Smaller U-Net with pixel projection & prediction heads. The projection is normalized to have L2 norm 1. Layers have spectral normalization.
+    """
+    def __init__(self, n_channels, n_classes, proj_dim=64, proj="linear", min_output=None, max_output=None):
+        """Initializes a U-Net contrastive model.
+        
+        Args:
+            n_channels: number of channels in input image
+            n_classes: number of output variables
+            proj_dim: dimension of pixel projection
+            proj: type of projection and prediction head. Can be "mlp" or "linear".
+            min_output, max_output: bounds on the output predictions. If these are set, model's predictions
+                                    will be constrained by the Tanh function to fall within this range.
+                                    Otherwise, there is no constraint on model predictions.
+        """
+        super(UNet2Contrastive, self).__init__()
+        self.n_channels = n_channels
+        self.n_classes = n_classes
+        self.inc = spectral_norm(nn.Conv2d(n_channels, 64, kernel_size=1, stride=1))
+        self.down1 = spectral_norm(Down(64, 128))
+        self.down2 = spectral_norm(Down(128, 128))
+        self.up1 = spectral_norm(Up(256, 64, bilinear=True))
+        self.up2 = spectral_norm(Up(128, 64, bilinear=True))
+        self.regression_head = spectral_norm(PixelRegressionHead(64, output_dim=n_classes, regressor_type=proj, min_output=min_output, max_output=max_output))
+        self.projection_head = spectral_norm(PixelProjectionHead(64, proj_dim=proj_dim, proj=proj))
 
 
     def forward(self, x):

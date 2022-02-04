@@ -46,7 +46,7 @@ class CoarseSIFDataset(Dataset):
     """
     Dataset mapping a tile (with reflectance/cover bands) to a single SIF value
     """
-    def __init__(self, tile_info, transform, tile_file_column='tile_file', coarse_sif_column='SIF'):
+    def __init__(self, tile_info, transform, multiplicative_noise_end_transform, tile_file_column='tile_file', coarse_sif_column='SIF'):
         """
         Args:
             tile_info: Pandas dataframe containing metadata for each tile.
@@ -54,6 +54,7 @@ class CoarseSIFDataset(Dataset):
         """
         self.tile_info = tile_info
         self.transform = transform
+        self.multiplicative_noise_end_transform = multiplicative_noise_end_transform
         self.tile_file_column = tile_file_column
         self.coarse_sif_column = coarse_sif_column
 
@@ -65,24 +66,31 @@ class CoarseSIFDataset(Dataset):
             idx = idx.tolist()
 
         current_tile_info = self.tile_info.iloc[idx]
-        tile = np.load(current_tile_info.loc[self.tile_file_column])
+        input_tile = np.load(current_tile_info.loc[self.tile_file_column])
 
-        # print('Idx', idx, 'Band means before transform', np.mean(tile, axis=(1, 2)))
+        # print('Idx', idx, 'Band means before transform', np.mean(input_tile, axis=(1, 2)))
         # tile_description = str(round(current_tile_info.loc['lat'], 5)) + '_lon_' + str(round(current_tile_info.loc['lon'], 5)) + '_' + current_tile_info.loc['date']
-        # sif_utils.plot_tile(tile,  'lat_before_augment_lat_' + tile_description)
+        # sif_utils.plot_tile(input_tile,  'lat_before_augment_lat_' + tile_description)
 
         if self.transform:
-            tile = self.transform(tile)
+            input_tile = self.transform(input_tile)
 
-        # sif_utils.plot_tile(tile,  'lat_after_augment_lat_' + tile_description)
-        # print('Idx', idx, 'Band means after transform', np.mean(tile, axis=(1,2)))
- 
-        sample = {'input_tile': torch.tensor(tile, dtype=torch.float),
-                  'coarse_sif': torch.tensor(current_tile_info[self.coarse_sif_column], dtype=torch.float),
+        # sif_utils.plot_tile(input_tile,  'lat_after_augment_lat_' + tile_description)
+        # print('Idx', idx, 'Band means after transform', np.mean(input_tile, axis=(1,2)))
+
+        sample = {'coarse_sif': torch.tensor(current_tile_info[self.coarse_sif_column], dtype=torch.float),
                   'lon': current_tile_info.loc['lon'],
                   'lat': current_tile_info.loc['lat'],
                   'tile_file': current_tile_info.loc[self.tile_file_column],
                   'date': current_tile_info.loc['date']}
+
+        sample['input_tile_without_mult_noise'] = torch.tensor(input_tile, dtype=torch.float)
+        if self.multiplicative_noise_end_transform is not None:
+            input_tile_with_mult_noise = self.multiplicative_noise_end_transform(input_tile)
+            sample['input_tile'] = torch.tensor(input_tile_with_mult_noise, dtype=torch.float)
+        else:
+            sample['input_tile'] = torch.tensor(input_tile, dtype=torch.float)
+
         return sample
 
 
@@ -92,6 +100,7 @@ class FineSIFDataset(Dataset):
     coarse SIF value.
     """
     def __init__(self, tile_info, transform,
+                 multiplicative_noise_end_transform,
                  tile_file_column='tile_file',
                  fine_sif_file_column='fine_sif_file',
                  fine_soundings_file_column='fine_soundings_file',
@@ -106,6 +115,7 @@ class FineSIFDataset(Dataset):
         """
         self.tile_info = tile_info
         self.transform = transform
+        self.multiplicative_noise_end_transform = multiplicative_noise_end_transform
         self.tile_file_column = tile_file_column
         self.fine_sif_file_column = fine_sif_file_column
         self.fine_soundings_file_column = fine_soundings_file_column
@@ -159,8 +169,10 @@ class FineSIFDataset(Dataset):
             # is covered by clouds)
             fine_sif_mask = np.logical_or(fine_sif_mask, input_tile[-1])
 
-        sample = {'input_tile': torch.tensor(input_tile, dtype=torch.float),
-                'fine_sif': torch.tensor(fine_sif_tile, dtype=torch.float),
+
+
+
+        sample = {'fine_sif': torch.tensor(fine_sif_tile, dtype=torch.float),
                 'fine_sif_mask': torch.tensor(fine_sif_mask, dtype=torch.bool),
                 'fine_soundings': torch.tensor(fine_soundings_tile, dtype=torch.float),
                 'coarse_sif': torch.tensor(current_tile_info[self.coarse_sif_column], dtype=torch.float),  #torch.tensor(cfis_coarse_sif, dtype=torch.float),
@@ -170,6 +182,13 @@ class FineSIFDataset(Dataset):
                 'lat': current_tile_info.loc['lat'],
                 'date': current_tile_info.loc['date'],
                 'fraction_valid': current_tile_info.loc['fraction_valid']}
+
+        sample['input_tile_without_mult_noise'] = torch.tensor(input_tile, dtype=torch.float)
+        if self.multiplicative_noise_end_transform is not None:
+            input_tile_with_mult_noise = self.multiplicative_noise_end_transform(input_tile)
+            sample['input_tile'] = torch.tensor(input_tile_with_mult_noise, dtype=torch.float)
+        else:
+            sample['input_tile'] = torch.tensor(input_tile, dtype=torch.float)
 
         return sample
 

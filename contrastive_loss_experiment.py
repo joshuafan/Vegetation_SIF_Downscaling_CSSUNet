@@ -37,6 +37,10 @@ from sif_utils import plot_histogram, print_stats, density_scatter
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.preprocessing import MinMaxScaler
 
+pd.set_option('display.max_rows', 500)
+pd.set_option('display.max_columns', 500)
+pd.set_option('display.width', 1000)
+
 # Set random seed for data shuffling
 RANDOM_STATE = 0
 np.random.seed(RANDOM_STATE)
@@ -50,7 +54,7 @@ TEST_FOLDS = [4]
 # Directories
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets/SIF"
 METADATA_DIR = os.path.join(DATA_DIR, "metadata/CFIS_OCO2_dataset")
-PLOT_DIR = os.path.join(DATA_DIR, "exploratory_plots/contrastive_experiments")
+PLOT_DIR = os.path.join(DATA_DIR, "exploratory_plots/contrastive_normalized_0.05")
 if not os.path.exists(PLOT_DIR):
     os.makedirs(PLOT_DIR)
 
@@ -60,7 +64,7 @@ CFIS_COARSE_METADATA_FILE = os.path.join(METADATA_DIR, 'cfis_coarse_metadata.csv
 CFIS_FINE_METADATA_FILE = os.path.join(METADATA_DIR, 'cfis_metadata_' + str(RESOLUTION) + 'm.csv')
 OCO2_METADATA_FILE = os.path.join(METADATA_DIR, 'oco2_metadata.csv')
 BAND_STATISTICS_FILE = os.path.join(METADATA_DIR, 'cfis_band_statistics_train.csv')
-
+NORMALIZED_BAND_STATISTICS_FILE = os.path.join(METADATA_DIR, 'normalized_cfis_band_statistics_train.csv')
 
 # Only include CFIS tiles where at least this fraction of pixels have CFIS
 # fine-resolution data
@@ -104,10 +108,10 @@ MAX_SIF_PLOT = 1.5
 
 INPUT_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
                  'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg']
-REFLECTANCE_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7', 'ref_10', 'ref_11']
+REFLECTANCE_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7']  #, 'ref_10', 'ref_11']
 COLUMNS_TO_STANDARDIZE = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
-                    'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg']
-# COLUMNS_TO_STANDARDIZE = list(range(0, 12))
+                          'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg']
+COLUMNS_TO_NORMALIZE = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7']  #, 'ref_10', 'ref_11']
 OUTPUT_COLUMN = ["SIF"]
 ALL_COVER_COLUMNS = ['grassland_pasture', 'corn', 'soybean',
                     'deciduous_forest', 'evergreen_forest', 'developed_open_space',
@@ -115,7 +119,17 @@ ALL_COVER_COLUMNS = ['grassland_pasture', 'corn', 'soybean',
                     'developed_low_intensity', 'developed_med_intensity']
 COVER_COLUMN_NAMES = ['grassland_pasture', 'corn', 'soybean', 'deciduous_forest']
 
-
+STATISTICS_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
+                      'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg',
+                      'grassland_pasture', 'corn', 'soybean', 'shrubland',
+                      'deciduous_forest', 'evergreen_forest', 'spring_wheat',
+                      'developed_open_space', 'other_hay_non_alfalfa', 'winter_wheat',
+                      'herbaceous_wetlands', 'woody_wetlands', 'open_water', 'alfalfa',
+                      'fallow_idle_cropland', 'sorghum', 'developed_low_intensity',
+                      'barren', 'durum_wheat',
+                      'canola', 'sunflower', 'dry_beans', 'developed_med_intensity',
+                      'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
+                      'lentils', 'missing_reflectance', 'SIF']
 
 
 # Filter OCO2 tiles
@@ -190,14 +204,53 @@ sif_mean = train_means[-1]
 band_stds = train_stds[:-1]
 sif_std = train_stds[-1]
 
-# Standardize data
-for idx, column in enumerate(COLUMNS_TO_STANDARDIZE):
-    train_set[column] = np.clip((train_set[column] - band_means[idx]) / band_stds[idx], a_min=MIN_INPUT, a_max=MAX_INPUT)
-    coarse_val_set[column] = np.clip((coarse_val_set[column] - band_means[idx]) / band_stds[idx], a_min=MIN_INPUT, a_max=MAX_INPUT)
-    fine_train_set[column] = np.clip((fine_train_set[column] - band_means[idx]) / band_stds[idx], a_min=MIN_INPUT, a_max=MAX_INPUT)
-    fine_val_set[column] = np.clip((fine_val_set[column] - band_means[idx]) / band_stds[idx], a_min=MIN_INPUT, a_max=MAX_INPUT)
-    fine_test_set[column] = np.clip((fine_test_set[column] - band_means[idx]) / band_stds[idx], a_min=MIN_INPUT, a_max=MAX_INPUT)
+# # Try injecting mult noise
+# fine_train_set = fine_train_set.reset_index(drop=True)
+# for idx in range(len(fine_train_set)):
+#     # print("Initial bands")
+#     # print(train_set.loc[idx, REFLECTANCE_BANDS])
+#     noise = 1 + np.random.normal(loc=0, scale=0.2)
+#     fine_train_set.loc[idx, REFLECTANCE_COLUMNS] = fine_train_set.loc[idx, REFLECTANCE_COLUMNS] * noise
 
+
+
+# # ================= Standardize ===================
+# # OPTION 1: Standardize data based on pre-computed means/stds
+# for idx, column in enumerate(COLUMNS_TO_STANDARDIZE):
+#     train_set[column] = np.clip((train_set[column] - band_means[idx]) / band_stds[idx], a_min=MIN_INPUT, a_max=MAX_INPUT)
+#     coarse_val_set[column] = np.clip((coarse_val_set[column] - band_means[idx]) / band_stds[idx], a_min=MIN_INPUT, a_max=MAX_INPUT)
+#     fine_train_set[column] = np.clip((fine_train_set[column] - band_means[idx]) / band_stds[idx], a_min=MIN_INPUT, a_max=MAX_INPUT)
+#     fine_val_set[column] = np.clip((fine_val_set[column] - band_means[idx]) / band_stds[idx], a_min=MIN_INPUT, a_max=MAX_INPUT)
+#     fine_test_set[column] = np.clip((fine_test_set[column] - band_means[idx]) / band_stds[idx], a_min=MIN_INPUT, a_max=MAX_INPUT)
+
+# OPTION 2: Normalize brightness, then standardize
+# Normalize each pixel's vector to have length equal to the average
+fine_train_set[COLUMNS_TO_NORMALIZE] = fine_train_set[COLUMNS_TO_NORMALIZE] / np.linalg.norm(fine_train_set[COLUMNS_TO_NORMALIZE].values, axis=1, keepdims=True)
+fine_val_set[COLUMNS_TO_NORMALIZE] = fine_val_set[COLUMNS_TO_NORMALIZE] / np.linalg.norm(fine_val_set[COLUMNS_TO_NORMALIZE].values, axis=1, keepdims=True)
+print("After normalize", fine_train_set.head())
+
+# Compute means/stds of the normalized version
+selected_columns = fine_train_set[STATISTICS_COLUMNS]
+band_means = selected_columns.mean(axis=0)
+band_stds = selected_columns.std(axis=0)
+print("Band means", band_means)
+
+# Write band averages to file
+statistics_rows = [['mean', 'std']]
+for i, mean in enumerate(band_means):
+    statistics_rows.append([band_means[i], band_stds[i]])
+with open(NORMALIZED_BAND_STATISTICS_FILE, 'w') as output_csv_file:
+    csv_writer = csv.writer(output_csv_file, delimiter=",", quoting=csv.QUOTE_MINIMAL)
+    for row in statistics_rows:
+        csv_writer.writerow(row)
+
+# # Now do StandardScaler or min-max scaler
+# scaler = StandardScaler().fit(fine_train_set[COLUMNS_TO_STANDARDIZE])
+# fine_train_set[COLUMNS_TO_STANDARDIZE] = scaler.transform(fine_train_set[COLUMNS_TO_STANDARDIZE])
+# fine_val_set[COLUMNS_TO_STANDARDIZE] = scaler.transform(fine_val_set[COLUMNS_TO_STANDARDIZE])
+# print("After both normalize and standardize", fine_train_set.head())
+
+# Extract X/Y
 X_fine_train = fine_train_set[INPUT_COLUMNS].to_numpy()
 Y_fine_train = fine_train_set[OUTPUT_COLUMN].values.ravel()
 print("X fine train", X_fine_train.shape)
@@ -216,7 +269,7 @@ distant_diff_cover = []
 def compute_reflectance_distance(row, anchor_reflectance_vector):
     return np.linalg.norm(row[REFLECTANCE_COLUMNS] - anchor_reflectance_vector)
 
-for i in range(200):
+for i in range(100):
     anchor_idx = random.randrange(len(fine_train_set))
     anchor_row = fine_train_set.iloc[anchor_idx]
     anchor_tile_file = anchor_row['tile_file']
@@ -225,8 +278,8 @@ for i in range(200):
     anchor_lat = anchor_row['lat']
     anchor_lon = anchor_row['lon']
     anchor_reflectance_vector = anchor_row[REFLECTANCE_COLUMNS].to_numpy()
-    anchor_reflectance_vector_2 = fine_train_set.iloc[anchor_idx][REFLECTANCE_COLUMNS].to_numpy()
-    anchor_reflectance_vector_3 = fine_train_set[REFLECTANCE_COLUMNS].iloc[anchor_idx].to_numpy()
+    # anchor_reflectance_vector_2 = fine_train_set.iloc[anchor_idx][REFLECTANCE_COLUMNS].to_numpy()
+    # anchor_reflectance_vector_3 = fine_train_set[REFLECTANCE_COLUMNS].iloc[anchor_idx].to_numpy()
     # print("Anchor tile file", anchor_tile_file)
     # print("Anchor cover type", anchor_cover_type)
     # print("Anchor SIF", anchor_sif)
@@ -251,8 +304,8 @@ for i in range(200):
           '50%', np.quantile(distant_same_cover_rows['reflectance_distance_to_anchor'], 0.5),
           '10%', np.quantile(distant_same_cover_rows['reflectance_distance_to_anchor'], 0.1),
           '5%', np.quantile(distant_same_cover_rows['reflectance_distance_to_anchor'], 0.05))
-    SIMILAR_REFLECTANCE_THRESHOLD = 1 #np.quantile(distant_same_cover_rows['reflectance_distance_to_anchor'], 0.05)
-    DIFFERENT_REFLECTANCE_THRESHOLD = 3
+    SIMILAR_REFLECTANCE_THRESHOLD = 0.05 #2 #np.quantile(distant_same_cover_rows['reflectance_distance_to_anchor'], 0.05)
+    DIFFERENT_REFLECTANCE_THRESHOLD = 0.05  #2
     distant_same_cover_similar_reflectance_rows = distant_same_cover_rows[distant_same_cover_rows['reflectance_distance_to_anchor'] < SIMILAR_REFLECTANCE_THRESHOLD]
     distant_same_cover_different_reflectance_rows = distant_same_cover_rows[distant_same_cover_rows['reflectance_distance_to_anchor'] > DIFFERENT_REFLECTANCE_THRESHOLD]
 
@@ -275,17 +328,17 @@ for i in range(200):
         fig, ((ax0, ax1, ax2), (ax3, ax4, ax5)) = plt.subplots(nrows=2, ncols=3, figsize=(15, 11))
         ax2.axis('off')
         ax0.hist(nearby_same_cover_differences, range=hist_range, bins=20)
-        ax0.set_title("Nearby same cover")
+        ax0.set_title("Nearby same cover: mean " + str(round(np.mean(nearby_same_cover_differences), 3)))
         ax1.hist(nearby_diff_cover_differences, range=hist_range, bins=20)
-        ax1.set_title("Nearby different cover")
+        ax1.set_title("Nearby different cover: mean " + str(round(np.mean(nearby_diff_cover_differences), 3)))
         ax3.hist(distant_same_cover_similar_reflectance_differences, range=hist_range, bins=20)
-        ax3.set_title("Distant same cover, similar reflectance")
+        ax3.set_title("Distant same cover, similar reflectance: mean " + str(round(np.mean(distant_same_cover_similar_reflectance_differences), 3)))
         ax4.hist(distant_same_cover_different_reflectance_differences, range=hist_range, bins=20)
-        ax4.set_title("Distant same cover, different reflectance")
+        ax4.set_title("Distant same cover, different reflectance: mean " + str(round(np.mean(distant_same_cover_different_reflectance_differences), 3)))
         ax5.hist(distant_diff_cover_differences, range=hist_range, bins=20)
-        ax5.set_title("Distant different cover")
-        fig.suptitle("Differences with pixel, lat " + str(round(anchor_lat, 4)) + " lon " + str(round(anchor_lon, 4)) +
-                     "\n Nearby = within a square of radius 0.005 degrees\nSimilar reflectance: Euclidean distance < 1\n Different reflectance: Euclidean distance > 3")
+        ax5.set_title("Distant different cover: mean " + str(round(np.mean(distant_diff_cover_differences), 3)))
+        fig.suptitle("Differences with pixel, lat " + str(round(anchor_lat, 4)) + " lon " + str(round(anchor_lon, 4)))
+                    # "\n Nearby = within a square of radius 0.005 degrees\nSimilar reflectance: Euclidean distance < 0.05\n Different reflectance: Euclidean distance > 0.05")
         fig.tight_layout()
         fig.subplots_adjust(top=0.9)
         plt.savefig(os.path.join(PLOT_DIR, "contrastive_test_" + os.path.basename(anchor_tile_file) + ".png"))
@@ -305,16 +358,17 @@ hist_range = (np.min(distant_diff_cover), np.max(distant_diff_cover))
 fig, ((ax0, ax1, ax2), (ax3, ax4, ax5)) = plt.subplots(nrows=2, ncols=3, figsize=(15, 11))
 ax2.axis('off')
 ax0.hist(nearby_same_cover, range=hist_range, bins=20)
-ax0.set_title("Nearby same cover")
+ax0.set_title("Nearby same cover: mean " + str(round(np.mean(nearby_same_cover), 3)))
 ax1.hist(nearby_diff_cover, range=hist_range, bins=20)
-ax1.set_title("Nearby different cover")
+ax1.set_title("Nearby different cover: mean " + str(round(np.mean(nearby_diff_cover), 3)))
 ax3.hist(distant_same_cover_similar_reflectance, range=hist_range, bins=20)
-ax3.set_title("Distant same cover, similar reflectance")
+ax3.set_title("Distant same cover, similar reflectance: mean " + str(round(np.mean(distant_same_cover_similar_reflectance), 3)))
 ax4.hist(distant_same_cover_different_reflectance, range=hist_range, bins=20)
-ax4.set_title("Distant same cover, different reflectance")
+ax4.set_title("Distant same cover, different reflectance: mean " + str(round(np.mean(distant_same_cover_different_reflectance), 3)))
 ax5.hist(distant_diff_cover, range=hist_range, bins=20)
-ax5.set_title("Distant different cover")
-fig.suptitle("Differences combined\n Nearby = within a square of radius 0.005 degrees\nSimilar reflectance: Euclidean distance < 1\n Different reflectance: Euclidean distance > 3")
+ax5.set_title("Distant different cover: mean " + str(round(np.mean(distant_diff_cover), 3)))
+fig.suptitle("Differences combined")
+# "\n Nearby = within a square of radius 0.005 degrees\nSimilar reflectance: Euclidean distance < 0.05\n Different reflectance: Euclidean distance > 0.05")
 fig.tight_layout()
 fig.subplots_adjust(top=0.9)
 plt.savefig(os.path.join(PLOT_DIR, "contrastive_test_all.png"))

@@ -85,7 +85,7 @@ class OutConv(nn.Module):
 class PixelProjectionHead(nn.Module):
     """Per-pixel projection head
     """
-    def __init__(self, dim_in, proj_dim=32, proj='mlp'):
+    def __init__(self, dim_in, proj_dim=64, proj='linear'):
         super(PixelProjectionHead, self).__init__()
 
         if proj == 'linear':
@@ -104,7 +104,7 @@ class PixelProjectionHead(nn.Module):
 class PixelRegressionHead(nn.Module):
     """Per-pixel regression head
     """
-    def __init__(self, dim_in, output_dim=1, regressor_type='mlp', min_output=None, max_output=None):
+    def __init__(self, dim_in, output_dim=1, regressor_type='linear', min_output=None, max_output=None):
         super(PixelRegressionHead, self).__init__()
 
         # Define pixel regressor

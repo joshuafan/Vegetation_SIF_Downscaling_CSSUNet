@@ -17,8 +17,8 @@ import torch.optim as optim
 from torch import autograd
 from torch.autograd import grad
 
-from reflectance_cover_sif_dataset import CombinedDataset, CoarseSIFDataset, FineSIFDataset
-from unet.unet_model import UNet2Contrastive, UNet, UNetSmall, UNet2, UNet2PixelEmbedding, UNet2Larger, PixelNN
+from datasets import CombinedDataset, CoarseSIFDataset, FineSIFDataset
+from unet.unet_model import UNetContrastive, UNet2Contrastive, UNet, UNetSmall, UNet2, UNet2PixelEmbedding, UNet2Larger, PixelNN, UNet2Spectral
 import visualization_utils
 import sif_utils
 import tile_transforms
@@ -43,14 +43,15 @@ COARSE_SIF_DATASETS = {'train': ['CFIS_2016', 'OCO2_2016'],
 FINE_SIF_DATASETS = {'train': ['CFIS_2016'],
                      'val': ['CFIS_2016']}
 MODEL_SELECTION_DATASET = 'CFIS_2016'
+
+# Ratios - how often a batch from each dataset should be sampled during training
 UPDATE_FRACTIONS = {'CFIS_2016': 1,
                     'OCO2_2016': 1,
                     'OCO2_2018': 0,
                     'TROPOMI_2018': 0}
-BAND_STATISTICS_FILE = os.path.join(METADATA_DIR, 'cfis_band_statistics_train.csv')
 
 # Dataset resolution/scale
-RES = (0.00026949458523585647, 0.00026949458523585647)
+RES = (0.00026949458523585647, 0.00026949458523585647)  # in degrees
 TILE_PIXELS = 100
 TILE_SIZE_DEGREES = RES[0] * TILE_PIXELS
 
@@ -79,34 +80,50 @@ parser.add_argument('-patience', "--patience", default=5, type=int, help="Early 
 parser.add_argument('-bs', "--batch_size", default=100, type=int, help="Batch size")
 parser.add_argument('-num_workers', "--num_workers", default=4, type=int, help="Number of dataloader workers")
 parser.add_argument('-from_pretrained', "--from_pretrained", default=False, action='store_true', help='Whether to initialize from pre-trained model')
+parser.add_argument('-visualize', "--visualize", default=False, action='store_true', help='Plot visualizations')
 
-# Optional loss terms
+# ============ Smoothness/contrastive losses : general params ============
+parser.add_argument('-num_pixels', "--num_pixels", default=1000, type=int, help='Number of pixels to sample per batch for smoothness/contrastive losses')
+parser.add_argument('-lambduh', "--lambduh", default=1, type=float, help="How much to weight the smoothness/contrastive loss compared to coarse")
+parser.add_argument('-pretrain_epochs', "--pretrain_epochs", default=0, type=int, help='If this is greater than 0, pre-train this number of epochs with ONLY unsupervised contrastive loss, then introduce supervised coarse loss')
+
+# Pixel contrastive loss
 parser.add_argument('-pixel_contrastive_loss', "--pixel_contrastive_loss", default=False, action='store_true', help='Whether to add a "smoothness loss" term (encouraging pixels with similar features to have similar SIF)')
-parser.add_argument('-temperature', "--temperature", default=0.1, type=float)
-parser.add_argument('-fine_supervision', "--fine_supervision", default=False, action='store_true', help='Use this flag to train with full *fine-resolution* labels')
+parser.add_argument('-temperature', "--temperature", default=0.1, type=float, help='')
+parser.add_argument('-similarity_threshold', "--similarity_threshold", default=0.05, type=float, help='Threshold for considering pixels to be "similar". Defined as Euclidean distance between normalized reflectances (over bands defined in SIMILARITY_INDICES)')
+
+# Smoothness loss
 parser.add_argument('-smoothness_loss', "--smoothness_loss", default=False, action='store_true', help='Whether to add a "smoothness loss" term (encouraging pixels with similar features to have similar SIF)')
+parser.add_argument('-spread', "--spread", default=50, type=float, help='A parameter when computing similarity between pixel reflectances. The higher this parameter is, the faster the similarities decay towards 0 as distance increases.')
+
+# Other smoothness loss variants
 parser.add_argument('-smoothness_loss_contrastive', "--smoothness_loss_contrastive", default=False, action='store_true', help='Whether to add a "smoothness loss" term (encouraging pixels to have more similar SIF to its most similar pixel, and different SIF from other pixels)')
 parser.add_argument('-similarity_loss', "--similarity_loss", default=False, action='store_true', help='Whether to add a "similarity loss" term (encouraging pixels with similar features to have similar SIF)')
-parser.add_argument('-similarity_temp', "--similarity_temp", default=0.2, type=float)
+
+# Gradient penalty
 parser.add_argument('-gradient_penalty', "--gradient_penalty", default=False, action='store_true', help="DOES NOT SEEM TO WORK. Whether to penalize gradient of SIF wrt input, to make function Lipschitz.")
-parser.add_argument('-lambduh', "--lambduh", default=1, type=float, help="Gradient penalty lambda")
+parser.add_argument('-norm_penalty_threshold', "--norm_penalty_threshold", default=50, type=float, help='Only penalize gradient norms above this threshold.')
+
+# Whether to train using fine-resolution supervision
+parser.add_argument('-fine_supervision', "--fine_supervision", default=False, action='store_true', help='Use this flag to train with full *fine-resolution* labels')
 
 # Restricting output and input values
 parser.add_argument('-min_sif', "--min_sif", default=None, type=float, help="If (min_sif, max_sif) are set, the model uses a tanh function to ensure the output is within that range.")
 parser.add_argument('-max_sif', "--max_sif", default=None, type=float, help="If (min_sif, max_sif) are set, the model uses a tanh function to ensure the output is within that range.")
 parser.add_argument('-min_sif_clip', "--min_sif_clip", default=0.1, type=float, help="Before computing loss, clip outputs below this to this value.")
-parser.add_argument('-min_input', "--min_input", default=-5, type=float, help="Clip extreme input values to this many standard deviations below mean")
-parser.add_argument('-max_input', "--max_input", default=5, type=float, help="Clip extreme input values to this many standard deviations above mean")
+parser.add_argument('-min_input', "--min_input", default=-3, type=float, help="Clip extreme input values to this many standard deviations below mean")
+parser.add_argument('-max_input', "--max_input", default=3, type=float, help="Clip extreme input values to this many standard deviations above mean")
 parser.add_argument('-reduced_channels', "--reduced_channels", default=None, type=int, help="If this is set, add a 'dimensionality reduction' layer to the front of the model, to reduce the number of channels to this.")
 
 # Augmentations. None are enabled by default.
 parser.add_argument('-normalize', "--normalize", action='store_true', help='Whether to normalize the reflectance bands to have norm 1. If this is enabled, the reflectance bands are NOT standardized.')
-parser.add_argument('-fraction_outputs_to_average', "--fraction_outputs_to_average", default=0.2, type=float, help="Fraction of outputs to average when computing loss.")
+parser.add_argument('-fraction_outputs_to_average', "--fraction_outputs_to_average", default=1, type=float, help="Fraction of outputs to average when computing loss.")
 parser.add_argument('-flip_and_rotate', "--flip_and_rotate", action='store_true')
 parser.add_argument('-jigsaw', "--jigsaw", action='store_true')
 parser.add_argument('-compute_vi', "--compute_vi", action='store_true', help="Whether to compute vegetation indices per pixel")
 parser.add_argument('-multiplicative_noise', "--multiplicative_noise", action='store_true')
-parser.add_argument('-mult_noise_std', "--mult_noise_std", default=0.2, type=float, help="If the 'multiplicative_noise' augmentation is used, multiply each channel by (1+eps), where eps ~ N(0, mult_noise_std)")
+parser.add_argument('-multiplicative_noise_end', "--multiplicative_noise_end", action='store_true')
+parser.add_argument('-mult_noise_std', "--mult_noise_std", default=0, type=float, help="If the 'multiplicative_noise' augmentation is used, multiply each channel by (1+eps), where eps ~ N(0, mult_noise_std)")
 parser.add_argument('-gaussian_noise', "--gaussian_noise", action='store_true')
 parser.add_argument('-gaussian_noise_std', "--gaussian_noise_std", default=0.2, type=float, help="If the 'multiplicative_noise' augmentation is used, add eps to each pixel, where eps ~ N(0, gaussian_noise_std)")
 parser.add_argument('-cutout', "--cutout", action='store_true')
@@ -130,36 +147,46 @@ torch.cuda.manual_seed(args.seed)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
-
-PARAM_SETTING = "{}_{}_optimizer-{}_bs-{}_lr-{}_wd-{}_maxepoch-{}_sche-{}_fractionoutputs-{}_seed-{}".format(  #_T0-{}_etamin-{}_step-{}_gamma-{}_
-    args.prefix, args.model, args.optimizer, args.batch_size, args.learning_rate, args.weight_decay, args.max_epoch, args.scheduler, args.fraction_outputs_to_average, args.seed  #args.T0, args.eta_min, args.lrsteps, args.gamma,
-)
+# Band statistics (mean/std) for standardizing each channel. Depends on whether we're first normalizing reflectance vectors to norm 1 or not.
 if args.normalize:
-    PARAM_SETTING += "_normalize"
+    BAND_STATISTICS_FILE = os.path.join(METADATA_DIR, 'normalized_cfis_band_statistics_train.csv')
+else:
+    BAND_STATISTICS_FILE = os.path.join(METADATA_DIR, 'cfis_band_statistics_train.csv')
+
+# Create param string
+PARAM_SETTING = "{}_{}_optimizer-{}_bs-{}_lr-{}_wd-{}_fractionoutputs-{}_seed-{}".format(  #_T0-{}_etamin-{}_step-{}_gamma-{}_
+    args.prefix, args.model, args.optimizer, args.batch_size, args.learning_rate, args.weight_decay, args.fraction_outputs_to_average, args.seed  #args.T0, args.eta_min, args.lrsteps, args.gamma,
+)
+args.special_options = ""
+if args.normalize:
+    args.special_options += "_normalize"
 if args.flip_and_rotate:
-    PARAM_SETTING += "_fliprotate"
+    args.special_options += "_fliprotate"
 if args.jigsaw:
-    PARAM_SETTING += "_jigsaw"
+    args.special_options += "_jigsaw"
 if args.multiplicative_noise:
-    PARAM_SETTING += "_multiplicativenoise-{}".format(args.mult_noise_std)
+    args.special_options += "_multiplicativenoise-{}".format(args.mult_noise_std)
+if args.multiplicative_noise_end:
+    args.special_options += "_multiplicativenoiseend-{}".format(args.mult_noise_std)
 if args.gaussian_noise:
-    PARAM_SETTING += "_gaussiannoise-{}".format(args.mult_noise_std)
+    args.special_options += "_gaussiannoise-{}".format(args.mult_noise_std)
 if args.cutout:
-    PARAM_SETTING += "_cutout-{}_prob-{}".format(args.cutout_dim, args.cutout_prob)
+    args.special_options += "_cutout-{}_prob-{}".format(args.cutout_dim, args.cutout_prob)
 if args.resize:
-    PARAM_SETTING += "_resize-{}".format(args.resize_dim)
+    args.special_options += "_resize-{}".format(args.resize_dim)
 if args.random_crop:
-    PARAM_SETTING += "_randomcrop-{}".format(args.crop_dim)
+    args.special_options += "_randomcrop-{}".format(args.crop_dim)
 if args.fine_supervision:
-    PARAM_SETTING += "_finesupervision"
+    args.special_options += "_finesupervision"
 if args.similarity_loss:
-    PARAM_SETTING += "_similarityloss-{}".format(args.lambduh)
+    args.special_options += "_similarityloss-{}".format(args.lambduh)
 if args.smoothness_loss:
-    PARAM_SETTING += "_smoothnessloss-{}".format(args.lambduh)
+    args.special_options += "_smoothnessloss-{}-s{}".format(args.lambduh, args.spread)
 if args.smoothness_loss_contrastive:
-    PARAM_SETTING += "_smoothnesslosscontrastive-{}".format(args.lambduh)
+    args.special_options += "_smoothnesslosscontrastive-{}".format(args.lambduh)
 if args.pixel_contrastive_loss:
-    PARAM_SETTING += "_pixelcontrastive-{}".format(args.lambduh)
+    args.special_options += "_pixelcontrastive-{}".format(args.lambduh)
+PARAM_SETTING += args.special_options
 
 # Model files
 results_dir = os.path.join(DATA_DIR, "unet_results", PARAM_SETTING)
@@ -174,11 +201,11 @@ CFIS_RESULTS_CSV_FILE = os.path.join(results_dir, 'cfis_results_' + PARAM_SETTIN
 LOSS_PLOT = os.path.join(results_dir, 'losses')
 
 # Summary csv file of all results. Create this if it doesn't exist
-RESULTS_SUMMARY_FILE = os.path.join(DATA_DIR, "results_summary.csv")
+RESULTS_SUMMARY_FILE = os.path.join(DATA_DIR, "unet_results/results_summary.csv")
 if not os.path.isfile(RESULTS_SUMMARY_FILE):
     with open(RESULTS_SUMMARY_FILE, mode='w') as f:
         csv_writer = csv.writer(f, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-        csv_writer.writerow(['model', 'git_commit', 'command', 'optimizer', 'lr', 'wd', 'fine_val_nrmse', 'path_to_model', 'best_val_fine_epoch'])
+        csv_writer.writerow(['model', 'git_commit', 'command', 'optimizer', 'batch_size', 'lr', 'wd', 'mult_noise', 'special_options', 'fine_val_nrmse', 'path_to_model', 'best_val_fine_epoch'])
 GIT_COMMIT = sif_utils.get_git_revision_hash()
 COMMAND_STRING = " ".join(sys.argv)
 
@@ -206,9 +233,21 @@ ALL_COVER_COLUMNS = ['grassland_pasture', 'corn', 'soybean',
                     'developed_low_intensity', 'developed_med_intensity']
 
 # Bands to use
-BANDS = list(range(0, 12)) + [12, 13, 14, 16, 17, 19, 23, 24, 25, 28, 34] + [42]
-SIMILARITY_INDICES = list(range(0, 7))
-CROP_TYPE_INDICES = list(range(12, 23))
+# BANDS = list(range(0, 7)) + [12, 13, 14, 16, 17, 19, 23, 24, 25, 28, 34] + [42]
+# REFLECTANCE_INDICES = list(range(0, 7))  # Indices of reflectance bands, used for multiplicative noise/normalization
+# CONTINUOUS_INDICES = list(range(0, 7))  # Indices of continuous bands to standardize/clip
+# SIMILARITY_INDICES = list(range(0, 7))  # Indices to use when computing pixel similarity (within BANDS)
+# CROP_TYPE_INDICES = list(range(7, 18))  # Indices of crop type bands (within BANDS)
+
+BANDS = list(range(0, 7)) + list(range(9, 12)) + [12, 13, 14, 16, 17, 19, 23, 24, 25, 28, 34] + [42]
+REFLECTANCE_INDICES = list(range(0, 7))  # Indices of reflectance bands, used for multiplicative noise/normalization
+CONTINUOUS_INDICES = list(range(0, 12))  # Indices of continuous bands to standardize/clip
+SIMILARITY_INDICES = list(range(0, 7))  # Indices to use when computing pixel similarity (within BANDS)
+CROP_TYPE_INDICES = list(range(10, 21))  # Indices of crop type bands (within BANDS)
+
+# BANDS = list(range(0, 12)) + [12, 13, 14, 16, 17, 19, 23, 24, 25, 28, 34] + [42]
+# SIMILARITY_INDICES = list(range(0, 7))
+# CROP_TYPE_INDICES = list(range(12, 23))
 MISSING_REFLECTANCE_IDX = len(BANDS) - 1
 INPUT_CHANNELS = len(BANDS)
 OUTPUT_CHANNELS = 1 
@@ -315,7 +354,7 @@ def get_neighbor_pixel_indices(images, radius=10, pixel_pairs_per_image=10, num_
 #     return model
 
 
-def calc_gradient_penalty(args, input_tiles_std, predicted_coarse_sifs, norm_penalty_threshold=1, return_gradients=False):
+def calc_gradient_penalty(args, input_tiles_std, predicted_coarse_sifs, return_gradients=False):
     """Place a penalty if gradient norm (of output w.r.t. input pixels) exceeds "norm_penalty_threshold".
     Before this method, you first need to call "input_tiles_std.requires_grad_(True)", then pass tiles
     through the model to obtain "predicted_coarse_sifs".
@@ -326,7 +365,10 @@ def calc_gradient_penalty(args, input_tiles_std, predicted_coarse_sifs, norm_pen
         norm_penalty_threshold: penalize gradient norms that are above this threshold.
                                 If the norm of the gradient is below this threshold, no penalty.
         return_gradients: whether to return raw gradients (of output w.r.t. input pixels) for visualization
-    
+
+    In addition, the following command-line arguments in "args" are used:
+        args.norm_penalty_threshold: Only penalize gradient norms above this threshold
+
     Returns:
         If "return_gradients" is True, returns a tuple of gradient_penalty (scalar loss) and raw_gradients [batch, channels, height, width].
         Otherwise, just return the gradient_penalty (scalar loss).
@@ -346,7 +388,7 @@ def calc_gradient_penalty(args, input_tiles_std, predicted_coarse_sifs, norm_pen
     gradients = gradients.view(gradients.size(0), -1)
     # print("After view", gradients.shape)
     gradient_norms = gradients.norm(2, dim=1)
-    gradient_penalty = (torch.clamp(gradient_norms - norm_penalty_threshold, min=0) ** 2).mean() # (torch.max(torch.zeros_like(gradient_norms), gradient_norms - 1) ** 2).mean() * lambduh
+    gradient_penalty = (torch.clamp(gradient_norms - args.norm_penalty_threshold, min=0) ** 2).mean() # (torch.max(torch.zeros_like(gradient_norms), gradient_norms - 1) ** 2).mean() * lambduh
     if return_gradients:
         return gradient_penalty, raw_gradients
     return gradient_penalty
@@ -372,15 +414,20 @@ def calc_gradient_penalty(args, input_tiles_std, predicted_coarse_sifs, norm_pen
 #     #     return 0
 
 
-def smoothness_loss(args, input_tiles_std, predicted_fine_sifs, device, num_pixels=1000):
-    """Implements the smoothness loss term described by (Kotzias et al., 2015). Sample "num_pixels" random pixels.
-    For each pixel pair, we penalize the similarity between pixel reflectance, times the difference in SIF.
-    So this places a high penalty on similar pixels that have very different SIF predictions.
+def smoothness_loss(args, input_tiles_std, predicted_fine_sifs, device):
+    """Implements the smoothness loss term described by (Kotzias et al., 2015). Sample "args.num_pixels" random pixels.
+    For each pixel pair, we penalize the similarity between pixel reflectance (raw vectors, normalized to norm 1),
+    times the difference in SIF. So this places a high penalty on similar pixels that have very different SIF predictions.
 
     Args:
         input_tiles_std: standardized input images, shape [batch, channels, height, width]
         predicted_fine_sifs: predicted SIF map, shape [batch, height, width]
-        num_pixels: number of pixels to randomly sample
+    
+    In addition, the following command-line arguments in "args" are used:
+        args.spread: a parameter when computing similarity between pixel reflectances. 
+                     The higher this parameter is, the faster the similarities decay towards 0 as distance increases.
+        args.num_pixels: number of pixels to randomly sample
+        args.means, args.stds: means and stds for each band (used to undo standardization when computing pixel similarity)
     """
     assert input_tiles_std.shape[0] == predicted_fine_sifs.shape[0]
     assert input_tiles_std.shape[2] == predicted_fine_sifs.shape[1]
@@ -396,7 +443,7 @@ def smoothness_loss(args, input_tiles_std, predicted_fine_sifs, device, num_pixe
     indices_with_reflectance_data = (input_pixels[:, MISSING_REFLECTANCE_IDX] == 0)
     input_pixels = input_pixels[indices_with_reflectance_data]
     sif_pixels = sif_pixels[indices_with_reflectance_data]
-    random_indices = torch.randint(low=0, high=input_pixels.shape[0], size=(num_pixels,))
+    random_indices = torch.randint(low=0, high=input_pixels.shape[0], size=(args.num_pixels,))
     input_pixels = input_pixels[random_indices]  # [num_pixels, num_features]
     sif_pixels = sif_pixels[random_indices]  # [num_pixels]
 
@@ -404,15 +451,22 @@ def smoothness_loss(args, input_tiles_std, predicted_fine_sifs, device, num_pixe
     input_reflectance = input_pixels[:, SIMILARITY_INDICES]
     input_cover_types = input_pixels[:, CROP_TYPE_INDICES]
 
+    # When computing reflectance similarity between pixels, undo standardization, normalize the raw 
+    # vectors to norm 1
+    input_reflectance = input_reflectance * args.stds[SIMILARITY_INDICES] + args.means[SIMILARITY_INDICES]
+    input_reflectance = input_reflectance / torch.linalg.norm(input_reflectance, dim=1, keepdim=True)
+
     # Computes the Euclidean norm between every pair of rows - see https://pytorch.org/docs/stable/generated/torch.nn.functional.pdist.html
     reflectance_distances = torch.norm(input_reflectance[:, None] - input_reflectance, dim=2, p=2)  # [num_pixels, num_pixels]
     cover_distances = torch.norm(input_cover_types[:, None] - input_cover_types, dim=2, p=1)  # [num_pixels, num_pixels]
     sif_distances = torch.abs(sif_pixels[:, None] - sif_pixels)  # [num_pixels, num_pixels]
 
     # Convert reflectance distance into reflectance similarity
-    reflectance_similarities = torch.exp((-1 / len(SIMILARITY_INDICES)) * (reflectance_distances ** 2))  # [num_pixels, num_pixels]
-    
-    # # Debugging
+    reflectance_similarities = torch.exp(-args.spread * (reflectance_distances ** 2))  # [num_pixels, num_pixels]
+
+    # reflectance_similarities = torch.exp((-1 / len(SIMILARITY_INDICES)) * (reflectance_distances ** 2))  # [num_pixels, num_pixels]
+    # reflectance_similarities = torch.matmul(input_reflectance, torch.transpose(input_reflectance, 0, 1))
+    # Debugging
     # print("=================== Samples ===================")
     # print("Pixels", input_pixels[0:5])
     # print("SIFs", sif_pixels[0:5])
@@ -456,7 +510,104 @@ def smoothness_loss(args, input_tiles_std, predicted_fine_sifs, device, num_pixe
     # return total_loss / num_points
 
 
-def smoothness_loss_contrastive(args, input_tiles_std, predicted_fine_sifs, device, num_pixels=1000):
+def pixel_contrastive_loss(args, input_tiles_std, projections, device):
+    """Computes contrastive loss; pixels with similar reflectances are pushed closer together 
+    while pixels with different reflectances are pushed further apart in the projection space
+
+    Args:
+        input_tiles_std: the original input tiles [batch, # channels, width, height]
+        projections: embeddings for each pixel [batch, projection dim, width, height]
+
+    In addition, the following command-line arguments in "args" are used:
+        args.temperature: the temperature hyperparameter in the contrastive loss function. The lower this is,
+                          more penalty is placed on the hardest negative samples (Wang and Liu 2021).
+        args.similarity_threshold: if reflectance distance (between normalized reflectance vectors)
+                                   is lower than this threshold, pixels are considered similar.
+        args.num_pixels: number of pixels to randomly sample
+        args.means, args.stds: means and stds for each band (used to undo standardization when computing pixel similarity)
+    """
+    num_channels = input_tiles_std.shape[1]
+    input_pixels = input_tiles_std.permute(0, 2, 3, 1)
+    input_pixels = input_pixels.reshape(-1, num_channels)
+    projection_dim = projections.shape[1]
+    pixel_projections = projections.permute(0, 2, 3, 1)
+    pixel_projections = pixel_projections.reshape(-1, projection_dim)
+
+    # To reduce computational cost, sample some pixels
+    indices_with_reflectance_data = (input_pixels[:, MISSING_REFLECTANCE_IDX] == 0)
+    input_pixels = input_pixels[indices_with_reflectance_data]
+    pixel_projections = pixel_projections[indices_with_reflectance_data]
+    indices = torch.randint(low=0, high=input_pixels.shape[0], size=(args.num_pixels,))
+    input_pixels = input_pixels[indices, :]  # [pixels, input_channels]
+    pixel_projections = pixel_projections[indices, :]  # [pixels, proj_dim]
+
+    # Extract reflectance and cover type vectors
+    input_reflectance = input_pixels[:, SIMILARITY_INDICES]
+    input_cover_types = input_pixels[:, CROP_TYPE_INDICES]
+
+    # When computing reflectance similarity between pixels, undo standardization, normalize the raw 
+    # vectors to norm 1 (thus undo-ing multiplicative noise), and then standardize again.
+    # print("Input reflectance", input_reflectance)
+    input_reflectance = input_reflectance * args.stds[SIMILARITY_INDICES] + args.means[SIMILARITY_INDICES]
+    # print("After unstd", input_reflectance)
+    input_reflectance = input_reflectance / torch.linalg.norm(input_reflectance, dim=1, keepdim=True)
+    # print("Sample reflectance after normalize", input_reflectance[0:10])
+    # # print("After unstd, normalize", input_reflectance)
+    # input_reflectance = (input_reflectance - args.means[SIMILARITY_INDICES]) / args.stds[SIMILARITY_INDICES]
+    # # print("After unstd, normalize, std", input_reflectance)
+    # # exit(1)
+
+    # Computes the Euclidean norm between every pair of rows - see https://pytorch.org/docs/stable/generated/torch.nn.functional.pdist.html
+    reflectance_distances = torch.norm(input_reflectance[:, None] - input_reflectance, dim=2, p=2)
+    cover_distances = torch.norm(input_cover_types[:, None] - input_cover_types, dim=2, p=1)
+
+    # Identify positive and negative pairs. Positive pairs have similar reflectance and the same cover type.
+    # Negative pairs have different reflectance.
+    pos_mask = ((reflectance_distances <= args.similarity_threshold) & (cover_distances < 0.5)).fill_diagonal_(0) # [pixels, pixels] # .fill_diagonal_(0)
+    neg_mask = ((reflectance_distances > args.similarity_threshold) | (cover_distances > 0.5)).fill_diagonal_(0)  # [pixels, pixels]
+    # print("Pos mask shape", pos_mask.shape)
+    # print("Pos mask per row", torch.count_nonzero(pos_mask[0:10, :], dim=1))
+
+    # # Debugging
+    # print("Input pixels shape", input_pixels.shape)
+    # print("Pixel projections shape", pixel_projections.shape)
+    # print("Input pixels", input_pixels[0:5])
+    # print("Ref distances", reflectance_distances[0:5, 0:5])
+    # print("Cover distances", cover_distances[0:5, 0:5])
+    # print("pos mask", pos_mask[0:5, 0:5])
+    # print("neg mask", neg_mask[0:5, 0:5])
+    # print("Projections", pixel_projections[0:5, :])
+    # print("Projection norms", torch.norm(pixel_projections[0:5, :], dim=1, p=2))
+
+    # Code largely borrowed from https://github.com/tfzhou/ContrastiveSeg/blob/a2f7392d0c50ecdda36fd41205b77a7bc74f7cb8/lib/loss/loss_contrast.py
+    contrast_feature = pixel_projections
+    anchor_feature = pixel_projections
+
+    # Compute all pairwise similarities (dot product) between pixel projections
+    anchor_dot_contrast = torch.div(torch.matmul(anchor_feature, torch.transpose(contrast_feature, 0, 1)),  # [pixels, pixels]
+                                    args.temperature)
+    # print("Anchor dot contrast", anchor_dot_contrast[0:5, 0:5])
+    logits_max, _ = torch.max(anchor_dot_contrast, dim=1, keepdim=True)  # [pixels]
+    logits = anchor_dot_contrast - logits_max.detach()  # [pixels, pixels]
+
+    neg_logits = torch.exp(logits) * neg_mask
+    neg_logits = neg_logits.sum(1, keepdim=True)
+
+    exp_logits = torch.exp(logits)
+
+    log_prob = logits - torch.log(exp_logits + neg_logits)
+    # print("Log prob", log_prob[0:5, 0:5])
+
+    mean_log_prob_pos = (pos_mask * log_prob).sum(1) / torch.clamp(pos_mask.sum(1), min=1)
+
+    loss = - mean_log_prob_pos  # TODO assume base_temperature is the same as temperature
+    loss = loss.nanmean()
+
+    return loss
+
+
+
+def smoothness_loss_contrastive(args, input_tiles_std, predicted_fine_sifs, device):
     """More contrastive version of the smoothness loss proposed by (Kotzias et al., 2015).
 
     Sample "num_pixels" random pixels. For each pixel, encourage its predicted SIF to be closer
@@ -466,7 +617,6 @@ def smoothness_loss_contrastive(args, input_tiles_std, predicted_fine_sifs, devi
     Args:
         input_tiles_std: standardized input images, shape [batch, channels, height, width]
         predicted_fine_sifs: predicted SIF map, shape [batch, height, width]
-        num_pixels: number of pixels to randomly sample
     """
     assert input_tiles_std.shape[0] == predicted_sif.shape[0]
     assert input_tiles_std.shape[2] == predicted_sif.shape[1]
@@ -482,7 +632,7 @@ def smoothness_loss_contrastive(args, input_tiles_std, predicted_fine_sifs, devi
     indices_with_reflectance_data = (input_pixels[:, MISSING_REFLECTANCE_IDX] == 0)
     input_pixels = input_pixels[indices_with_reflectance_data]
     sif_pixels = sif_pixels[indices_with_reflectance_data]
-    random_indices = torch.randint(low=0, high=input_pixels.shape[0], size=(num_pixels,))
+    random_indices = torch.randint(low=0, high=input_pixels.shape[0], size=(args.num_pixels,))
     input_pixels = input_pixels[random_indices]  # [num_pixels, num_features]
     sif_pixels = sif_pixels[random_indices]  # [num_pixels]
 
@@ -549,7 +699,7 @@ def similarity_loss(args, input_tiles_std, predicted_fine_sifs, device, similari
     indices_with_reflectance_data = (input_pixels[:, MISSING_REFLECTANCE_IDX] == 0)
     input_pixels = input_pixels[indices_with_reflectance_data]
     sif_pixels = sif_pixels[indices_with_reflectance_data]
-    random_indices = torch.randint(low=0, high=input_pixels.shape[0], size=(num_pixels,))
+    random_indices = torch.randint(low=0, high=input_pixels.shape[0], size=(args.num_pixels,))
     input_pixels = input_pixels[random_indices]  # [num_pixels, num_features]
     sif_pixels = sif_pixels[random_indices]  # [num_pixels]
 
@@ -664,77 +814,7 @@ def similarity_loss(args, input_tiles_std, predicted_fine_sifs, device, similari
     # return logits, labels
 
 
-def pixel_contrastive_loss(args, input_tiles_std, projections, device, num_pixels=1000):
-    """Computes contrastive loss; pixels with similar reflectances are pushed closer together 
-    while pixels with different reflectances are pushed further apart in the projection space
 
-    Args:
-        input_tiles_std: [batch, # channels, width, height]
-        projections: [batch, projection dim, width, height]
-    """
-    num_channels = input_tiles_std.shape[1]
-    input_pixels = input_tiles_std.permute(0, 2, 3, 1)
-    input_pixels = input_pixels.reshape(-1, num_channels)
-    projection_dim = projections.shape[1]
-    pixel_projections = projections.permute(0, 2, 3, 1)
-    pixel_projections = pixel_projections.reshape(-1, projection_dim)
-
-    # To reduce computational cost, sample some pixels
-    num_pixels = 1000
-    indices_with_reflectance_data = (input_pixels[:, MISSING_REFLECTANCE_IDX] == 0)
-    input_pixels = input_pixels[indices_with_reflectance_data]
-    pixel_projections = pixel_projections[indices_with_reflectance_data]
-    indices = torch.randint(low=0, high=input_pixels.shape[0], size=(num_pixels,))
-    input_pixels = input_pixels[indices, :]  # [pixels, input_channels]
-    pixel_projections = pixel_projections[indices, :]  # [pixels, proj_dim]
-
-    # Extract reflectance and cover type vectors
-    input_reflectance = input_pixels[:, SIMILARITY_INDICES]
-    input_cover_types = input_pixels[:, CROP_TYPE_INDICES]
-
-    # Computes the Euclidean norm between every pair of rows - see https://pytorch.org/docs/stable/generated/torch.nn.functional.pdist.html
-    reflectance_distances = torch.norm(input_reflectance[:, None] - input_reflectance, dim=2, p=2)
-    cover_distances = torch.norm(input_cover_types[:, None] - input_cover_types, dim=2, p=1)
-
-    # Identify positive and negative pairs. Positive pairs have similar reflectance and the same cover type.
-    # Negative pairs have different reflectance.
-    pos_mask = ((reflectance_distances < 2) & (cover_distances < 0.5)) # [pixels, pixels] # .fill_diagonal_(0)
-    neg_mask = (reflectance_distances > 2).fill_diagonal_(0)  # [pixels, pixels]
-
-    # # Debugging
-    # print("Input pixels shape", input_pixels.shape)
-    # print("Pixel projections shape", pixel_projections.shape)
-    # print("Input pixels", input_pixels[0:5])
-    # print("Ref distances", reflectance_distances[0:5, 0:5])
-    # print("Cover distances", cover_distances[0:5, 0:5])
-    # print("pos mask", pos_mask[0:5, 0:5])
-    # print("neg mask", neg_mask[0:5, 0:5])
-    # print("Projections", pixel_projections[0:5, :])
-    # print("Projection norms", torch.norm(pixel_projections[0:5, :], dim=1, p=2))
-
-    # Code largely borrowed from https://github.com/tfzhou/ContrastiveSeg/blob/a2f7392d0c50ecdda36fd41205b77a7bc74f7cb8/lib/loss/loss_contrast.py
-    contrast_feature = pixel_projections
-    anchor_feature = pixel_projections
-
-    # Compute all pairwise similarities (dot product) between pixel projections
-    anchor_dot_contrast = torch.div(torch.matmul(anchor_feature, torch.transpose(contrast_feature, 0, 1)),  # [pixels, pixels]
-                                    args.temperature)
-    logits_max, _ = torch.max(anchor_dot_contrast, dim=1, keepdim=True)  # [pixels]
-    logits = anchor_dot_contrast - logits_max.detach()  # [pixels, pixels]
-
-    neg_logits = torch.exp(logits) * neg_mask
-    neg_logits = neg_logits.sum(1, keepdim=True)
-
-    exp_logits = torch.exp(logits)
-
-    log_prob = logits - torch.log(exp_logits + neg_logits)
-
-    mean_log_prob_pos = (pos_mask * log_prob).sum(1) / pos_mask.sum(1)
-
-    loss = - mean_log_prob_pos  # TODO assume base_temperature is the same as temperature
-    loss = loss.mean()
-
-    return loss
 
 
 
@@ -767,14 +847,7 @@ def train_model(args, model, dataloaders, criterion, optimizer, device, sif_mean
     train_fine_loss_at_best_val_coarse = {k: float('inf') for k in FINE_SIF_DATASETS['train']}
     val_fine_loss_at_best_val_coarse = {k: float('inf') for k in FINE_SIF_DATASETS['val']}
 
-    # Record the best-seen loss on the fine validation set (this is an alternate way to choose
-    # the best model, if we are allowed to peek at the fine-resolution dataset for validation)
-    # best_val_coarse_loss = float('inf')
-    # best_val_fine_loss = float('inf')
-
-    # Similarity loss criterion
-    # similarity_criterion = torch.nn.CrossEntropyLoss().to(device)
-
+    # Loop through each epoch
     for epoch in range(args.max_epoch):
         print('Epoch {}/{}'.format(epoch, args.max_epoch - 1))
         print('-' * 10)
@@ -801,9 +874,9 @@ def train_model(args, model, dataloaders, criterion, optimizer, device, sif_mean
             for combined_sample in dataloaders[phase]:
                 # Loop through all datasets in this sample
                 for dataset_name, sample in combined_sample.items():
-                    # if (phase == 'val') or (phase == 'train' and random.random() < UPDATE_FRACTIONS[dataset_name]):
                     # Read input tile
-                    input_tiles_std = sample['input_tile'][:, BANDS, :, :].to(device)
+                    input_tiles_std = sample['input_tile'][:, BANDS, :, :].to(device)  # [batch, # channels, height, width]
+                    input_tiles_without_mult_noise = sample['input_tile_without_mult_noise'][:, BANDS, :, :].to(device)
                     # print("input tiles shape", input_tiles_std.shape)
 
                     # Read coarse-resolution SIF label
@@ -875,17 +948,22 @@ def train_model(args, model, dataloaders, criterion, optimizer, device, sif_mean
 
                         # Compute contrastive/smoothness loss
                         if args.smoothness_loss:
-                            other_loss = smoothness_loss(args, input_tiles_std, predicted_fine_sifs, device)
+                            other_loss = smoothness_loss(args, input_tiles_without_mult_noise, predicted_fine_sifs, device)
                             loss = coarse_loss + other_loss * args.lambduh
                         elif args.smoothness_loss_contrastive:
-                            other_loss = smoothness_loss_contrastive(args, input_tiles_std, predicted_fine_sifs, device)
+                            other_loss = smoothness_loss_contrastive(args, input_tiles_without_mult_noise, predicted_fine_sifs, device)
                             loss = coarse_loss + other_loss * args.lambduh
                         elif args.similarity_loss:
-                            other_loss = similarity_loss(args, input_tiles_std, predicted_fine_sifs, device)
+                            other_loss = similarity_loss(args, input_tiles_without_mult_noise, predicted_fine_sifs, device)
                             loss = coarse_loss + other_loss * args.lambduh
                         elif args.pixel_contrastive_loss:
-                            other_loss = pixel_contrastive_loss(args, input_tiles_std, pixel_projections, device)
-                            loss = coarse_loss + other_loss * args.lambduh
+                            other_loss = pixel_contrastive_loss(args, input_tiles_without_mult_noise, pixel_projections, device)
+                            if epoch < args.pretrain_epochs:
+                                print("Attention - pretraining!")
+                                loss = other_loss
+                            else:
+                                loss = coarse_loss + other_loss * args.lambduh
+                            # loss = coarse_loss + other_loss * args.lambduh
                         elif args.gradient_penalty and phase == 'train':
                             other_loss, gradients = calc_gradient_penalty(args, input_tiles_std, predicted_coarse_sifs, return_gradients=True)
                             # print("Coarse loss", coarse_loss.item(), "--- Gradient penalty", other_loss.item())
@@ -905,7 +983,7 @@ def train_model(args, model, dataloaders, criterion, optimizer, device, sif_mean
                         with torch.set_grad_enabled(args.fine_supervision):
                             if dataset_name in COARSE_SIF_DATASETS[phase]:
                                 running_coarse_loss[dataset_name] += coarse_loss.item() * len(true_coarse_sifs)
-                                if args.smoothness_loss or args.gradient_penalty or args.smoothness_loss_contrastive:
+                                if args.smoothness_loss or args.gradient_penalty or args.smoothness_loss_contrastive or args.pixel_contrastive_loss:
                                     running_other_loss[dataset_name] += other_loss.item() * len(true_coarse_sifs)
                                 else:
                                     running_other_loss[dataset_name] += 0.
@@ -942,43 +1020,50 @@ def train_model(args, model, dataloaders, criterion, optimizer, device, sif_mean
                                 all_predicted_fine_sifs[dataset_name].append(predicted_fine_sifs_filtered.cpu().detach().numpy())
 
                                 # VISUALIZATIONS
-                                if epoch % 10 == 5 and len(all_true_fine_sifs[dataset_name]) == 1 and 'CFIS' in dataset_name:  # Only do first val batch
+                                if epoch % 10 == 5 and len(all_true_fine_sifs[dataset_name]) == 1 and 'CFIS' in dataset_name and args.visualize:  # Only do first val batch
                                     base_plot_dir = os.path.join(results_dir, "example_predictions_epoch_" + str(epoch))
                                     for i in range(0, 5, 1):
-                                        center_lat = sample['lat'][i].item()
-                                        center_lon = sample['lon'][i].item()
-                                        date = sample['date'][i]
-                                        tile_description = phase + '_lat_' + str(round(center_lat, 4)) + '_lon_' + str(round(center_lon, 4)) + '_' + date
-                                        title = 'Lon ' + str(round(center_lon, 4)) + ', Lat ' + str(round(center_lat, 4)) + ', ' + date
-                                        plot_dir = os.path.join(base_plot_dir, tile_description)
-                                        if not os.path.exists(plot_dir):
-                                            os.makedirs(plot_dir)
+                                        if phase == 'val' or phase == 'train':
+                                            center_lat = sample['lat'][i].item()
+                                            center_lon = sample['lon'][i].item()
+                                            date = sample['date'][i]
+                                            tile_description = phase + '_lat_' + str(round(center_lat, 4)) + '_lon_' + str(round(center_lon, 4)) + '_' + date
+                                            title = 'Lon ' + str(round(center_lon, 4)) + ', Lat ' + str(round(center_lat, 4)) + ', ' + date
+                                            plot_dir = os.path.join(base_plot_dir, tile_description)
+                                            if not os.path.exists(plot_dir):
+                                                os.makedirs(plot_dir)
 
-                                        # Plot input tile
-                                        visualization_utils.plot_tile(input_tiles_std[i].cpu().detach().numpy(),
-                                                            center_lon, center_lat, date, TILE_SIZE_DEGREES, 
-                                                            tile_description=tile_description, title=title, plot_dir=plot_dir,
-                                                            cdl_bands=list(range(12, 23)))
+                                            # Plot input tile
+                                            visualization_utils.plot_tile(input_tiles_std[i].cpu().detach().numpy(),
+                                                                center_lon, center_lat, date, TILE_SIZE_DEGREES, 
+                                                                tile_description=tile_description, title=title, plot_dir=plot_dir,
+                                                                cdl_bands=CROP_TYPE_INDICES)
 
-                                        # Plot predictions against ground truth
-                                        visualization_utils.plot_tile_predictions(input_tiles_std[i].cpu().detach().numpy(),
-                                                                    tile_description,
-                                                                    true_fine_sifs[i].cpu().detach().numpy(),
-                                                                    [predicted_fine_sifs[i].cpu().detach().numpy()],
-                                                                    valid_mask_numpy[i],
-                                                                    non_noisy_mask[i].cpu().detach().numpy(),
-                                                                    ['U-Net'], 
-                                                                    center_lon, center_lat, date,
-                                                                    TILE_SIZE_DEGREES, res=30,
-                                                                    plot_dir=plot_dir,
-                                                                    cdl_bands=list(range(12, 23)))
+                                            # Plot input tile without mult noise
+                                            visualization_utils.plot_tile(input_tiles_without_mult_noise[i].cpu().detach().numpy(),
+                                                                center_lon, center_lat, date, TILE_SIZE_DEGREES, 
+                                                                tile_description=tile_description + "_no_mult_noise", title=title + " without mult noise", plot_dir=plot_dir,
+                                                                cdl_bands=CROP_TYPE_INDICES)
+
+                                            # Plot predictions against ground truth
+                                            visualization_utils.plot_tile_predictions(input_tiles_std[i].cpu().detach().numpy(),
+                                                                        tile_description,
+                                                                        true_fine_sifs[i].cpu().detach().numpy(),
+                                                                        [predicted_fine_sifs[i].cpu().detach().numpy()],
+                                                                        valid_mask_numpy[i],
+                                                                        non_noisy_mask[i].cpu().detach().numpy(),
+                                                                        ['U-Net'], 
+                                                                        center_lon, center_lat, date,
+                                                                        TILE_SIZE_DEGREES, res=30,
+                                                                        plot_dir=plot_dir,
+                                                                        cdl_bands=CROP_TYPE_INDICES)
 
                                         # # Plot gradients wrt input
                                         if phase == 'train' and args.gradient_penalty:
                                             visualization_utils.plot_individual_bands(gradients[i].cpu().detach().numpy(),
                                                                                       title, center_lon, center_lat, TILE_SIZE_DEGREES, 
                                                                                       os.path.join(plot_dir, "input_gradients.png"),
-                                                                                      crop_type_start_idx=12, num_grid_squares=4,
+                                                                                      crop_type_start_idx=CROP_TYPE_INDICES[0], num_grid_squares=4,
                                                                                       decimal_places=3, min_feature=None, max_feature=None)
 
                                             # Print norm of gradients in model
@@ -1061,8 +1146,6 @@ def train_model(args, model, dataloaders, criterion, optimizer, device, sif_mean
                     print("Smoothness loss contrastive", epoch_other_loss)
                 if args.gradient_penalty:
                     print("Gradient penalty", epoch_other_loss)
-                # print("True coarse", true_coarse[-20:])
-                # print("Predicted coarse", predicted_coarse[-20:])
                 sif_utils.print_stats(true_coarse, predicted_coarse, sif_mean)
 
             for fine_dataset in FINE_SIF_DATASETS[phase]:
@@ -1083,7 +1166,7 @@ def train_model(args, model, dataloaders, criterion, optimizer, device, sif_mean
 
 
 
-            # If the model performed better on "MODEL_SELECTION_DATASET" validation set than the
+            # If the model performed better on the COARSE "MODEL_SELECTION_DATASET" validation set than the
             # best previous model, record losses for this epoch, and save this model
             if phase == 'val' and val_coarse_losses[MODEL_SELECTION_DATASET][-1] < val_coarse_loss_at_best_val_coarse[MODEL_SELECTION_DATASET]:
                 torch.save(model.state_dict(), MODEL_FILE + '_best_val_coarse')
@@ -1097,6 +1180,8 @@ def train_model(args, model, dataloaders, criterion, optimizer, device, sif_mean
                     val_fine_loss_at_best_val_coarse[fine_dataset] = val_fine_losses[fine_dataset][-1]
                 best_val_coarse_epoch = epoch
 
+            # If the model performed better on the FINE "MODEL_SELECTION_DATASET" validation set than the
+            # best previous model, record losses for this epoch, and save this model
             if phase == 'val' and 'CFIS_2016' in val_fine_losses:
                 if val_fine_losses[MODEL_SELECTION_DATASET][-1] < val_fine_loss_at_best_val_fine[MODEL_SELECTION_DATASET]:
                     best_model_wts = copy.deepcopy(model.state_dict())
@@ -1114,11 +1199,8 @@ def train_model(args, model, dataloaders, criterion, optimizer, device, sif_mean
                 # Write results to file
                 with open(os.path.join(results_dir, "csv_row.csv"), mode='w') as f:
                     csv_writer = csv.writer(f, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-                    csv_writer.writerow([args.model, GIT_COMMIT, COMMAND_STRING, args.optimizer, args.learning_rate, args.weight_decay, val_fine_loss_at_best_val_fine['CFIS_2016'], MODEL_FILE])
+                    csv_writer.writerow([args.model, GIT_COMMIT, COMMAND_STRING, args.optimizer, args.batch_size, args.learning_rate, args.weight_decay, args.mult_noise_std, args.special_options, val_fine_loss_at_best_val_fine['CFIS_2016'], MODEL_FILE, best_val_fine_epoch])
 
-            # if phase == 'train' and epoch_coarse_nrmse < best_train_coarse_loss:
-            #     best_train_coarse_loss = epoch_coarse_nrmse
-            #     torch.save(model.state_dict(), MODEL_FILE + '_best_train')
 
 
         # Print elapsed time per epoch
@@ -1135,10 +1217,11 @@ def train_model(args, model, dataloaders, criterion, optimizer, device, sif_mean
             if num_epochs_no_improvement > args.patience:
                 break
 
-
     time_elapsed = time.time() - since
     print('Training complete in {:.0f}m {:.0f}s'.format(
         time_elapsed // 60, time_elapsed % 60))
+
+    # Print full loss progressions
     print("==== All losses =====")
     if "CFIS_2016" in train_fine_losses:
         print('train fine:', train_fine_losses["CFIS_2016"])
@@ -1157,8 +1240,7 @@ def train_model(args, model, dataloaders, criterion, optimizer, device, sif_mean
     # Write results to file
     with open(RESULTS_SUMMARY_FILE, "a+") as f:
         csv_writer = csv.writer(f, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-        csv_writer.writerow([args.model, GIT_COMMIT, COMMAND_STRING, args.optimizer, args.learning_rate, args.weight_decay, val_fine_loss_at_best_val_fine['CFIS_2016'], MODEL_FILE, best_val_fine_epoch])
-
+        csv_writer.writerow([args.model, GIT_COMMIT, COMMAND_STRING, args.optimizer, args.batch_size, args.learning_rate, args.weight_decay, args.mult_noise_std, args.special_options, val_fine_loss_at_best_val_fine['CFIS_2016'], MODEL_FILE, best_val_fine_epoch])
 
     # load best model weights
     model.load_state_dict(best_model_wts)
@@ -1180,9 +1262,9 @@ train_means = train_statistics['mean'].values
 train_stds = train_statistics['std'].values
 # print("Means", train_means)
 # print("Stds", train_stds)
-band_means = train_means[:-1]
+args.means = train_means[:-1]
 sif_mean = train_means[-1]
-band_stds = train_stds[:-1]
+args.stds = train_stds[:-1]
 sif_std = train_stds[-1]
 
 
@@ -1197,26 +1279,35 @@ else:
 
 # Set up image transforms / augmentations
 if args.normalize:
-    normalize_transform = tile_transforms.NormalizeReflectance(reflectance_bands=list(range(0, 9)))
-    standardize_transform = tile_transforms.StandardizeTile(band_means, band_stds, bands_to_transform=list(range(9, 12)))
-    clip_transform = tile_transforms.ClipTile(min_input=args.min_input, max_input=args.max_input, bands_to_clip=list(range(9, 12)))
+    normalize_transform = tile_transforms.NormalizeReflectance(reflectance_bands=REFLECTANCE_INDICES)
+
+standardize_transform = tile_transforms.StandardizeTile(args.means, args.stds, bands_to_transform=CONTINUOUS_INDICES)
+clip_transform = tile_transforms.ClipTile(min_input=args.min_input, max_input=args.max_input, bands_to_transform=CONTINUOUS_INDICES)
+# color_distortion_transform = tile_transforms.ColorDistortion(continuous_bands=REFLECTANCE_INDICES), standard_deviation=args.color_distortion_std)
+noise_transform = tile_transforms.GaussianNoise(bands_to_transform=REFLECTANCE_INDICES, standard_deviation=args.gaussian_noise_std)
+
+# If we do multiplicative noise at the end
+if args.multiplicative_noise_end:
+    multiplicative_noise_end_transform = tile_transforms.MultiplicativeGaussianNoise(args.means, args.stds, bands_to_transform=REFLECTANCE_INDICES, standard_deviation=args.mult_noise_std)
+    multiplicative_noise_end_transform = transforms.Compose([multiplicative_noise_end_transform, clip_transform])
 else:
-    standardize_transform = tile_transforms.StandardizeTile(band_means, band_stds, bands_to_transform=list(range(0, 12))) #, min_input=MIN_INPUT, max_input=MAX_INPUT)
-    clip_transform = tile_transforms.ClipTile(min_input=args.min_input, max_input=args.max_input, bands_to_clip=list(range(0, 12)))
-# color_distortion_transform = tile_transforms.ColorDistortion(continuous_bands=list(range(0, 12)), standard_deviation=args.color_distortion_std)
-noise_transform = tile_transforms.GaussianNoise(continuous_bands=list(range(0, 9)), standard_deviation=args.gaussian_noise_std)
-multiplicative_noise_transform = tile_transforms.MultiplicativeGaussianNoise(continuous_bands=list(range(0, 9)), standard_deviation=args.mult_noise_std)
+    multiplicative_noise_end_transform = None
+raw_multiplicative_noise_transform = tile_transforms.MultiplicativeGaussianNoiseRaw(bands_to_transform=REFLECTANCE_INDICES, standard_deviation=args.mult_noise_std)
 flip_and_rotate_transform = tile_transforms.RandomFlipAndRotate()
 compute_vi_transform = tile_transforms.ComputeVegetationIndices()
 jigsaw_transform = tile_transforms.RandomJigsaw()
 resize_transform = tile_transforms.ResizeTile(target_dim=[args.resize_dim, args.resize_dim])
 random_crop_transform = tile_transforms.RandomCrop(crop_dim=args.crop_dim)
-cutout_transform = tile_transforms.Cutout(cutout_dim=args.cutout_dim, prob=args.cutout_prob, reflectance_indices=list(range(0, 9)))
-transform_list_train = []  #[standardize_transform, clip_transform] # [standardize_transform, noise_transform]
-transform_list_val = [] # [standardize_transform, clip_transform] #[standardize_transform]
+cutout_transform = tile_transforms.Cutout(cutout_dim=args.cutout_dim, prob=args.cutout_prob, reflectance_indices=REFLECTANCE_INDICES)
+transform_list_train = []
+transform_list_val = []
+
+# Convert means/stds to tensor
+args.means = torch.tensor(args.means, device=device)
+args.stds = torch.tensor(args.stds, device=device)
 
 # Add vegetation index calculations at beginning, BEFORE standardizing. Note that vegetation
-# indices are already normalized to a reasonalbe range, so no need to standardize them.
+# indices are already normalized to a reasonable range, so no need to standardize them.
 if args.compute_vi:
     transform_list_train.append(compute_vi_transform)
     transform_list_val.append(compute_vi_transform)
@@ -1227,15 +1318,19 @@ if args.cutout:
 
 # Add multiplicative noise at beginning
 if args.multiplicative_noise:
-    transform_list_train.append(multiplicative_noise_transform)
+    transform_list_train.append(raw_multiplicative_noise_transform)
+
+# If normalize, normalize each pixel at the very beginning
+if args.normalize:
+    print("Normalizing")
+    transform_list_train.append(normalize_transform)
+    transform_list_val.append(normalize_transform)
+else:
+    print("Not normalizing")
 
 # Standardize/clip the continuous variables
-if args.normalize:
-    transform_list_train.extend([normalize_transform, standardize_transform, clip_transform])
-    transform_list_val.extend([normalize_transform, standardize_transform, clip_transform])
-else:
-    transform_list_train.extend([standardize_transform, clip_transform]) # [standardize_transform, noise_transform]
-    transform_list_val.extend([standardize_transform, clip_transform])
+transform_list_train.extend([standardize_transform, clip_transform])
+transform_list_val.extend([standardize_transform, clip_transform])
 
 # More augmentations
 if args.resize:
@@ -1296,14 +1391,14 @@ for dataset_name, dataset_file in DATASET_FILES.items():
     # Create Dataset objects
     if dataset_name in COARSE_SIF_DATASETS['train'] or dataset_name in FINE_SIF_DATASETS['train']:
         if 'CFIS' in dataset_name:
-            train_datasets[dataset_name] = FineSIFDataset(train_set, train_transform)
+            train_datasets[dataset_name] = FineSIFDataset(train_set, train_transform, multiplicative_noise_end_transform)
         else:
-            train_datasets[dataset_name] = CoarseSIFDataset(train_set, train_transform)
+            train_datasets[dataset_name] = CoarseSIFDataset(train_set, train_transform, multiplicative_noise_end_transform)
     if dataset_name in COARSE_SIF_DATASETS['val'] or dataset_name in FINE_SIF_DATASETS['val']:
         if 'CFIS' in dataset_name:
-            val_datasets[dataset_name] = FineSIFDataset(val_set, val_transform)
+            val_datasets[dataset_name] = FineSIFDataset(val_set, val_transform, None)
         else:
-            val_datasets[dataset_name] = CoarseSIFDataset(val_set, val_transform)
+            val_datasets[dataset_name] = CoarseSIFDataset(val_set, val_transform, None)
 
 
 # if 'CFIS' in TRAIN_SOURCES:
@@ -1425,13 +1520,17 @@ if args.model == 'unet2':
                        reduced_channels=args.reduced_channels, min_output=min_output, max_output=max_output).to(device)
 elif args.model == 'unet2_contrastive':
     unet_model = UNet2Contrastive(n_channels=INPUT_CHANNELS, n_classes=OUTPUT_CHANNELS, min_output=min_output, max_output=max_output).to(device)
+elif args.model == 'unet2_spectral':
+    unet_model = UNet2Spectral(n_channels=INPUT_CHANNELS, n_classes=OUTPUT_CHANNELS, min_output=min_output, max_output=max_output).to(device)
 elif args.model == 'pixel_nn':
     unet_model = PixelNN(input_channels=INPUT_CHANNELS, output_dim=OUTPUT_CHANNELS, min_output=min_output, max_output=max_output).to(device)
 elif args.model == 'unet':
     unet_model = UNet(n_channels=INPUT_CHANNELS, n_classes=OUTPUT_CHANNELS,
                       reduced_channels=args.reduced_channels, min_output=min_output, max_output=max_output).to(device)   
+elif args.model == 'unet_contrastive':
+    unet_model = UNetContrastive(n_channels=INPUT_CHANNELS, n_classes=OUTPUT_CHANNELS, min_output=min_output, max_output=max_output).to(device)
 else:
-    print('Model type not supported')
+    print('Model type not supported', args.model)
     exit(1)
 
 
@@ -1453,6 +1552,11 @@ else:
 # Train model to predict SIF
 unet_model, train_coarse_losses, val_coarse_losses, train_fine_losses, val_fine_losses, train_other_losses, val_other_losses = train_model(args, unet_model, dataloaders, criterion, optimizer, device, sif_mean, sif_std)
 torch.save(unet_model.state_dict(), MODEL_FILE)
+
+# Rescale other losses by a constant so that they fit on the same graph
+if 'CFIS_2016' in train_other_losses and 'CFIS_2016' in train_fine_losses:
+    scale_factor = sum(train_fine_losses['CFIS_2016']) / sum(train_other_losses['CFIS_2016'])
+    train_other_losses['CFIS_2016'] = [element * scale_factor for element in train_other_losses['CFIS_2016']]
 
 # Plot loss curves: NRMSE
 epoch_list = range(len(train_coarse_losses['CFIS_2016']))

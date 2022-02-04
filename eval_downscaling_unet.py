@@ -14,7 +14,7 @@ import torch.nn as nn
 import torch.optim as optim
 
 import simple_cnn
-from reflectance_cover_sif_dataset import FineSIFDataset
+from datasets import FineSIFDataset
 from unet.unet_model import UNet, UNetSmall, UNet2, UNet2PixelEmbedding, UNet2Larger
 import visualization_utils
 import sif_utils

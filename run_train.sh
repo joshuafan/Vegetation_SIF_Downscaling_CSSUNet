@@ -25,8 +25,11 @@
 
 
 # Full supervision
-for l in 1e-4 2e-4 5e-4 1e-3
+for l in 1e-4 1e-3 3e-3
 do
-    python3 train_downscaling_unet.py --prefix 10d_FINE --model unet2 --optimizer AdamW -lr $l -wd 1e-4 -sche const -epoch 100 -bs 64 \
-        --fraction_outputs_to_average 1 --flip_and_rotate --fine_supervision  #  --multiplicative_noise --mult_noise_std 0.2
+    for m in unet2_contrastive
+    do
+        python3 train_contrastive.py --prefix 10d_FINE10soundings --model $m --optimizer AdamW -lr $l -wd 0 -sche const -epoch 100 -bs 64 \
+            --fraction_outputs_to_average 1 --flip_and_rotate --fine_supervision  #  --multiplicative_noise --mult_noise_std 0.2
+    done
 done

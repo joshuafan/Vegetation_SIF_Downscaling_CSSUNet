@@ -49,64 +49,103 @@ class ClipTile(object):
     """
     Clips the specified bands ("bands_to_clip") to within the range [min_input, max_input].
     """
-    def __init__(self, min_input, max_input, bands_to_clip=list(range(0, 12))):
+    def __init__(self, min_input, max_input, bands_to_transform=list(range(0, 12))):
         self._min_input = min_input
         self._max_input = max_input
-        self._bands_to_clip = bands_to_clip
+        self.bands_to_transform = bands_to_transform
     
     def __call__(self, tile):
         if self._min_input is not None and self._max_input is not None:
-            tile[self._bands_to_clip, :, :] = np.clip(tile[self._bands_to_clip, :, :], a_min=self._min_input, a_max=self._max_input)
+            tile[self.bands_to_transform, :, :] = np.clip(tile[self.bands_to_transform, :, :], a_min=self._min_input, a_max=self._max_input)
         return tile
 
 
 class GaussianNoise(object):
-    def __init__(self, continuous_bands, standard_deviation=0.1):
-        self.continuous_bands = continuous_bands
+    def __init__(self, bands_to_transform, standard_deviation=0.1):
+        self.bands_to_transform = bands_to_transform
         self.standard_deviation = standard_deviation
 
     def __call__(self, tile):
         #print('Before noise', tile[self.continuous_bands, 0:3, 0:3])
-        continuous_bands_shape = tile[self.continuous_bands, :, :].shape
+        continuous_bands_shape = tile[self.bands_to_transform, :, :].shape
         noise = np.random.normal(loc=0, scale=self.standard_deviation, size=continuous_bands_shape)
-        tile[self.continuous_bands, :, :] = tile[self.continuous_bands, :, :] + noise
-        #print('After noise', tile[self.continuous_bands, 0:3, 0:3])
+        tile[self.bands_to_transform, :, :] = tile[self.bands_to_transform, :, :] + noise
+        #print('After noise', tile[self.bands_to_transform, 0:3, 0:3])
         return tile
 
 class MultiplicativeGaussianNoise(object):
-    def __init__(self, continuous_bands, standard_deviation=0.1):
-        self.continuous_bands = continuous_bands
+    """Assumes input has already been standardized. Need to un-standardize, add multiplicative noise, then re-standardize
+    """
+    def __init__(self, band_means, band_stds, bands_to_transform=list(range(0, 9)), standard_deviation=0.1):
+        self.bands_to_transform = bands_to_transform 
+        self.band_means = band_means[bands_to_transform, np.newaxis, np.newaxis]
+        self.band_stds = band_stds[bands_to_transform, np.newaxis, np.newaxis]
+        self.standard_deviation = standard_deviation
+
+    def __call__(self, tile):
+        # Undo standardization
+        # print("======================")
+        # print("Start - pixel", tile[self.bands_to_transform, 50, 50])
+        continuous_bands = (tile[self.bands_to_transform, :, :] * self.band_stds) + self.band_means
+        # print("After unstd", continuous_bands[:, 50, 50])
+
+        # Apply noise
+        noise = np.random.normal(loc=0, scale=self.standard_deviation)
+        # print("Noise", noise)
+        continuous_bands = continuous_bands * (1 + noise)
+        # print("After noise", continuous_bands[:, 50, 50])
+
+        # Re-standardize
+        tile[self.bands_to_transform, :, :] = (continuous_bands - self.band_means) / self.band_stds
+        # print("After std", tile[self.bands_to_transform, 50, 50])
+
+        return tile
+
+
+    # def __call__(self, tile):
+    #     tile_shape = tile.shape[1:3]
+    #     noise = np.random.normal(loc=0, scale=self.standard_deviation) #, size=tile_shape)
+    #     tile[self.continuous_bands, :, :] = tile[self.continuous_bands, :, :] * (1 + noise)
+    #     return tile
+
+class MultiplicativeGaussianNoiseRaw(object):
+    """Assumes input is NOT standardized
+    """
+    def __init__(self, bands_to_transform=list(range(0, 9)), standard_deviation=0.1):
+        self.bands_to_transform = bands_to_transform
         self.standard_deviation = standard_deviation
 
     def __call__(self, tile):
         tile_shape = tile.shape[1:3]
         noise = np.random.normal(loc=0, scale=self.standard_deviation) #, size=tile_shape)
-        tile[self.continuous_bands, :, :] = tile[self.continuous_bands, :, :] * (1 + noise)
+        tile[self.bands_to_transform, :, :] = tile[self.bands_to_transform, :, :] * (1 + noise)
         return tile
 
+
+
 class ColorDistortion(object):
-    def __init__(self, continuous_bands, standard_deviation=0.1):
-        self.continuous_bands = continuous_bands
+    def __init__(self, bands_to_transform, standard_deviation=0.1):
+        self.bands_to_transform = bands_to_transform
         self.standard_deviation = standard_deviation
 
     def __call__(self, tile):
-        noise = np.random.normal(loc=0, scale=self.standard_deviation, size=(len(self.continuous_bands)))
+        noise = np.random.normal(loc=0, scale=self.standard_deviation, size=(len(self.bands_to_transform)))
         noise = noise[:, np.newaxis, np.newaxis].astype(np.float32)
-        tile[self.continuous_bands, :, :] = tile[self.continuous_bands, :, :] + noise
-        #print('After noise', tile[self.continuous_bands, 0:3, 0:3])
+        tile[self.bands_to_transform, :, :] = tile[self.bands_to_transform, :, :] + noise
+        #print('After noise', tile[self.bands_to_transform, 0:3, 0:3])
         return tile
 
 class GaussianNoiseSubtiles(object):
-    def __init__(self, continuous_bands, standard_deviation=0.1):
-        self.continuous_bands = continuous_bands
+    def __init__(self, bands_to_transform, standard_deviation=0.1):
+        self.bands_to_transform = bands_to_transform
         self.standard_deviation = standard_deviation
 
     def __call__(self, subtiles):
-        #print('Before noise', tile[self.continuous_bands, 0:3, 0:3])
-        continuous_bands_shape = subtiles[:, self.continuous_bands, :, :].shape
+        #print('Before noise', tile[self.bands_to_transform, 0:3, 0:3])
+        continuous_bands_shape = subtiles[:, self.bands_to_transform, :, :].shape
         noise = np.random.normal(loc=0, scale=self.standard_deviation, size=continuous_bands_shape)
-        subtiles[:, self.continuous_bands, :, :] = subtiles[:, self.continuous_bands, :, :] + noise
-        #print('After noise', tile[self.continuous_bands, 0:3, 0:3])
+        subtiles[:, self.bands_to_transform, :, :] = subtiles[:, self.bands_to_transform, :, :] + noise
+        #print('After noise', tile[self.bands_to_transform, 0:3, 0:3])
         return subtiles
 
 

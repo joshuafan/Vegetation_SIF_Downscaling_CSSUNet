@@ -17,7 +17,7 @@ import torch.optim as optim
 from torch import autograd
 from torch.autograd import grad
 
-from reflectance_cover_sif_dataset import CombinedDataset, CoarseSIFDataset, FineSIFDataset
+from datasets import CombinedDataset, CoarseSIFDataset, FineSIFDataset
 from unet.unet_model import UNet, UNetSmall, UNet2, UNet2PixelEmbedding, UNet2Larger, PixelNN, UNet2WithReconstruction
 import visualization_utils
 import sif_utils

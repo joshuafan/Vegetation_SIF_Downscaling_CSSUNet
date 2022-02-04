@@ -27,7 +27,10 @@ parser.add_argument('-method', "--method", choices=["Ridge_Regression", "Gradien
 parser.add_argument('-multiplicative_noise', "--multiplicative_noise", action='store_true')
 parser.add_argument('-mult_noise_std', "--mult_noise_std", default=0.2, type=float, help="If the 'multiplicative_noise' augmentation is used, multiply each channel by (1+eps), where eps ~ N(0, mult_noise_std)")
 parser.add_argument('-mult_noise_repeats', "--mult_noise_repeats", default=10, type=int, help="How many times to repeat each example (with different multiplicative noise)")
+parser.add_argument('-standardize', "--standardize", action='store_true', help='Whether to standardize features to mean 0, variance 1.')
 parser.add_argument('-normalize', "--normalize", action='store_true', help='Whether to normalize the reflectance bands to have norm 1. If this is enabled, the reflectance bands are NOT standardized.')
+parser.add_argument('-log', "--log", action='store_true', help='Whether to log the reflectance features and SIF.')
+parser.add_argument('-compute_ratios', "--compute_ratios", action='store_true', help='Whether to compute and use all ratios')
 
 args = parser.parse_args()
 METHOD_READABLE = args.method.replace("_", " ")
@@ -78,17 +81,6 @@ DATES = ["2016-06-15", "2016-08-01"]
 TRAIN_DATES = ["2016-06-15", "2016-08-01"]
 TEST_DATES = ["2016-06-15", "2016-08-01"]
 
-# METHOD = "9a_Ridge_Regression_cfis" #_5soundings"
-# METHOD = "9b_Gradient_Boosting_Regressor_cfis" #_5soundings"
-# METHOD = "9c_MLP_cfis" #_10soundings"
-# METHOD = "10a_Ridge_Regression_both"
-# METHOD_READABLE = "Ridge Regression"
-# METHOD = "10b_Gradient_Boosting_Regressor_both"
-# METHOD = "10c_MLP_both"
-# METHOD = "11a_Ridge_Regression_oco2"
-# METHOD = "11b_Gradient_Boosting_Regressor_oco2"
-# METHOD = "11c_MLP_oco2"
-
 # List of sources to use (either CFIS or OCO-2)
 TRAIN_SOURCES = ['CFIS', 'OCO2']
 print("METHOD:", args.method, "- SOURCES:", TRAIN_SOURCES)
@@ -124,23 +116,40 @@ if not os.path.exists(RESULTS_DIR):
 if not os.path.exists(RESULTS_DIR + "/plots"):
     os.makedirs(RESULTS_DIR + "/plots")
 CFIS_TRUE_VS_PREDICTED_PLOT = os.path.join(RESULTS_DIR, 'plots/true_vs_predicted_sif_cfis_' + args.method)
+if args.log:
+    CFIS_TRUE_VS_PREDICTED_PLOT += "_log"
+if args.normalize:
+    CFIS_TRUE_VS_PREDICTED_PLOT += "_normalize"
+if args.standardize:
+    CFIS_TRUE_VS_PREDICTED_PLOT += "_standardize"
+if args.compute_ratios:
+    CFIS_TRUE_VS_PREDICTED_PLOT += "_ratios"
+
 RESULTS_SUMMARY_FILE = os.path.join(RESULTS_DIR, "results_summary_BASELINE.csv")
 results_rows = {s: [args.method, s, MIN_FINE_CFIS_SOUNDINGS[0], MIN_FINE_FRACTION_VALID_PIXELS[0], args.mult_noise_std] for s in TRAIN_RANDOM_STATES}
 
 # Input feature names
-INPUT_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
-                    'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg',
+INPUT_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',  # 'ref_10', 'ref_11', 
+                    'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg',
                     'grassland_pasture', 'corn', 'soybean',
                     'deciduous_forest', 'evergreen_forest', 'developed_open_space',
                     'woody_wetlands', 'open_water', 'alfalfa',
-                    'developed_low_intensity', 'developed_med_intensity', 'missing_reflectance']
-# INPUT_COLUMNS = ["NDVI"]
+                    'developed_low_intensity', 'developed_med_intensity', 'missing_reflectance']  # ['NDVI']
 ALL_COVER_COLUMNS = ['grassland_pasture', 'corn', 'soybean',
                     'deciduous_forest', 'evergreen_forest', 'developed_open_space',
                     'woody_wetlands', 'open_water', 'alfalfa',
                     'developed_low_intensity', 'developed_med_intensity']
-REFLECTANCE_BANDS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
-                    'ref_10', 'ref_11']
+REFLECTANCE_BANDS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7']  # 'ref_10', 'ref_11']
+COLUMNS_TO_STANDARDIZE = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7', # 'ref_10', 'ref_11', 
+                          'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg']
+COLUMNS_TO_LOG = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7']  #, 'ref_10', 'ref_11']
+OUTPUT_COLUMN = ['SIF']
+
+# Crop types to look at when analyzing results
+COVER_COLUMNS_TO_PLOT = ['grassland_pasture', 'corn', 'soybean'] 
+
+
+# Other options - out of date
 # INPUT_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
 #                     'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg',
 #                     'grassland_pasture', 'corn', 'soybean', 'shrubland',
@@ -153,7 +162,7 @@ REFLECTANCE_BANDS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_
 #                     'lentils', 'missing_reflectance']
 # INPUT_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
 #                     'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg']
-# COVER_COLUMN_NAMES = ['grassland_pasture', 'corn', 'soybean', 'shrubland',
+# COVER_COLUMNS_TO_PLOT = ['grassland_pasture', 'corn', 'soybean', 'shrubland',
 #                     'deciduous_forest', 'evergreen_forest', 'spring_wheat', 'developed_open_space',
 #                     'other_hay_non_alfalfa', 'winter_wheat', 'herbaceous_wetlands',
 #                     'woody_wetlands', 'open_water', 'alfalfa', 'fallow_idle_cropland',
@@ -162,14 +171,7 @@ REFLECTANCE_BANDS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_
 #                     'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
 #                     'lentils']
 
-COLUMNS_TO_STANDARDIZE = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
-                    'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg']
-COLUMNS_TO_LOG = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7', 'ref_10', 'ref_11']
-OUTPUT_COLUMN = ['SIF']
 
-
-# Crop types to look at when analyzing results
-COVER_COLUMN_NAMES = ['grassland_pasture', 'corn', 'soybean'] 
 
 
 
@@ -197,10 +199,10 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
         cfis_fine_metadata = cfis_fine_metadata[(cfis_fine_metadata['num_soundings'] >= min(MIN_FINE_CFIS_SOUNDINGS)) &
                                                 (cfis_fine_metadata['fraction_valid'] >= min(MIN_FINE_FRACTION_VALID_PIXELS))]  # Avoid roundoff errors
 
-        # # Compute NDVI
-        # oco2_metadata["NDVI"] = (oco2_metadata["ref_5"] - oco2_metadata["ref_4"]) / (oco2_metadata["ref_5"] + oco2_metadata["ref_4"])
-        # cfis_coarse_metadata["NDVI"] = (cfis_coarse_metadata["ref_5"] - cfis_coarse_metadata["ref_4"]) / (cfis_coarse_metadata["ref_5"] + cfis_coarse_metadata["ref_4"])
-        # cfis_fine_metadata["NDVI"] = (cfis_fine_metadata["ref_5"] - cfis_fine_metadata["ref_4"]) / (cfis_fine_metadata["ref_5"] + cfis_fine_metadata["ref_4"])
+        # Compute NDVI
+        oco2_metadata["NDVI"] = (oco2_metadata["ref_5"] - oco2_metadata["ref_4"]) / (oco2_metadata["ref_5"] + oco2_metadata["ref_4"])
+        cfis_coarse_metadata["NDVI"] = (cfis_coarse_metadata["ref_5"] - cfis_coarse_metadata["ref_4"]) / (cfis_coarse_metadata["ref_5"] + cfis_coarse_metadata["ref_4"])
+        cfis_fine_metadata["NDVI"] = (cfis_fine_metadata["ref_5"] - cfis_fine_metadata["ref_4"]) / (cfis_fine_metadata["ref_5"] + cfis_fine_metadata["ref_4"])
 
         # Read dataset splits
         oco2_train_set = oco2_metadata[(oco2_metadata['fold'].isin(TRAIN_FOLDS)) &
@@ -225,29 +227,29 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
         # print('Fine CFIS by fold:', cfis_fine_metadata['fold'].value_counts())
         # print('Fine CFIS by grid fold:', cfis_fine_metadata['grid_fold'].value_counts())
 
-        # # Compute averages for each band
-        # STATISTICS_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
-        #                     'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg',
-        #                     'grassland_pasture', 'corn', 'soybean', 'shrubland',
-        #                     'deciduous_forest', 'evergreen_forest', 'spring_wheat',
-        #                     'developed_open_space', 'other_hay_non_alfalfa', 'winter_wheat',
-        #                     'herbaceous_wetlands', 'woody_wetlands', 'open_water', 'alfalfa',
-        #                     'fallow_idle_cropland', 'sorghum', 'developed_low_intensity',
-        #                     'barren', 'durum_wheat',
-        #                     'canola', 'sunflower', 'dry_beans', 'developed_med_intensity',
-        #                     'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
-        #                     'lentils', 'missing_reflectance', 'SIF']
-        # selected_columns_coarse = coarse_train_set[STATISTICS_COLUMNS]
-        # band_means_coarse = selected_columns_coarse.mean(axis=0)
-        # print("(Coarse train set) Band means", band_means_coarse)        
-        # selected_columns = fine_train_set[STATISTICS_COLUMNS]
-        # band_means = selected_columns.mean(axis=0)
-        # band_stds = selected_columns.mean(axis=0)
-        # print("(Fine train set) Band means", band_means)
-        # selected_columns_test = fine_test_set[STATISTICS_COLUMNS]
-        # band_means_test = selected_columns_test.mean(axis=0)
-        # print("(Fine test set) Band means", band_means_test)
-        # exit(0)
+        # Compute averages for each band
+        STATISTICS_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
+                            'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg',
+                            'grassland_pasture', 'corn', 'soybean', 'shrubland',
+                            'deciduous_forest', 'evergreen_forest', 'spring_wheat',
+                            'developed_open_space', 'other_hay_non_alfalfa', 'winter_wheat',
+                            'herbaceous_wetlands', 'woody_wetlands', 'open_water', 'alfalfa',
+                            'fallow_idle_cropland', 'sorghum', 'developed_low_intensity',
+                            'barren', 'durum_wheat',
+                            'canola', 'sunflower', 'dry_beans', 'developed_med_intensity',
+                            'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
+                            'lentils', 'missing_reflectance', 'SIF']
+        selected_columns_coarse = coarse_train_set[STATISTICS_COLUMNS]
+        band_means_coarse = selected_columns_coarse.mean(axis=0)
+        print("(Coarse train set) Band means", band_means_coarse)        
+        selected_columns = fine_train_set[STATISTICS_COLUMNS]
+        band_means = selected_columns.mean(axis=0)
+        band_stds = selected_columns.mean(axis=0)
+        print("(Fine train set) Band means", band_means)
+        selected_columns_test = fine_test_set[STATISTICS_COLUMNS]
+        band_means_test = selected_columns_test.mean(axis=0)
+        print("(Fine test set) Band means", band_means_test)
+        exit(0)
 
         # # Write band averages to file
         # statistics_rows = [['mean', 'std']]
@@ -379,19 +381,19 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
 
         
         for idx, column in enumerate(COLUMNS_TO_STANDARDIZE):
-            # TODO just testing out log
-            if column in COLUMNS_TO_LOG:
-                log_column = "log_" + column
-                print("Column", column, "max", np.max(fine_train_set[column]), "min", np.min(fine_train_set[column]))
-                train_set[log_column] = np.log(train_set[column] + 1e-5)
-                log_mean = np.mean(train_set[log_column])
-                log_std = np.std(train_set[log_column])
-                train_set[log_column] = np.clip((train_set[log_column] - log_mean) / log_std, a_min=MIN_INPUT, a_max=MAX_INPUT)
-                coarse_val_set[log_column] = np.clip((np.log(coarse_val_set[column] + 1e-5) - log_mean) / log_std, a_min=MIN_INPUT, a_max=MAX_INPUT)
-                fine_train_set[log_column] = np.clip((np.log(fine_train_set[column] + 1e-5) - log_mean) / log_std, a_min=MIN_INPUT, a_max=MAX_INPUT)
-                fine_val_set[log_column] = np.clip((np.log(fine_val_set[column] + 1e-5) - log_mean) / log_std, a_min=MIN_INPUT, a_max=MAX_INPUT)
-                fine_test_set[log_column] = np.clip((np.log(fine_test_set[column] + 1e-5) - log_mean) / log_std, a_min=MIN_INPUT, a_max=MAX_INPUT)
-                INPUT_COLUMNS.append(log_column)
+            # # TODO just testing out log
+            # if column in COLUMNS_TO_LOG:
+            #     log_column = "log_" + column
+            #     print("Column", column, "max", np.max(fine_train_set[column]), "min", np.min(fine_train_set[column]))
+            #     train_set[log_column] = np.log(train_set[column] + 1e-5)
+            #     log_mean = np.mean(train_set[log_column])
+            #     log_std = np.std(train_set[log_column])
+            #     train_set[log_column] = np.clip((train_set[log_column] - log_mean) / log_std, a_min=MIN_INPUT, a_max=MAX_INPUT)
+            #     coarse_val_set[log_column] = np.clip((np.log(coarse_val_set[column] + 1e-5) - log_mean) / log_std, a_min=MIN_INPUT, a_max=MAX_INPUT)
+            #     fine_train_set[log_column] = np.clip((np.log(fine_train_set[column] + 1e-5) - log_mean) / log_std, a_min=MIN_INPUT, a_max=MAX_INPUT)
+            #     fine_val_set[log_column] = np.clip((np.log(fine_val_set[column] + 1e-5) - log_mean) / log_std, a_min=MIN_INPUT, a_max=MAX_INPUT)
+            #     fine_test_set[log_column] = np.clip((np.log(fine_test_set[column] + 1e-5) - log_mean) / log_std, a_min=MIN_INPUT, a_max=MAX_INPUT)
+            #     INPUT_COLUMNS.append(log_column)
 
             train_set[column] = np.clip((train_set[column] - band_means[idx]) / band_stds[idx], a_min=MIN_INPUT, a_max=MAX_INPUT)
             coarse_val_set[column] = np.clip((coarse_val_set[column] - band_means[idx]) / band_stds[idx], a_min=MIN_INPUT, a_max=MAX_INPUT)
@@ -614,7 +616,7 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
                     if is_best_model:
                         fig, axeslist = plt.subplots(ncols=2, nrows=2, figsize=(12, 12))
                         fig.suptitle('True vs predicted SIF by crop: ' + METHOD_READABLE)
-                    for idx, crop_type in enumerate(COVER_COLUMN_NAMES):
+                    for idx, crop_type in enumerate(COVER_COLUMNS_TO_PLOT):
                         # predicted = predictions_fine_train_filtered[fine_train_set_filtered[crop_type] > PURE_THRESHOLD]
                         # true = Y_fine_train_filtered[fine_train_set_filtered[crop_type] > PURE_THRESHOLD]
                         predicted = predictions_fine_test_filtered[fine_test_set_filtered[crop_type] > PURE_THRESHOLD]
@@ -716,7 +718,7 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
                         # Plot fine vs coarse SIF for each crop on CFIS fine (for each crop)
                         fig, axeslist = plt.subplots(ncols=2, nrows=2, figsize=(12, 12))
                         fig.suptitle('True vs predicted SIF by crop: ' + METHOD_READABLE)
-                        for idx, crop_type in enumerate(COVER_COLUMN_NAMES):
+                        for idx, crop_type in enumerate(COVER_COLUMNS_TO_PLOT):
                             predicted = predictions_train_predict_coarse[fine_train_set_filtered[crop_type] > PURE_THRESHOLD]
                             true = Y_fine_train_filtered[fine_train_set_filtered[crop_type] > PURE_THRESHOLD]
                             ax = axeslist.ravel()[idx]
