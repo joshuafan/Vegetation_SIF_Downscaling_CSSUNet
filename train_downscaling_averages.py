@@ -17,7 +17,7 @@ from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.linear_model import HuberRegressor, Lasso, LinearRegression, Ridge
 from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.neural_network import MLPRegressor
-from sklearn.preprocessing import MinMaxScaler, StandardScaler
+from sklearn.preprocessing import MinMaxScaler, StandardScaler, normalize
 from sklearn.tree import DecisionTreeRegressor
 from sklearn.neighbors import KNeighborsRegressor
 from sif_utils import plot_histogram, print_stats
@@ -74,7 +74,7 @@ eps = 1e-5
 MIN_FINE_FRACTION_VALID_PIXELS = [0.9-eps] #[0.1, 0.3, 0.5, 0.7] # [0.5] #[0.5]
 
 # Resolutions to consider
-RESOLUTION_METERS = [30]  #, 90, 150, 300, 600]
+RESOLUTION_METERS = [30, 90, 150, 300, 600]
 
 # Dates/sources
 DATES = ["2016-06-15", "2016-08-01"]
@@ -140,13 +140,25 @@ ALL_COVER_COLUMNS = ['grassland_pasture', 'corn', 'soybean',
                     'woody_wetlands', 'open_water', 'alfalfa',
                     'developed_low_intensity', 'developed_med_intensity']
 REFLECTANCE_BANDS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7']  # 'ref_10', 'ref_11']
+
+# Order of column in band averages file
+BAND_AVERAGES_COLUMN_ORDER =  ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
+                                'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg',
+                                'grassland_pasture', 'corn', 'soybean', 'shrubland',
+                                'deciduous_forest', 'evergreen_forest', 'spring_wheat', 'developed_open_space',
+                                'other_hay_non_alfalfa', 'winter_wheat', 'herbaceous_wetlands',
+                                'woody_wetlands', 'open_water', 'alfalfa', 'fallow_idle_cropland',
+                                'sorghum', 'developed_low_intensity', 'barren', 'durum_wheat',
+                                'canola', 'sunflower', 'dry_beans', 'developed_med_intensity',
+                                'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
+                                'lentils', 'missing_reflectance']
 COLUMNS_TO_STANDARDIZE = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7', # 'ref_10', 'ref_11', 
                           'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg']
 COLUMNS_TO_LOG = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7']  #, 'ref_10', 'ref_11']
 OUTPUT_COLUMN = ['SIF']
 
 # Crop types to look at when analyzing results
-COVER_COLUMNS_TO_PLOT = ['grassland_pasture', 'corn', 'soybean'] 
+COVER_COLUMNS_TO_PLOT = ['grassland_pasture', 'corn', 'soybean', 'deciduous_forest'] 
 
 
 # Other options - out of date
@@ -227,29 +239,29 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
         # print('Fine CFIS by fold:', cfis_fine_metadata['fold'].value_counts())
         # print('Fine CFIS by grid fold:', cfis_fine_metadata['grid_fold'].value_counts())
 
-        # Compute averages for each band
-        STATISTICS_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
-                            'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg',
-                            'grassland_pasture', 'corn', 'soybean', 'shrubland',
-                            'deciduous_forest', 'evergreen_forest', 'spring_wheat',
-                            'developed_open_space', 'other_hay_non_alfalfa', 'winter_wheat',
-                            'herbaceous_wetlands', 'woody_wetlands', 'open_water', 'alfalfa',
-                            'fallow_idle_cropland', 'sorghum', 'developed_low_intensity',
-                            'barren', 'durum_wheat',
-                            'canola', 'sunflower', 'dry_beans', 'developed_med_intensity',
-                            'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
-                            'lentils', 'missing_reflectance', 'SIF']
-        selected_columns_coarse = coarse_train_set[STATISTICS_COLUMNS]
-        band_means_coarse = selected_columns_coarse.mean(axis=0)
-        print("(Coarse train set) Band means", band_means_coarse)        
-        selected_columns = fine_train_set[STATISTICS_COLUMNS]
-        band_means = selected_columns.mean(axis=0)
-        band_stds = selected_columns.mean(axis=0)
-        print("(Fine train set) Band means", band_means)
-        selected_columns_test = fine_test_set[STATISTICS_COLUMNS]
-        band_means_test = selected_columns_test.mean(axis=0)
-        print("(Fine test set) Band means", band_means_test)
-        exit(0)
+        # # Compute averages for each band
+        # STATISTICS_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
+        #                     'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg',
+        #                     'grassland_pasture', 'corn', 'soybean', 'shrubland',
+        #                     'deciduous_forest', 'evergreen_forest', 'spring_wheat',
+        #                     'developed_open_space', 'other_hay_non_alfalfa', 'winter_wheat',
+        #                     'herbaceous_wetlands', 'woody_wetlands', 'open_water', 'alfalfa',
+        #                     'fallow_idle_cropland', 'sorghum', 'developed_low_intensity',
+        #                     'barren', 'durum_wheat',
+        #                     'canola', 'sunflower', 'dry_beans', 'developed_med_intensity',
+        #                     'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
+        #                     'lentils', 'missing_reflectance', 'SIF']
+        # selected_columns_coarse = coarse_train_set[STATISTICS_COLUMNS]
+        # band_means_coarse = selected_columns_coarse.mean(axis=0)
+        # print("(Coarse train set) Band means", band_means_coarse)        
+        # selected_columns = fine_train_set[STATISTICS_COLUMNS]
+        # band_means = selected_columns.mean(axis=0)
+        # band_stds = selected_columns.mean(axis=0)
+        # print("(Fine train set) Band means", band_means)
+        # selected_columns_test = fine_test_set[STATISTICS_COLUMNS]
+        # band_means_test = selected_columns_test.mean(axis=0)
+        # print("(Fine test set) Band means", band_means_test)
+        # exit(0)
 
         # # Write band averages to file
         # statistics_rows = [['mean', 'std']]
@@ -346,7 +358,6 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
         sif_mean = train_means[-1]
         band_stds = train_stds[:-1]
         sif_std = train_stds[-1]
-        # print('SIF mean', sif_mean, sif_std)
 
         # Print dataset info
         # print('Coarse val samples', len(coarse_val_set))
@@ -369,37 +380,53 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
             train_set = pd.concat([train_set] * args.mult_noise_repeats)
             train_set = train_set.reset_index(drop=True)
             for idx in range(len(train_set)):
-                # print("Initial bands")
-                # print(train_set.loc[idx, REFLECTANCE_BANDS])
                 noise = 1 + np.random.normal(loc=0, scale=args.mult_noise_std)
                 train_set.loc[idx, REFLECTANCE_BANDS] = train_set.loc[idx, REFLECTANCE_BANDS] * noise
-                # print("After noise", noise)
-                # print(train_set.loc[idx, REFLECTANCE_BANDS])
 
-        # Standardize data
-        # TODO - try normalizing instead
+        # Feature engineering        
+        if args.log:
+            for idx, column in enumerate(COLUMNS_TO_LOG):
+                log_column_values = np.nan_to_num(np.log(train_set[column] + 1e-5))
+                log_mean = np.mean(log_column_values)
+                log_std = np.std(log_column_values)
+                log_column = "log_" + column
+                INPUT_COLUMNS.append(log_column)
+                train_set[log_column] = np.nan_to_num((np.log(train_set[column] + 1e-5) - log_mean) / log_std)
+                coarse_val_set[log_column] = np.nan_to_num((np.log(coarse_val_set[column] + 1e-5) - log_mean) / log_std)
+                fine_train_set[log_column] = np.nan_to_num((np.log(fine_train_set[column] + 1e-5) - log_mean) / log_std)
+                fine_val_set[log_column] = np.nan_to_num((np.log(fine_val_set[column] + 1e-5) - log_mean) / log_std)
+                fine_test_set[log_column] = np.nan_to_num((np.log(fine_test_set[column] + 1e-5) - log_mean) / log_std)
 
-        
-        for idx, column in enumerate(COLUMNS_TO_STANDARDIZE):
-            # # TODO just testing out log
-            # if column in COLUMNS_TO_LOG:
-            #     log_column = "log_" + column
-            #     print("Column", column, "max", np.max(fine_train_set[column]), "min", np.min(fine_train_set[column]))
-            #     train_set[log_column] = np.log(train_set[column] + 1e-5)
-            #     log_mean = np.mean(train_set[log_column])
-            #     log_std = np.std(train_set[log_column])
-            #     train_set[log_column] = np.clip((train_set[log_column] - log_mean) / log_std, a_min=MIN_INPUT, a_max=MAX_INPUT)
-            #     coarse_val_set[log_column] = np.clip((np.log(coarse_val_set[column] + 1e-5) - log_mean) / log_std, a_min=MIN_INPUT, a_max=MAX_INPUT)
-            #     fine_train_set[log_column] = np.clip((np.log(fine_train_set[column] + 1e-5) - log_mean) / log_std, a_min=MIN_INPUT, a_max=MAX_INPUT)
-            #     fine_val_set[log_column] = np.clip((np.log(fine_val_set[column] + 1e-5) - log_mean) / log_std, a_min=MIN_INPUT, a_max=MAX_INPUT)
-            #     fine_test_set[log_column] = np.clip((np.log(fine_test_set[column] + 1e-5) - log_mean) / log_std, a_min=MIN_INPUT, a_max=MAX_INPUT)
-            #     INPUT_COLUMNS.append(log_column)
+        if args.normalize:
+            train_set[REFLECTANCE_BANDS] = normalize(train_set[REFLECTANCE_BANDS])
+            coarse_val_set[REFLECTANCE_BANDS] = normalize(coarse_val_set[REFLECTANCE_BANDS])
+            fine_train_set[REFLECTANCE_BANDS] = normalize(fine_train_set[REFLECTANCE_BANDS])
+            fine_val_set[REFLECTANCE_BANDS] = normalize(fine_val_set[REFLECTANCE_BANDS])
+            fine_test_set[REFLECTANCE_BANDS] = normalize(fine_test_set[REFLECTANCE_BANDS])
 
-            train_set[column] = np.clip((train_set[column] - band_means[idx]) / band_stds[idx], a_min=MIN_INPUT, a_max=MAX_INPUT)
-            coarse_val_set[column] = np.clip((coarse_val_set[column] - band_means[idx]) / band_stds[idx], a_min=MIN_INPUT, a_max=MAX_INPUT)
-            fine_train_set[column] = np.clip((fine_train_set[column] - band_means[idx]) / band_stds[idx], a_min=MIN_INPUT, a_max=MAX_INPUT)
-            fine_val_set[column] = np.clip((fine_val_set[column] - band_means[idx]) / band_stds[idx], a_min=MIN_INPUT, a_max=MAX_INPUT)
-            fine_test_set[column] = np.clip((fine_test_set[column] - band_means[idx]) / band_stds[idx], a_min=MIN_INPUT, a_max=MAX_INPUT)
+        if args.compute_ratios:
+            for col1 in REFLECTANCE_BANDS:
+                for col2 in REFLECTANCE_BANDS:
+                    if col1 == col2:
+                        continue
+                    new_col_name = col1 + "_over_" + col2
+                    INPUT_COLUMNS.append(new_col_name)
+                    train_set[new_col_name] = np.nan_to_num(train_set[col1] / train_set[col2], posinf=0, neginf=0)
+                    coarse_val_set[new_col_name] = np.nan_to_num(coarse_val_set[col1] / coarse_val_set[col2], posinf=0, neginf=0)
+                    fine_train_set[new_col_name] = np.nan_to_num(fine_train_set[col1] / fine_train_set[col2], posinf=0, neginf=0)
+                    fine_val_set[new_col_name] = np.nan_to_num(fine_val_set[col1] / fine_val_set[col2], posinf=0, neginf=0)
+                    fine_test_set[new_col_name] = np.nan_to_num(fine_test_set[col1] / fine_test_set[col2], posinf=0, neginf=0)
+
+        if args.standardize:
+            for column in COLUMNS_TO_STANDARDIZE:
+                # Note - this uses precomputed band means/stds. If desired you can compute them on the fly.
+                idx = BAND_AVERAGES_COLUMN_ORDER.index(column)
+                print("For debugging - column", column, "idx", idx)
+                train_set[column] = np.clip((train_set[column] - band_means[idx]) / band_stds[idx], a_min=MIN_INPUT, a_max=MAX_INPUT)
+                coarse_val_set[column] = np.clip((coarse_val_set[column] - band_means[idx]) / band_stds[idx], a_min=MIN_INPUT, a_max=MAX_INPUT)
+                fine_train_set[column] = np.clip((fine_train_set[column] - band_means[idx]) / band_stds[idx], a_min=MIN_INPUT, a_max=MAX_INPUT)
+                fine_val_set[column] = np.clip((fine_val_set[column] - band_means[idx]) / band_stds[idx], a_min=MIN_INPUT, a_max=MAX_INPUT)
+                fine_test_set[column] = np.clip((fine_test_set[column] - band_means[idx]) / band_stds[idx], a_min=MIN_INPUT, a_max=MAX_INPUT)
 
         # Select X/Y columns
         X_train = train_set[INPUT_COLUMNS]
@@ -410,6 +437,13 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
         Y_fine_val = fine_val_set[OUTPUT_COLUMN].values.ravel()
         X_fine_test = fine_test_set[INPUT_COLUMNS]
         Y_fine_test = fine_test_set[OUTPUT_COLUMN].values.ravel()
+        print("X_train shape", X_train.shape)
+
+        # If "log" is set, log SIF also
+        if args.log:
+            Y_fine_train = np.log(Y_fine_train)
+            Y_fine_val = np.log(Y_fine_val)
+            Y_fine_test = np.log(Y_fine_test)
 
         # Fit models on band averages (with various hyperparam settings)
         regression_models = dict()
@@ -456,10 +490,13 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
                     param_string = 'hidden_layer_sizes=' + str(hidden_layer_size) + ', learning_rate_init=' + str(learning_rate_init)
                     print(param_string)
                     regression_models[param_string] = models
-        elif "nearest_neighbors" in args.method:
+        elif "Nearest_Neighbors" in args.method:
             num_neighbors = [5, 10, 20]
             for n in num_neighbors:
-                models = [KNeighborsRegressor(n_neighbors=n, weights="distance").fit(X_train, Y_train)]
+                models = []
+                for random_state in TRAIN_RANDOM_STATES:
+                    regression_model = KNeighborsRegressor(n_neighbors=n, weights="distance").fit(X_train, Y_train)
+                    models.append(regression_model)
                 param_string = "n_neighbors=" + str(n)
                 print(param_string)
                 regression_models[param_string] = models
@@ -475,14 +512,8 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
         for params, models in regression_models.items():
             losses_val = []
             for model in models:  # Loop through all model runs (trained with different seeds)
-                # predictions_val = model.predict(X_coarse_val)
-                # loss_val = math.sqrt(mean_squared_error(Y_coarse_val, predictions_val)) / sif_mean  
                 predictions_val = model.predict(X_fine_val)
-                loss_val = math.sqrt(mean_squared_error(Y_fine_val, predictions_val)) / sif_mean  
-                # if loss_val < best_loss:
-                #     best_loss = loss_val
-                #     best_params = params
-                #     best_model = model
+                loss_val = math.sqrt(mean_squared_error(Y_fine_val, predictions_val)) / sif_mean
                 losses_val.append(loss_val)
             average_loss_val = sum(losses_val) / len(losses_val)
             print(params + ': avg val loss', round(average_loss_val, 4))
@@ -494,13 +525,19 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
 
         print('Best params:', best_params)
 
+        # If we logged SIF, transform labels back to original values
+        if args.log:
+            Y_fine_train = np.exp(Y_fine_train)
+            Y_fine_val = np.exp(Y_fine_val)
+            Y_fine_test = np.exp(Y_fine_test)
+
         # Different ways of filtering fine pixels
         for min_fine_cfis_soundings in MIN_FINE_CFIS_SOUNDINGS:
             for min_fraction_valid_pixels in MIN_FINE_FRACTION_VALID_PIXELS:
                 # Record performances for this setting
-                all_r2 = {'all_coarse_val': [], 'all_fine_train': [], 'all_fine_val': [], 'all_fine_test': [], 'grassland_pasture': [], 'corn': [], 'soybean': []}
-                all_nrmse = {'all_coarse_val': [], 'all_fine_train': [], 'all_fine_val': [], 'all_fine_test': [], 'grassland_pasture': [], 'corn': [], 'soybean': []}
-                all_corr = {'all_coarse_val': [], 'all_fine_train': [], 'all_fine_val': [], 'all_fine_test': [], 'grassland_pasture': [], 'corn': [], 'soybean': []}
+                all_r2 = {'all_coarse_val': [], 'all_fine_train': [], 'all_fine_val': [], 'all_fine_test': [], 'grassland_pasture': [], 'corn': [], 'soybean': [], 'deciduous_forest': []}
+                all_nrmse = {'all_coarse_val': [], 'all_fine_train': [], 'all_fine_val': [], 'all_fine_test': [], 'grassland_pasture': [], 'corn': [], 'soybean': [], 'deciduous_forest': []}
+                all_corr = {'all_coarse_val': [], 'all_fine_train': [], 'all_fine_val': [], 'all_fine_test': [], 'grassland_pasture': [], 'corn': [], 'soybean': [], 'deciduous_forest': []}
 
                 print('========================================= FILTER ======================================================')
                 print('*** Resolution', resolution)
@@ -517,10 +554,8 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
                     # Use the best model to make predictions
                     predictions_train = model.predict(X_train)
                     predictions_coarse_val = model.predict(X_coarse_val)
-                    # predictions_coarse_test = model.predict(X_coarse_test)
                     predictions_train = np.clip(predictions_train, a_min=MIN_SIF_CLIP, a_max=MAX_SIF_CLIP)
                     predictions_coarse_val = np.clip(predictions_coarse_val, a_min=MIN_SIF_CLIP, a_max=MAX_SIF_CLIP)
-                    # predictions_coarse_test = np.clip(predictions_coarse_test, a_min=MIN_SIF_CLIP, a_max=MAX_SIF_CLIP)
 
                     if is_best_model:
                         # Print NRMSE, correlation, R2 on train/validation set
@@ -541,15 +576,21 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
                     all_nrmse['all_coarse_val'].append(coarse_val_nrmse)
                     all_corr['all_coarse_val'].append(coarse_val_corr)
 
-                    PLOT_PREFIX = CFIS_TRUE_VS_PREDICTED_PLOT + '_res' + str(resolution) + '_coarsefractionvalid' + str(min_coarse_fraction_valid) + '_finesoundings' + str(min_fine_cfis_soundings) + '_finefractionvalid' + str(min_fraction_valid_pixels)
+                    PLOT_PREFIX = CFIS_TRUE_VS_PREDICTED_PLOT + '_res' + str(resolution) #+ '_coarsefractionvalid' + str(min_coarse_fraction_valid) + '_finesoundings' + str(min_fine_cfis_soundings) + '_finefractionvalid' + str(min_fraction_valid_pixels)
 
+                    # Further filter 
                     fine_train_set_filtered = fine_train_set[(fine_train_set['num_soundings'] >= min_fine_cfis_soundings) &
                                                              (fine_train_set['fraction_valid'] >= min_fraction_valid_pixels)]
                     fine_val_set_filtered = fine_val_set[(fine_val_set['num_soundings'] >= min_fine_cfis_soundings) &
                                                          (fine_val_set['fraction_valid'] >= min_fraction_valid_pixels)]
                     fine_test_set_filtered = fine_test_set[(fine_test_set['num_soundings'] >= min_fine_cfis_soundings) &
                                                            (fine_test_set['fraction_valid'] >= min_fraction_valid_pixels)]
-
+                    X_fine_train_filtered = fine_train_set_filtered[INPUT_COLUMNS]
+                    Y_fine_train_filtered = fine_train_set_filtered[OUTPUT_COLUMN].values.ravel()
+                    X_fine_val_filtered = fine_val_set_filtered[INPUT_COLUMNS]
+                    Y_fine_val_filtered = fine_val_set_filtered[OUTPUT_COLUMN].values.ravel()
+                    X_fine_test_filtered = fine_test_set_filtered[INPUT_COLUMNS]
+                    Y_fine_test_filtered = fine_test_set_filtered[OUTPUT_COLUMN].values.ravel()
                     # # Check distributions
                     # print('Coarse Train set means', train_set.mean(axis=0))
                     # print('Fine train set means', fine_train_set.mean(axis=0))
@@ -557,12 +598,7 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
                     # print('Fine val set means', fine_val_set.mean(axis=0))
                     # print('Fine test set means', fine_test_set.mean(axis=0))
 
-                    X_fine_train_filtered = fine_train_set_filtered[INPUT_COLUMNS]
-                    Y_fine_train_filtered = fine_train_set_filtered[OUTPUT_COLUMN].values.ravel()
-                    X_fine_val_filtered = fine_val_set_filtered[INPUT_COLUMNS]
-                    Y_fine_val_filtered = fine_val_set_filtered[OUTPUT_COLUMN].values.ravel()
-                    X_fine_test_filtered = fine_test_set_filtered[INPUT_COLUMNS]
-                    Y_fine_test_filtered = fine_test_set_filtered[OUTPUT_COLUMN].values.ravel()
+                    # Now generate predictions using trained model
                     predictions_fine_train_filtered = model.predict(X_fine_train_filtered)
                     predictions_fine_val_filtered = model.predict(X_fine_val_filtered)
                     predictions_fine_test_filtered = model.predict(X_fine_test_filtered)
@@ -570,6 +606,7 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
                     predictions_fine_val_filtered = np.clip(predictions_fine_val_filtered, a_min=MIN_SIF_CLIP, a_max=MAX_SIF_CLIP)
                     predictions_fine_test_filtered = np.clip(predictions_fine_test_filtered, a_min=MIN_SIF_CLIP, a_max=MAX_SIF_CLIP)
 
+                    # Print summary statistics for best model
                     if is_best_model:
                         print('============== CFIS fine train set stats =====================')
                         fine_train_r2, fine_train_nrmse, fine_train_corr = print_stats(Y_fine_train_filtered, predictions_fine_train_filtered, sif_mean, ax=plt.gca(), fit_intercept=False)
@@ -753,7 +790,8 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
                 # Write final results to file
                 for i, seed in enumerate(TRAIN_RANDOM_STATES):
                     if resolution == 30:
-                        results_rows[seed].extend([all_nrmse["all_fine_train"][i],
+                        results_rows[seed].extend([best_params,
+                                                   all_nrmse["all_fine_train"][i],
                                                    all_r2["all_fine_train"][i],
                                                    all_corr["all_fine_train"][i],
                                                    all_nrmse["all_fine_test"][i],
@@ -761,7 +799,8 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
                                                    all_corr["all_fine_test"][i],
                                                    all_nrmse["grassland_pasture"][i],
                                                    all_nrmse["corn"][i],
-                                                   all_nrmse["soybean"][i]])
+                                                   all_nrmse["soybean"][i],
+                                                   all_nrmse["deciduous_forest"][i]])
                     else:
                         results_rows[seed].append(all_nrmse["all_fine_train"][i])
 
@@ -782,9 +821,9 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
                 # print(PARAM_STRING)
 
 
-header = ["method", "seed", "min_eval_cfis_soundings", "min_fraction_valid", 'mult_noise_std',
+header = ["method", "seed", "min_eval_cfis_soundings", "min_fraction_valid", 'mult_noise_std', 'best_params'
             "30m_train_nrmse", "30m_train_r2", "30m_train_corr", "30m_test_nrmse", "30m_test_r2", "30m_test_corr",
-            "30m_grassland_nrmse", "30m_corn_nrmse", "30m_soybean_nrmse",
+            "30m_grassland_nrmse", "30m_corn_nrmse", "30m_soybean_nrmse", "30m_deciduous_forest_nrmse",
             "90m_nrmse", "150m_nrmse", "300m_nrmse", "600m_nrmse"]
 
 if not os.path.isfile(RESULTS_SUMMARY_FILE):

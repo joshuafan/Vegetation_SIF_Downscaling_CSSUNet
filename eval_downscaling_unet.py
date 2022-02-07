@@ -61,30 +61,6 @@ torch.cuda.manual_seed(args.seed)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
-# METHOD = "10e_unet2_contrastive"
-# MODEL_TYPE = "unet2_pixel_embedding"
-# METHOD = "9e_unet2_contrastive"
-# METHOD = "9e_unet2_contrastive"
-# METHOD = "9d_unet2_pixel_embedding"
-# MODEL_TYPE = "unet2_pixel_embedding"
-# METHOD = "10d_unet2"
-# MODEL_TYPE = "unet2"
-# METHOD = "10d_unet2_larger_dropout"
-# MODEL_TYPE = "unet2_larger"
-# METHOD = "11d_unet2"
-# MODEL_TYPE = "unet2"
-# METHOD = "10d_unet2_9_best_val_fine"
-# MODEL_TYPE = "unet2"
-
-
-# METHOD = "10d_pixel_nn"
-# MODEL_TYPE = "pixel_nn"
-# METHOD = "2e_unet2"
-# MODEL_TYPE = "unet2"
-# METHOD = "9d_unet2_contrastive"
-# MODEL_TYPE = "unet2_pixel_embedding"
-# METHOD = "11d_unet2"
-# MODEL_TYPE = "unet2"
 
 # CFIS filtering
 eps = 1e-5
@@ -98,14 +74,14 @@ MIN_COARSE_FRACTION_VALID_PIXELS = 0.1
 
 # Dates
 TRAIN_DATES = ['2016-06-15', '2016-08-01']
-TEST_DATES = ['2016-06-15', '2016-08-01'] #['2016-06-15', '2016-08-01']
+TEST_DATES = ['2016-06-15', '2016-08-01']
 
 RESULTS_DIR = os.path.dirname(args.model_path)  # + "_BEST_VAL_COARSE"
 if not os.path.exists(RESULTS_DIR):
     os.makedirs(RESULTS_DIR)
 CFIS_TRUE_VS_PREDICTED_PLOT = os.path.join(RESULTS_DIR, "true_vs_predicted_sif_cfis_" + args.model)
 RESULTS_SUMMARY_FILE = os.path.join("unet_results", "results_summary_EVAL_" + args.test_set + ".csv")
-BATCH_SIZE = 100
+BATCH_SIZE = 128
 NUM_WORKERS = 8
 MIN_SIF = None
 MAX_SIF = None
@@ -114,20 +90,23 @@ MAX_INPUT = 3
 MIN_SIF_CLIP = 0.1
 MIN_SIF_PLOT = 0
 MAX_SIF_PLOT = 1.5
-BANDS = list(range(0, 12)) + [12, 13, 14, 16, 17, 19, 23, 24, 25, 28, 34] + [42]
+# BANDS = list(range(0, 12)) + [12, 13, 14, 16, 17, 19, 23, 24, 25, 28, 34] + [42]
 # BANDS = list(range(0, 9)) + list(range(12, 27)) + [28] + [42] 
 # BANDS = list(range(0, 43))
-RECONSTRUCTION_BANDS = list(range(0, 9)) + [12, 13, 14, 16, 17, 19, 23, 24, 25, 28, 34]
+BANDS = list(range(0, 7)) + list(range(9, 12)) + [12, 13, 14, 16, 17, 19, 23, 24, 25, 28, 34] + [42]
 INPUT_CHANNELS = len(BANDS)
-OUTPUT_CHANNELS = 1 + len(RECONSTRUCTION_BANDS)
-MISSING_REFLECTANCE_IDX = -1
-REDUCED_CHANNELS = None
+OUTPUT_CHANNELS = 1
+MISSING_REFLECTANCE_IDX = len(BANDS) - 1
+
+# Resolution pparameters
 DEGREES_PER_PIXEL = (0.00026949458523585647, 0.00026949458523585647)
 METERS_PER_PIXEL = 30
 RESOLUTIONS = [30, 90, 150, 300, 600]
 TILE_PIXELS = 100
 TILE_SIZE_DEGREES = DEGREES_PER_PIXEL[0] * TILE_PIXELS
-PURE_THRESHOLD = 0.7
+
+# Filtering
+PURE_THRESHOLD = 0.7  # Minimum percent land cover for "pure pixels"
 MAX_CFIS_CLOUD_COVER = 0.5
 MIN_OCO2_SOUNDINGS = 3
 MAX_OCO2_CLOUD_COVER = 0.5
@@ -592,9 +571,9 @@ def main():
         Y_eval_test = eval_test_set[OUTPUT_COLUMN].values.ravel()
 
         if not args.use_precomputed_results:
-            # Train averages models - TODO change parameters
+            # Train averages models, based on best parameters from "./run_baseline.sh"
             linear_model = Ridge(alpha=100).fit(X_coarse_train, Y_coarse_train)
-            mlp_model = MLPRegressor(hidden_layer_sizes=(100, 100), learning_rate_init=1e-3, max_iter=10000).fit(X_coarse_train, Y_coarse_train) 
+            mlp_model = MLPRegressor(hidden_layer_sizes=(100, 100, 100), learning_rate_init=1e-3, max_iter=10000).fit(X_coarse_train, Y_coarse_train) 
 
             # Initialize model
             if args.model == 'unet_small':

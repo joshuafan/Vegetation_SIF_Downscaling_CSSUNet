@@ -1,15 +1,29 @@
 # Smoothness loss
-for l in 0 0.01 0.1
+for l in 0.1
 do
-    for s in 50
+    for s in 10 50
     do
-        for lr in 1e-4 3e-4 1e-3
+        for lr in  3e-4  #1e-4 3e-4 1e-3
         do
             python3 train_contrastive.py --prefix 10f_contrastive --model unet2_contrastive --optimizer AdamW -lr $lr -wd 1e-4 -sche const -epoch 100 -bs 128 \
-                --flip_and_rotate --smoothness_loss --lambduh $l --spread $s --num_pixels 1000 # --visualize
+                --flip_and_rotate --smoothness_loss --lambduh $l --spread $s --num_pixels 1000 --visualize
         done
     done
 done
+
+
+# # Smoothness loss contrastive - DOES NOT WORK
+# for l in 0.01 0.1 1
+# do
+#     for s in 0.05
+#     do
+#         for lr in 1e-4 3e-4 1e-3
+#         do
+#             python3 train_contrastive.py --prefix 10f_contrastive --model unet2_contrastive --optimizer AdamW -lr $lr -wd 1e-4 -sche const -epoch 100 -bs 128 \
+#                 --flip_and_rotate --smoothness_loss_contrastive --lambduh $l --similarity_threshold $s --temperature 0.2 --num_pixels 1000 --visualize
+#         done
+#     done
+# done
 
 
 

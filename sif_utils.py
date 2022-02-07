@@ -427,6 +427,7 @@ def print_stats(true, predicted, average_sif, print_report=True, ax=None, fit_in
         # print('R2:', round(r2_scaled, 3))
         print('NRMSE (unscaled):', round(nrmse_unscaled, 3))
         print('R2 (unscaled):', round(r2_unscaled, 3))
+        print('Corr:', round(corr, 3))
         # print('NRMSE (scaled):', round(nrmse_scaled, 3))
 
     return r2_unscaled, nrmse_unscaled, corr

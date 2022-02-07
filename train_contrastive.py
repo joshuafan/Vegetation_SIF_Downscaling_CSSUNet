@@ -23,7 +23,7 @@ import visualization_utils
 import sif_utils
 import tile_transforms
 import tqdm
-
+import mtadam
 
 # Folds
 TRAIN_FOLDS = [0, 1, 2]
@@ -64,15 +64,9 @@ parser.add_argument('-model', "--model", default='unet2', type=str, help='model 
 parser.add_argument('-seed', "--seed", default=0, type=int)
 
 # Optimizer params
-parser.add_argument('-optimizer', "--optimizer", default='AdamW', choices=["Adam", "AdamW"], type=str, help='optimizer type')
+parser.add_argument('-optimizer', "--optimizer", default='AdamW', choices=["Adam", "AdamW", "MTAdam"], type=str, help='optimizer type')
 parser.add_argument('-lr', "--learning_rate", default=1e-4, type=float, help='initial learning rate')
 parser.add_argument('-wd', "--weight_decay", default=1e-4, type=float, help='weight decay rate')
-parser.add_argument('-sche', "--scheduler", default='cosine', choices=['cosine', 'step', 'plateau', 'exp', 'const'], help='lr scheduler')
-parser.add_argument('-T0', "--T0", default=50, type=int, help='optimizer T0 (cosine only)')
-parser.add_argument('-T_mult', "--T_mult", default=2, type=int, help='optimizer T_multi (cosine only)') 
-parser.add_argument('-eta_min', "--eta_min", default=1e-5, type=float, help='minimum lr (cosine only)')
-parser.add_argument('-gamma', "--gamma", default=0.5, type=float, help='StepLR decay (step only)')
-parser.add_argument('-lrsteps', "--lrsteps", default=50, type=int, help='StepLR steps (step only)')
 
 # Training params
 parser.add_argument('-epoch', "--max_epoch", default=100, type=int, help='max epoch to train')
@@ -85,6 +79,7 @@ parser.add_argument('-visualize', "--visualize", default=False, action='store_tr
 # ============ Smoothness/contrastive losses : general params ============
 parser.add_argument('-num_pixels', "--num_pixels", default=1000, type=int, help='Number of pixels to sample per batch for smoothness/contrastive losses')
 parser.add_argument('-lambduh', "--lambduh", default=1, type=float, help="How much to weight the smoothness/contrastive loss compared to coarse")
+parser.add_argument('-adaptive_lambda', "--adaptive_lambda", default=False, action='store_true', help='Plot visualizations')
 parser.add_argument('-pretrain_epochs', "--pretrain_epochs", default=0, type=int, help='If this is greater than 0, pre-train this number of epochs with ONLY unsupervised contrastive loss, then introduce supervised coarse loss')
 
 # Pixel contrastive loss
@@ -438,8 +433,9 @@ def smoothness_loss(args, input_tiles_std, predicted_fine_sifs, device):
     input_pixels = input_tiles_std.permute(0, 2, 3, 1)
     input_pixels = input_pixels.reshape(-1, num_features) # [total pixels, num_features]
     sif_pixels = predicted_fine_sifs.flatten()  # [total pixels]
+    sif_pixels.requires_grad_(True)
 
-    # Filter for missing reflectance, and sample some random pixels
+    # Filter for pixels that actually have reflectance data, and sample some random pixels
     indices_with_reflectance_data = (input_pixels[:, MISSING_REFLECTANCE_IDX] == 0)
     input_pixels = input_pixels[indices_with_reflectance_data]
     sif_pixels = sif_pixels[indices_with_reflectance_data]
@@ -459,7 +455,8 @@ def smoothness_loss(args, input_tiles_std, predicted_fine_sifs, device):
     # Computes the Euclidean norm between every pair of rows - see https://pytorch.org/docs/stable/generated/torch.nn.functional.pdist.html
     reflectance_distances = torch.norm(input_reflectance[:, None] - input_reflectance, dim=2, p=2)  # [num_pixels, num_pixels]
     cover_distances = torch.norm(input_cover_types[:, None] - input_cover_types, dim=2, p=1)  # [num_pixels, num_pixels]
-    sif_distances = torch.abs(sif_pixels[:, None] - sif_pixels)  # [num_pixels, num_pixels]
+    sif_distances = torch.square(sif_pixels[:, None] - sif_pixels)  # torch.abs(sif_pixels[:, None] - sif_pixels)  # [num_pixels, num_pixels]
+    sif_distances.requires_grad_(True)
 
     # Convert reflectance distance into reflectance similarity
     reflectance_similarities = torch.exp(-args.spread * (reflectance_distances ** 2))  # [num_pixels, num_pixels]
@@ -481,7 +478,7 @@ def smoothness_loss(args, input_tiles_std, predicted_fine_sifs, device):
     reflectance_similarities.fill_diagonal_(0)
 
     # Compute loss
-    loss = torch.sum(reflectance_similarities * sif_distances) / torch.count_nonzero(cover_distances <= 0.5)
+    loss = torch.sum(reflectance_similarities * sif_distances) / torch.count_nonzero(reflectance_similarities)  # (cover_distances <= 0.5)
     return loss
 
     # # Below - naive implementation
@@ -617,10 +614,19 @@ def smoothness_loss_contrastive(args, input_tiles_std, predicted_fine_sifs, devi
     Args:
         input_tiles_std: standardized input images, shape [batch, channels, height, width]
         predicted_fine_sifs: predicted SIF map, shape [batch, height, width]
+
+    In addition, the following command-line arguments in "args" are used:
+        args.temperature: the temperature hyperparameter in the contrastive loss function. The lower this is,
+                          more penalty is placed on the hardest negative samples (Wang and Liu 2021).
+        args.similarity_threshold: if reflectance distance (between normalized reflectance vectors)
+                                   is lower than this threshold, pixels are considered similar.
+        args.num_pixels: number of pixels to randomly sample
+        args.means, args.stds: means and stds for each band (used to undo standardization when computing pixel similarity)
+
     """
-    assert input_tiles_std.shape[0] == predicted_sif.shape[0]
-    assert input_tiles_std.shape[2] == predicted_sif.shape[1]
-    assert input_tiles_std.shape[3] == predicted_sif.shape[2]
+    assert input_tiles_std.shape[0] == predicted_fine_sifs.shape[0]
+    assert input_tiles_std.shape[2] == predicted_fine_sifs.shape[1]
+    assert input_tiles_std.shape[3] == predicted_fine_sifs.shape[2]
     num_features = input_tiles_std.shape[1]
 
     # Reshape input so that each pixel is its own row 
@@ -640,30 +646,69 @@ def smoothness_loss_contrastive(args, input_tiles_std, predicted_fine_sifs, devi
     input_reflectance = input_pixels[:, SIMILARITY_INDICES]
     input_cover_types = input_pixels[:, CROP_TYPE_INDICES]
 
+    # When computing reflectance similarity between pixels, undo standardization, normalize the raw 
+    # vectors to norm 1 (thus undo-ing multiplicative noise), and then standardize again.
+    # print("Input reflectance", input_reflectance)
+    input_reflectance = input_reflectance * args.stds[SIMILARITY_INDICES] + args.means[SIMILARITY_INDICES]
+    input_reflectance = input_reflectance / torch.linalg.norm(input_reflectance, dim=1, keepdim=True)
+
     # Computes the Euclidean norm between every pair of rows - see https://pytorch.org/docs/stable/generated/torch.nn.functional.pdist.html
     reflectance_distances = torch.norm(input_reflectance[:, None] - input_reflectance, dim=2, p=2)  # [num_pixels, num_pixels]
     cover_distances = torch.norm(input_cover_types[:, None] - input_cover_types, dim=2, p=1)  # [num_pixels, num_pixels]
+
+    # Identify positive and negative pairs. Positive pairs have similar reflectance and the same cover type.
+    # Negative pairs have different reflectance.
+    pos_mask = ((reflectance_distances <= args.similarity_threshold) & (cover_distances < 0.5)).fill_diagonal_(0) # [pixels, pixels] # .fill_diagonal_(0)
+    neg_mask = ((reflectance_distances > args.similarity_threshold) | (cover_distances > 0.5)).fill_diagonal_(0)  # [pixels, pixels]
+
+    # Code largely borrowed from https://github.com/tfzhou/ContrastiveSeg/blob/a2f7392d0c50ecdda36fd41205b77a7bc74f7cb8/lib/loss/loss_contrast.py
     sif_distances = torch.abs(sif_pixels[:, None] - sif_pixels)  # [num_pixels, num_pixels]
-    sif_similarities =  torch.exp(-10 * sif_distances)  # [num_pixels, num_pixels] torch.exp(-10 * torch.norm(sif_pixels[:, None] - sif_pixels, dim=2, p=1))
-    sif_similarities_sum = torch.sum(sif_similarities, dim=1)  # [num_pixels]
 
-    # When computing the nearest neighbor for each pixel, we want to ignore itself (diagonal),
-    # as well as pixel pairs with different crop types.
-    reflectance_distances.fill_diagonal_(9999)  # We want to find the most similar pixel apart from itself.
-    reflectance_distances[cover_distances > 0.1] = 9999
-    # print("Reflectance distances", reflectance_distances)
-    # print("SIF distances", sif_distances)
+    # Compute all pairwise similarities (1 - distance) between SIFs
+    sif_similarities = (1 - sif_distances) / args.temperature # [num_pixels, num_pixels]
 
-    # For each pixel, compute the index of its nearest neighbor.
-    index_nearest_neighbors = torch.argmin(reflectance_distances, axis=1)
-    loss = 0
+    logits_max, _ = torch.max(sif_similarities, dim=1, keepdim=True)  # [pixels]
+    logits = sif_similarities - logits_max.detach()  # [pixels, pixels]
 
-    # For each pixel i, compute loss as the difference between its predicted SIF and the predicted SIF of the nearest neighbor,
-    # divided by the sum of the differences between its predicted SIF and all other pixels' SIF.
-    for i in range(index_nearest_neighbors.shape[0]):
-        loss += (sif_similarities[i, index_nearest_neighbors[i]] / sif_similarities_sum[i])
+    neg_logits = torch.exp(logits) * neg_mask
+    neg_logits = neg_logits.sum(1, keepdim=True)
 
-    return loss / index_nearest_neighbors.shape[0]
+    exp_logits = torch.exp(logits)
+
+    log_prob = logits - torch.log(exp_logits + neg_logits)
+    # print("Log prob", log_prob[0:5, 0:5])
+
+    mean_log_prob_pos = (pos_mask * log_prob).sum(1) / torch.clamp(pos_mask.sum(1), min=1)
+
+    loss = - mean_log_prob_pos  # TODO assume base_temperature is the same as temperature
+    loss = loss.nanmean()
+
+    return loss
+
+
+
+
+    # sif_distances = torch.abs(sif_pixels[:, None] - sif_pixels)  # [num_pixels, num_pixels]
+    # sif_similarities =  torch.exp(-10 * sif_distances)  # [num_pixels, num_pixels] torch.exp(-10 * torch.norm(sif_pixels[:, None] - sif_pixels, dim=2, p=1))
+    # sif_similarities_sum = torch.sum(sif_similarities, dim=1)  # [num_pixels]
+
+    # # When computing the nearest neighbor for each pixel, we want to ignore itself (diagonal),
+    # # as well as pixel pairs with different crop types.
+    # reflectance_distances.fill_diagonal_(9999)  # We want to find the most similar pixel apart from itself.
+    # reflectance_distances[cover_distances > 0.1] = 9999
+    # # print("Reflectance distances", reflectance_distances)
+    # # print("SIF distances", sif_distances)
+
+    # # For each pixel, compute the index of its nearest neighbor.
+    # index_nearest_neighbors = torch.argmin(reflectance_distances, axis=1)
+    # loss = 0
+
+    # # For each pixel i, compute loss as the difference between its predicted SIF and the predicted SIF of the nearest neighbor,
+    # # divided by the sum of the differences between its predicted SIF and all other pixels' SIF.
+    # for i in range(index_nearest_neighbors.shape[0]):
+    #     loss += (sif_similarities[i, index_nearest_neighbors[i]] / sif_similarities_sum[i])
+
+    # return loss / index_nearest_neighbors.shape[0]
 
 
 
@@ -678,16 +723,16 @@ def similarity_loss(args, input_tiles_std, predicted_fine_sifs, device, similari
     """
     # # print("SIMILARITY LOSS")
     # # print("Input tiles std shape", input_tiles_std.shape) # [batch x 24 x 100 x 100]
-    # # print("predicted sif shape", predicted_sif.shape)  # [batch x 100 x 100]
+    # # print("predicted sif shape", predicted_fine_sifs.shape)  # [batch x 100 x 100]
     # height_idx = np.random.randint(low=0, high=input_tiles_std.shape[2])
     # width_idx = np.random.randint(low=0, high=input_tiles_std.shape[3])
 
     # # "Features" are actually predicted SIF. We want similar pixels to have similar predicted SIF.
     # features = predicted_fine_sifs[:, height_idx, width_idx]
 
-    assert input_tiles_std.shape[0] == predicted_sif.shape[0]
-    assert input_tiles_std.shape[2] == predicted_sif.shape[1]
-    assert input_tiles_std.shape[3] == predicted_sif.shape[2]
+    assert input_tiles_std.shape[0] == predicted_fine_sifs.shape[0]
+    assert input_tiles_std.shape[2] == predicted_fine_sifs.shape[1]
+    assert input_tiles_std.shape[3] == predicted_fine_sifs.shape[2]
     num_features = input_tiles_std.shape[1]
 
     # Reshape input so that each pixel is its own row 
@@ -903,6 +948,7 @@ def train_model(args, model, dataloaders, criterion, optimizer, device, sif_mean
 
                         # Pass tile through model to obtain fine-resolution SIF predictions
                         predicted_fine_sifs_std, pixel_projections = model(input_tiles_std)  # predicted_fine_sifs_std: (batch size, output dim, H, W)
+                        predicted_fine_sifs_std.requires_grad_(True)
 
                         if torch.isnan(predicted_fine_sifs_std).any():
                             print("Predicted fine sifs contained nan")
@@ -911,6 +957,7 @@ def train_model(args, model, dataloaders, criterion, optimizer, device, sif_mean
 
                         predicted_fine_sifs_std = torch.squeeze(predicted_fine_sifs_std, dim=1)
                         predicted_fine_sifs = predicted_fine_sifs_std * sif_std + sif_mean
+                        predicted_fine_sifs.requires_grad_(True)
                         # print("Predicted fine sifs", predicted_fine_sifs[0, 0:10, 0:10])
                         # print('Valid', torch.mean(valid_fine_sif_mask.float()))
 
@@ -974,9 +1021,14 @@ def train_model(args, model, dataloaders, criterion, optimizer, device, sif_mean
                         # Backpropagate coarse loss
                         if phase == 'train' and random.random() < UPDATE_FRACTIONS[dataset_name] and dataset_name in COARSE_SIF_DATASETS[phase] and not args.fine_supervision: # and not np.isnan(fine_loss.item()):
                             optimizer.zero_grad()
-                            loss.backward()
-                            # print('Grad', model.down1.maxpool_conv[1].double_conv[0].weight.grad)
-                            optimizer.step()
+                            if args.optimizer == "MTAdam":
+                                print("MTadam")
+                                ranks = [1] * 2
+                                optimizer.step([coarse_loss, other_loss], ranks, None)
+                            else:
+                                loss.backward()
+                                # print('Grad', model.down1.maxpool_conv[1].double_conv[0].weight.grad)
+                                optimizer.step()
 
 
                         # Compute/record losses
@@ -1132,6 +1184,22 @@ def train_model(args, model, dataloaders, criterion, optimizer, device, sif_mean
                 if phase == 'train':
                     train_other_losses[coarse_dataset].append(epoch_other_loss)
                     train_coarse_losses[coarse_dataset].append(epoch_coarse_nrmse)
+                    if args.adaptive_lambda:
+                        if len(train_other_losses[coarse_dataset]) > 1:
+                            if train_other_losses[coarse_dataset][-1] < train_other_losses[coarse_dataset][-2]:
+                                if train_coarse_losses[coarse_dataset][-1] < train_coarse_losses[coarse_dataset][-2]:
+                                    print("Both losses went down")
+                                else:
+                                    print("Only coarse loss went up")
+                                    args.lambduh *= 0.9
+                            else:
+                                if train_coarse_losses[coarse_dataset][-1] < train_coarse_losses[coarse_dataset][-2]:
+                                    print("Only smoothness loss went up")
+                                    args.lambduh *= 1.1
+                                else:
+                                    print("Both losses went up :(")
+                            print("New lambduh", args.lambduh)
+
                 else:
                     val_other_losses[coarse_dataset].append(epoch_other_loss)
                     val_coarse_losses[coarse_dataset].append(epoch_coarse_nrmse)
@@ -1545,6 +1613,8 @@ if args.optimizer == "Adam":
     optimizer = optim.Adam(unet_model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
 elif args.optimizer == "AdamW":
     optimizer = optim.AdamW(unet_model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
+elif args.optimizer == "MTAdam":
+    optimizer = mtadam.MTAdam(unet_model.parameters(), lr=args.learning_rate)
 else:
     print("Optimizer not supported")
     exit(1)
