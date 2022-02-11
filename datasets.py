@@ -46,7 +46,7 @@ class CoarseSIFDataset(Dataset):
     """
     Dataset mapping a tile (with reflectance/cover bands) to a single SIF value
     """
-    def __init__(self, tile_info, transform, multiplicative_noise_end_transform, tile_file_column='tile_file', coarse_sif_column='SIF'):
+    def __init__(self, tile_info, transform, multiplicative_noise_end_transform=None, tile_file_column='tile_file', coarse_sif_column='SIF'):
         """
         Args:
             tile_info: Pandas dataframe containing metadata for each tile.
@@ -100,7 +100,7 @@ class FineSIFDataset(Dataset):
     coarse SIF value.
     """
     def __init__(self, tile_info, transform,
-                 multiplicative_noise_end_transform,
+                 multiplicative_noise_end_transform=None,
                  tile_file_column='tile_file',
                  fine_sif_file_column='fine_sif_file',
                  fine_soundings_file_column='fine_soundings_file',

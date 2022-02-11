@@ -332,6 +332,50 @@ def plot_tile_prediction_only(tile, predicted_sif_tile, valid_mask, center_lon, 
 #               num_grid_squares=4, decimal_places=3, rgb_bands=[3, 2, 1],
 #               cdl_bands=range(12, 42)):
 
+
+def outline_masked_areas(mapimg, ax):
+    """Outline areas that are set to "True" (1) in the given "mapimg"
+
+    Code taken from https://stackoverflow.com/questions/24539296/outline-a-region-in-a-graph
+    """
+
+    # a vertical line segment is needed, when the pixels next to each other horizontally
+    #   belong to diffferent groups (one is part of the mask, the other isn't)
+    # after this ver_seg has two arrays, one for row coordinates, the other for column coordinates 
+    ver_seg = np.where(mapimg[:,1:] != mapimg[:,:-1])
+
+    # the same is repeated for horizontal segments
+    hor_seg = np.where(mapimg[1:,:] != mapimg[:-1,:])
+
+    # if we have a horizontal segment at 7,2, it means that it must be drawn between pixels
+    #   (2,7) and (2,8), i.e. from (2,8)..(3,8)
+    # in order to draw a discountinuous line, we add Nones in between segments
+    l = []
+    for p in zip(*hor_seg):
+        l.append((p[1], p[0]+1))
+        l.append((p[1]+1, p[0]+1))
+        l.append((np.nan,np.nan))
+
+    # and the same for vertical segments
+    for p in zip(*ver_seg):
+        l.append((p[1]+1, p[0]))
+        l.append((p[1]+1, p[0]+1))
+        l.append((np.nan, np.nan))
+
+    # now we transform the list into a numpy array of Nx2 shape
+    segments = np.array(l)
+
+    # # now we need to know something about the image which is shown
+    # #   at this point let's assume it has extents (x0, y0)..(x1,y1) on the axis
+    # #   drawn with origin='lower'
+    # # with this information we can rescale our points
+    # segments[:,0] = x0 + (x1-x0) * segments[:,0] / mapimg.shape[1]
+    # segments[:,1] = y0 + (y1-y0) * segments[:,1] / mapimg.shape[0]
+
+    # and now there isn't anything else to do than plot it
+    ax.plot(segments[:,0]-0.5, segments[:,1]-0.5, color='black', linewidth=0.5)
+
+
 # Plot tile information along with true/predicted pixel SIFs.
 # "predicted_sif_tiles" and "prediction_methods" should be lists (they can be empty if we have no predictions)
 def plot_tile_predictions(tile, tile_description, true_sif_tile, predicted_sif_tiles, valid_mask, non_noisy_mask, prediction_methods,
@@ -339,6 +383,9 @@ def plot_tile_predictions(tile, tile_description, true_sif_tile, predicted_sif_t
                           res, soundings_tile=None, num_grid_squares=4, decimal_places=3, rgb_bands=[3, 2, 1],
                           cdl_bands=range(12, 42),
                           plot_dir="/mnt/beegfs/bulk/mirror/jyf6/datasets/SIF/exploratory_plots"): 
+
+    if not os.path.exists(plot_dir):
+        os.makedirs(plot_dir)
 
     # Plot an augmented version of the tile
     flip_and_rotate_transform = tile_transforms.RandomFlipAndRotate()
@@ -353,6 +400,7 @@ def plot_tile_predictions(tile, tile_description, true_sif_tile, predicted_sif_t
     # print('Non-noisy mask', non_noisy_mask[0, :])
     # print('Non-noisy indices', non_noisy_indices)
     # non_noisy_indices = np.array([[0, 99]])
+
 
     eps = tile_size_degrees / 2
     num_ticks = num_grid_squares + 1
@@ -375,8 +423,8 @@ def plot_tile_predictions(tile, tile_description, true_sif_tile, predicted_sif_t
     if soundings_tile is not None or augmented_tile is not None:
         num_cols += 1
 
-    fig, axeslist = plt.subplots(ncols=num_cols, nrows=2, figsize=(10*num_cols, 16))
-    fig.suptitle(title, fontsize=30)
+    fig, axeslist = plt.subplots(ncols=num_cols, nrows=2, figsize=(15*num_cols, 22))
+    fig.suptitle(title, fontsize=40)
 
     # Plot the RGB bands
     ax = axeslist[0, 0]
@@ -392,13 +440,15 @@ def plot_tile_predictions(tile, tile_description, true_sif_tile, predicted_sif_t
         ax = axeslist[0, idx+1]
         sif_difference[valid_mask == 0] = np.nan
         pcm = ax.imshow(sif_difference, cmap=sif_cmap, vmin=-0.5, vmax=0.5)
-        # ax.scatter(x=non_noisy_indices[:, 1], y=non_noisy_indices[:, 0], c='black', s=0.5)
+
+        # outline_masked_areas(non_noisy_mask, ax)
+        # ax.scatter(x=non_noisy_indices[:, 1], y=non_noisy_indices[:, 0], c='black', s=0.3)
         add_grid_lines(ax, center_lon, center_lat, sif_difference.shape[1], sif_difference.shape[0], tile_size_degrees, num_grid_squares, decimal_places)
-        ax.set_title(prediction_methods[idx] + ': difference from ground-truth', fontsize=20)
+        ax.set_title(prediction_methods[idx] + ': difference from ground-truth', fontsize=32)
 
     # Plot SIF difference colorbar
     cbar = fig.colorbar(pcm, ax=axeslist[0, :right_idx], cmap=sif_cmap)
-    cbar.ax.tick_params(labelsize=20)
+    cbar.ax.tick_params(labelsize=32)
 
     # Plot ground-truth SIF
     sif_cmap = plt.get_cmap('BuGn')
@@ -409,7 +459,9 @@ def plot_tile_predictions(tile, tile_description, true_sif_tile, predicted_sif_t
     pcm = ax.imshow(true_sif_tile, cmap=sif_cmap, vmin=0, vmax=1)
     # ax.scatter(x=non_noisy_indices[:, 1], y=non_noisy_indices[:, 0], c='black', s=0.5)
     add_grid_lines(ax, center_lon, center_lat, true_sif_tile.shape[1], true_sif_tile.shape[0], tile_size_degrees, num_grid_squares, decimal_places)
-    ax.set_title('Ground truth (average SIF: ' + str(round(sif_mean, 4)) + ')', fontsize=20)
+    ax.set_title('Ground truth (average SIF: ' + str(round(sif_mean, 4)) + ')', fontsize=32)
+
+    # If outline: https://stackoverflow.com/questions/24539296/outline-a-region-in-a-graph
 
     # Plot predicted SIFs
     sif_cmap.set_bad(color='gray')
@@ -421,11 +473,11 @@ def plot_tile_predictions(tile, tile_description, true_sif_tile, predicted_sif_t
         pcm = ax.imshow(sif_tile, cmap=sif_cmap, vmin=0, vmax=1)
         # ax.scatter(x=non_noisy_indices[:, 1], y=non_noisy_indices[:, 0], c='black', s=0.5)
         add_grid_lines(ax, center_lon, center_lat, sif_tile.shape[1], sif_tile.shape[0], tile_size_degrees, num_grid_squares, decimal_places)
-        ax.set_title(prediction_methods[idx] + ' (average SIF: ' + str(round(sif_mean, 4)) + ')', fontsize=20)
+        ax.set_title(prediction_methods[idx] + ' (average SIF: ' + str(round(sif_mean, 4)) + ')', fontsize=32)
 
     # Plot SIF colorbar
     cbar = fig.colorbar(pcm, ax=axeslist[1, :right_idx], cmap=sif_cmap)
-    cbar.ax.tick_params(labelsize=20) 
+    cbar.ax.tick_params(labelsize=32) 
 
     # Plot soundings, if soundings tile was given
     if soundings_tile is not None:

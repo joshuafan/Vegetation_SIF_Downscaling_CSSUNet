@@ -1,12 +1,12 @@
 # Smoothness loss
-for l in 0.1
+for l in 0.2 0.5 1
 do
-    for s in 10 50
+    for s in 1 2 5
     do
-        for lr in  3e-4  #1e-4 3e-4 1e-3
+        for lr in 3e-4
         do
-            python3 train_contrastive.py --prefix 10f_contrastive --model unet2_contrastive --optimizer AdamW -lr $lr -wd 1e-4 -sche const -epoch 100 -bs 128 \
-                --flip_and_rotate --smoothness_loss --lambduh $l --spread $s --num_pixels 1000 --visualize
+            python3 train_contrastive.py --prefix 10f_contrastive_ABS --model unet2_contrastive --optimizer AdamW -lr $lr -wd 1e-4 -epoch 100 -bs 128 \
+                --flip_and_rotate --smoothness_loss --lambduh $l --spread $s --num_pixels 1000 --visualize # --multiplicative_noise $m
         done
     done
 done

@@ -25,7 +25,7 @@ from sif_utils import plot_histogram, print_stats
 parser = argparse.ArgumentParser()
 parser.add_argument('-method', "--method", choices=["Ridge_Regression", "Gradient_Boosting_Regressor", "MLP", "Nearest_Neighbors"], type=str, help='Method type. MLP is the fully-connected artificial neural netwoprk.')
 parser.add_argument('-multiplicative_noise', "--multiplicative_noise", action='store_true')
-parser.add_argument('-mult_noise_std', "--mult_noise_std", default=0.2, type=float, help="If the 'multiplicative_noise' augmentation is used, multiply each channel by (1+eps), where eps ~ N(0, mult_noise_std)")
+parser.add_argument('-mult_noise_std', "--mult_noise_std", default=0, type=float, help="If the 'multiplicative_noise' augmentation is used, multiply each channel by (1+eps), where eps ~ N(0, mult_noise_std)")
 parser.add_argument('-mult_noise_repeats', "--mult_noise_repeats", default=10, type=int, help="How many times to repeat each example (with different multiplicative noise)")
 parser.add_argument('-standardize', "--standardize", action='store_true', help='Whether to standardize features to mean 0, variance 1.')
 parser.add_argument('-normalize', "--normalize", action='store_true', help='Whether to normalize the reflectance bands to have norm 1. If this is enabled, the reflectance bands are NOT standardized.')
@@ -129,7 +129,7 @@ RESULTS_SUMMARY_FILE = os.path.join(RESULTS_DIR, "results_summary_BASELINE.csv")
 results_rows = {s: [args.method, s, MIN_FINE_CFIS_SOUNDINGS[0], MIN_FINE_FRACTION_VALID_PIXELS[0], args.mult_noise_std] for s in TRAIN_RANDOM_STATES}
 
 # Input feature names
-INPUT_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',  # 'ref_10', 'ref_11', 
+INPUT_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',  'ref_10', 'ref_11', 
                     'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg',
                     'grassland_pasture', 'corn', 'soybean',
                     'deciduous_forest', 'evergreen_forest', 'developed_open_space',
@@ -139,9 +139,9 @@ ALL_COVER_COLUMNS = ['grassland_pasture', 'corn', 'soybean',
                     'deciduous_forest', 'evergreen_forest', 'developed_open_space',
                     'woody_wetlands', 'open_water', 'alfalfa',
                     'developed_low_intensity', 'developed_med_intensity']
-REFLECTANCE_BANDS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7']  # 'ref_10', 'ref_11']
+REFLECTANCE_BANDS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7', 'ref_10', 'ref_11']
 
-# Order of column in band averages file
+# Order of columns in band averages file
 BAND_AVERAGES_COLUMN_ORDER =  ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
                                 'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg',
                                 'grassland_pasture', 'corn', 'soybean', 'shrubland',
@@ -152,7 +152,7 @@ BAND_AVERAGES_COLUMN_ORDER =  ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref
                                 'canola', 'sunflower', 'dry_beans', 'developed_med_intensity',
                                 'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
                                 'lentils', 'missing_reflectance']
-COLUMNS_TO_STANDARDIZE = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7', # 'ref_10', 'ref_11', 
+COLUMNS_TO_STANDARDIZE = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7', 'ref_10', 'ref_11', 
                           'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg']
 COLUMNS_TO_LOG = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7']  #, 'ref_10', 'ref_11']
 OUTPUT_COLUMN = ['SIF']
@@ -162,16 +162,16 @@ COVER_COLUMNS_TO_PLOT = ['grassland_pasture', 'corn', 'soybean', 'deciduous_fore
 
 
 # Other options - out of date
-# INPUT_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
-#                     'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg',
-#                     'grassland_pasture', 'corn', 'soybean', 'shrubland',
-#                     'deciduous_forest', 'evergreen_forest', 'spring_wheat', 'developed_open_space',
-#                     'other_hay_non_alfalfa', 'winter_wheat', 'herbaceous_wetlands',
-#                     'woody_wetlands', 'open_water', 'alfalfa', 'fallow_idle_cropland',
-#                     'sorghum', 'developed_low_intensity', 'barren', 'durum_wheat',
-#                     'canola', 'sunflower', 'dry_beans', 'developed_med_intensity',
-#                     'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
-#                     'lentils', 'missing_reflectance']
+INPUT_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
+                    'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg',
+                    'grassland_pasture', 'corn', 'soybean', 'shrubland',
+                    'deciduous_forest', 'evergreen_forest', 'spring_wheat', 'developed_open_space',
+                    'other_hay_non_alfalfa', 'winter_wheat', 'herbaceous_wetlands',
+                    'woody_wetlands', 'open_water', 'alfalfa', 'fallow_idle_cropland',
+                    'sorghum', 'developed_low_intensity', 'barren', 'durum_wheat',
+                    'canola', 'sunflower', 'dry_beans', 'developed_med_intensity',
+                    'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
+                    'lentils', 'missing_reflectance']
 # INPUT_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
 #                     'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg']
 # COVER_COLUMNS_TO_PLOT = ['grassland_pasture', 'corn', 'soybean', 'shrubland',
@@ -802,7 +802,9 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
                                                    all_nrmse["soybean"][i],
                                                    all_nrmse["deciduous_forest"][i]])
                     else:
-                        results_rows[seed].append(all_nrmse["all_fine_train"][i])
+                        results_rows[seed].extend([all_nrmse["all_fine_train"][i],
+                                                   all_r2["all_fine_train"][i],
+                                                   all_corr["all_fine_train"][i]])
 
 
                 # # TODO fix param string
@@ -821,10 +823,13 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
                 # print(PARAM_STRING)
 
 
-header = ["method", "seed", "min_eval_cfis_soundings", "min_fraction_valid", 'mult_noise_std', 'best_params'
+header = ["method", "seed", "min_eval_cfis_soundings", "min_fraction_valid", "mult_noise_std", "best_params",
             "30m_train_nrmse", "30m_train_r2", "30m_train_corr", "30m_test_nrmse", "30m_test_r2", "30m_test_corr",
             "30m_grassland_nrmse", "30m_corn_nrmse", "30m_soybean_nrmse", "30m_deciduous_forest_nrmse",
-            "90m_nrmse", "150m_nrmse", "300m_nrmse", "600m_nrmse"]
+            "90m_nrmse", "90m_train_r2", "90m_train_corr",
+            "150m_nrmse", "150m_train_r2", "150m_train_corr",
+            "300m_nrmse", "300m_train_r2", "300m_train_corr",
+            "600m_nrmse", "600m_train_r2", "600m_train_corr",]
 
 if not os.path.isfile(RESULTS_SUMMARY_FILE):
     with open(RESULTS_SUMMARY_FILE, mode='w') as f:
