@@ -48,16 +48,16 @@ VAL_FOLDS = [3]
 TEST_FOLDS = [4]
 
 # Directories
-DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets"
+DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets/SIF/metadata/CFIS_OCO2_dataset"
 NEW_DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets/SIF_AAAI"
-CFIS_DIR = os.path.join(DATA_DIR, "CFIS")
-OCO2_DIR = os.path.join(DATA_DIR, "OCO2")
+#CFIS_DIR = os.path.join(DATA_DIR, "CFIS")
+#OCO2_DIR = os.path.join(DATA_DIR, "OCO2")
 
 # Train files
-CFIS_COARSE_METADATA_FILE = os.path.join(CFIS_DIR, 'cfis_coarse_metadata.csv')
-CFIS_FINE_METADATA_FILE = os.path.join(CFIS_DIR, 'cfis_fine_metadata.csv')
-OCO2_METADATA_FILE = os.path.join(OCO2_DIR, 'oco2_metadata_overlap.csv')
-BAND_STATISTICS_FILE = os.path.join(CFIS_DIR, 'cfis_band_statistics_train.csv')
+CFIS_COARSE_METADATA_FILE = os.path.join(DATA_DIR, 'cfis_coarse_metadata.csv')
+CFIS_FINE_METADATA_FILE = os.path.join(DATA_DIR, 'cfis_fine_metadata.csv')
+OCO2_METADATA_FILE = os.path.join(DATA_DIR, 'oco2_metadata.csv')
+BAND_STATISTICS_FILE = os.path.join(DATA_DIR, 'cfis_band_statistics_train.csv')
 
 # Only include CFIS tiles where at least this fraction of pixels have CFIS
 # fine-resolution data
@@ -196,7 +196,7 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
         print('===================================================================================================')
 
         # Read fine metadata at particular resolution, and do initial filtering
-        CFIS_FINE_METADATA_FILE = os.path.join(CFIS_DIR, 'cfis_metadata_' + str(resolution) + 'm.csv')
+        CFIS_FINE_METADATA_FILE = os.path.join(DATA_DIR, 'cfis_metadata_' + str(resolution) + 'm.csv')
         cfis_fine_metadata = pd.read_csv(CFIS_FINE_METADATA_FILE)
         cfis_fine_metadata = cfis_fine_metadata[(cfis_fine_metadata['num_soundings'] >= min(MIN_FINE_CFIS_SOUNDINGS)) &
                                                 (cfis_fine_metadata['fraction_valid'] >= min(MIN_FINE_FRACTION_VALID_PIXELS))]  # Avoid roundoff errors
@@ -460,8 +460,8 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
                         fig, axeslist = plt.subplots(ncols=2, nrows=2, figsize=(12, 12))
                         fig.suptitle('True vs predicted SIF by crop: ' + METHOD_READABLE)
                     for idx, crop_type in enumerate(COVER_COLUMN_NAMES):
-                        predicted = predictions_fine_test_filtered[fine_test_set_filtered[crop_type] > PURE_THRESHOLD]
-                        true = Y_fine_test_filtered[fine_test_set_filtered[crop_type] > PURE_THRESHOLD]                        
+                        predicted = predictions_fine_train_filtered[fine_train_set_filtered[crop_type] > PURE_THRESHOLD]
+                        true = Y_fine_train_filtered[fine_train_set_filtered[crop_type] > PURE_THRESHOLD]                        
                         if len(predicted) >= 2:
                             if is_best_model:
                                 print('===== (CFIS fine train) CROP: ', crop_type, '=====')
