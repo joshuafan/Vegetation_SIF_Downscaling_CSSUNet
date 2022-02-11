@@ -71,7 +71,7 @@ parser.add_argument('-wd', "--weight_decay", default=1e-4, type=float, help='wei
 # Training params
 parser.add_argument('-epoch', "--max_epoch", default=100, type=int, help='max epoch to train')
 parser.add_argument('-patience', "--patience", default=5, type=int, help="Early stopping patience (stop if val loss doesn't improve for this many epochs)")
-parser.add_argument('-bs', "--batch_size", default=100, type=int, help="Batch size")
+parser.add_argument('-bs', "--batch_size", default=128, type=int, help="Batch size")
 parser.add_argument('-num_workers', "--num_workers", default=4, type=int, help="Number of dataloader workers")
 parser.add_argument('-from_pretrained', "--from_pretrained", default=False, action='store_true', help='Whether to initialize from pre-trained model')
 parser.add_argument('-visualize', "--visualize", default=False, action='store_true', help='Plot visualizations')
@@ -200,7 +200,9 @@ RESULTS_SUMMARY_FILE = os.path.join(DATA_DIR, "unet_results/results_summary.csv"
 if not os.path.isfile(RESULTS_SUMMARY_FILE):
     with open(RESULTS_SUMMARY_FILE, mode='w') as f:
         csv_writer = csv.writer(f, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-        csv_writer.writerow(['model', 'git_commit', 'command', 'optimizer', 'batch_size', 'lr', 'wd', 'mult_noise', 'special_options', 'fine_val_nrmse', 'path_to_model', 'best_val_fine_epoch'])
+        csv_writer.writerow(['model', 'git_commit', 'command', 'optimizer', 'batch_size', 'lr', 'wd', 'mult_noise', 'special_options',
+                             'fine_val_nrmse_best', 'coarse_val_nrmse_best', 'fine_val_nrmse_last', 'coarse_val_nrmse_last',
+                             'path_to_model', 'best_val_fine_epoch'])
 GIT_COMMIT = sif_utils.get_git_revision_hash()
 COMMAND_STRING = " ".join(sys.argv)
 
@@ -449,13 +451,13 @@ def smoothness_loss(args, input_tiles_std, predicted_fine_sifs, device):
 
     # When computing reflectance similarity between pixels, undo standardization, normalize the raw 
     # vectors to norm 1
-    input_reflectance = input_reflectance * args.stds[SIMILARITY_INDICES] + args.means[SIMILARITY_INDICES]
-    input_reflectance = input_reflectance / torch.linalg.norm(input_reflectance, dim=1, keepdim=True)
+    # input_reflectance = input_reflectance * args.stds[SIMILARITY_INDICES] + args.means[SIMILARITY_INDICES]
+    # input_reflectance = input_reflectance / torch.linalg.norm(input_reflectance, dim=1, keepdim=True)
 
     # Computes the Euclidean norm between every pair of rows - see https://pytorch.org/docs/stable/generated/torch.nn.functional.pdist.html
     reflectance_distances = torch.norm(input_reflectance[:, None] - input_reflectance, dim=2, p=2)  # [num_pixels, num_pixels]
     cover_distances = torch.norm(input_cover_types[:, None] - input_cover_types, dim=2, p=1)  # [num_pixels, num_pixels]
-    sif_distances = torch.square(sif_pixels[:, None] - sif_pixels)  # torch.abs(sif_pixels[:, None] - sif_pixels)  # [num_pixels, num_pixels]
+    sif_distances = torch.abs(sif_pixels[:, None] - sif_pixels)  # torch.abs(sif_pixels[:, None] - sif_pixels)  # [num_pixels, num_pixels]
     sif_distances.requires_grad_(True)
 
     # Convert reflectance distance into reflectance similarity
@@ -465,12 +467,12 @@ def smoothness_loss(args, input_tiles_std, predicted_fine_sifs, device):
     # reflectance_similarities = torch.matmul(input_reflectance, torch.transpose(input_reflectance, 0, 1))
     # Debugging
     # print("=================== Samples ===================")
-    # print("Pixels", input_pixels[0:5])
-    # print("SIFs", sif_pixels[0:5])
-    # print("Reflectance distances", reflectance_distances[0:5, 0:5])
-    # print("Converted to smilarities", reflectance_similarities[0:5, 0:5])
-    # print("Cover distances", cover_distances[0:5, 0:5])
-    # print("SIF distances", sif_distances[0:5, 0:5])
+    # # print("Pixels", input_pixels[0:10])
+    # # print("SIFs", sif_pixels[0:10])
+    # print("Reflectance distances", reflectance_distances[0:10, 0:10])
+    # print("Converted to similarities", reflectance_similarities[0:10, 0:10])
+    # # print("Cover distances", cover_distances[0:10, 0:10])
+    # print("SIF distances", sif_distances[0:10, 0:10])
 
     # If two pixels are of different cover types, set their similarity to 0. so that these pairs are
     # ignored in the loss function. Same for the similarity of a pixel with itself
@@ -1072,7 +1074,7 @@ def train_model(args, model, dataloaders, criterion, optimizer, device, sif_mean
                                 all_predicted_fine_sifs[dataset_name].append(predicted_fine_sifs_filtered.cpu().detach().numpy())
 
                                 # VISUALIZATIONS
-                                if epoch % 10 == 5 and len(all_true_fine_sifs[dataset_name]) == 1 and 'CFIS' in dataset_name and args.visualize:  # Only do first val batch
+                                if epoch % 20 == 5 and len(all_true_fine_sifs[dataset_name]) == 1 and 'CFIS' in dataset_name and args.visualize:  # Only do first val batch
                                     base_plot_dir = os.path.join(results_dir, "example_predictions_epoch_" + str(epoch))
                                     for i in range(0, 5, 1):
                                         if phase == 'val' or phase == 'train':
@@ -1267,7 +1269,10 @@ def train_model(args, model, dataloaders, criterion, optimizer, device, sif_mean
                 # Write results to file
                 with open(os.path.join(results_dir, "csv_row.csv"), mode='w') as f:
                     csv_writer = csv.writer(f, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-                    csv_writer.writerow([args.model, GIT_COMMIT, COMMAND_STRING, args.optimizer, args.batch_size, args.learning_rate, args.weight_decay, args.mult_noise_std, args.special_options, val_fine_loss_at_best_val_fine['CFIS_2016'], MODEL_FILE, best_val_fine_epoch])
+                    csv_writer.writerow([args.model, GIT_COMMIT, COMMAND_STRING, args.optimizer, args.batch_size, args.learning_rate,
+                                         args.weight_decay, args.mult_noise_std, args.special_options, 
+                                         val_fine_loss_at_best_val_fine['CFIS_2016'], val_coarse_loss_at_best_val_coarse['CFIS_2016'], 
+                                         val_fine_losses['CFIS_2016'][-1], val_coarse_losses['CFIS_2016'][-1], MODEL_FILE, best_val_fine_epoch])
 
 
 
@@ -1308,7 +1313,13 @@ def train_model(args, model, dataloaders, criterion, optimizer, device, sif_mean
     # Write results to file
     with open(RESULTS_SUMMARY_FILE, "a+") as f:
         csv_writer = csv.writer(f, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-        csv_writer.writerow([args.model, GIT_COMMIT, COMMAND_STRING, args.optimizer, args.batch_size, args.learning_rate, args.weight_decay, args.mult_noise_std, args.special_options, val_fine_loss_at_best_val_fine['CFIS_2016'], MODEL_FILE, best_val_fine_epoch])
+        csv_writer.writerow([args.model, GIT_COMMIT, COMMAND_STRING, args.optimizer, args.batch_size, args.learning_rate,
+                             args.weight_decay, args.mult_noise_std, args.special_options, 
+                             val_fine_loss_at_best_val_fine['CFIS_2016'], val_coarse_loss_at_best_val_coarse['CFIS_2016'], 
+                             val_fine_losses['CFIS_2016'][-1], val_coarse_losses['CFIS_2016'][-1], MODEL_FILE, best_val_fine_epoch])
+
+    # Save model from last epoch (just for an ablation)
+    torch.save(model.state_dict(), MODEL_FILE + '_last')
 
     # load best model weights
     model.load_state_dict(best_model_wts)
@@ -1679,3 +1690,5 @@ plt.ylabel('Val Fine Losses')
 plt.title('Fine vs Coarse val losses: ' + args.model)
 plt.savefig(LOSS_PLOT + '_scatter_fine_vs_coarse_val.png')
 plt.close()
+
+print("Saved final model to:", MODEL_FILE)
