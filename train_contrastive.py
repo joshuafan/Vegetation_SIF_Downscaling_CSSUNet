@@ -134,6 +134,12 @@ parser.add_argument('-label_noise', "--label_noise", default=0, type=float, help
 
 args = parser.parse_args()
 
+
+# REMOVE
+if args.lambduh == 0.2 and args.spread == 1:
+    print('alrady did this')
+    exit(1)
+
 # Set random seeds
 np.random.seed(args.seed)
 random.seed(args.seed)
@@ -196,7 +202,7 @@ CFIS_RESULTS_CSV_FILE = os.path.join(results_dir, 'cfis_results_' + PARAM_SETTIN
 LOSS_PLOT = os.path.join(results_dir, 'losses')
 
 # Summary csv file of all results. Create this if it doesn't exist
-RESULTS_SUMMARY_FILE = os.path.join(DATA_DIR, "unet_results/results_summary.csv")
+RESULTS_SUMMARY_FILE = os.path.join(DATA_DIR, "unet_results/results_summary_" + args.prefix + ".csv")
 if not os.path.isfile(RESULTS_SUMMARY_FILE):
     with open(RESULTS_SUMMARY_FILE, mode='w') as f:
         csv_writer = csv.writer(f, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
@@ -449,23 +455,23 @@ def smoothness_loss(args, input_tiles_std, predicted_fine_sifs, device):
     input_reflectance = input_pixels[:, SIMILARITY_INDICES]
     input_cover_types = input_pixels[:, CROP_TYPE_INDICES]
 
-    # When computing reflectance similarity between pixels, undo standardization, normalize the raw 
-    # vectors to norm 1
+    # #When computing reflectance similarity between pixels, undo standardization, normalize the raw 
+    # #vectors to norm 1
     # input_reflectance = input_reflectance * args.stds[SIMILARITY_INDICES] + args.means[SIMILARITY_INDICES]
     # input_reflectance = input_reflectance / torch.linalg.norm(input_reflectance, dim=1, keepdim=True)
 
     # Computes the Euclidean norm between every pair of rows - see https://pytorch.org/docs/stable/generated/torch.nn.functional.pdist.html
     reflectance_distances = torch.norm(input_reflectance[:, None] - input_reflectance, dim=2, p=2)  # [num_pixels, num_pixels]
     cover_distances = torch.norm(input_cover_types[:, None] - input_cover_types, dim=2, p=1)  # [num_pixels, num_pixels]
-    sif_distances = torch.abs(sif_pixels[:, None] - sif_pixels)  # torch.abs(sif_pixels[:, None] - sif_pixels)  # [num_pixels, num_pixels]
+    sif_distances = torch.square(sif_pixels[:, None] - sif_pixels)  # torch.abs(sif_pixels[:, None] - sif_pixels)  # [num_pixels, num_pixels]
     sif_distances.requires_grad_(True)
 
     # Convert reflectance distance into reflectance similarity
     reflectance_similarities = torch.exp(-args.spread * (reflectance_distances ** 2))  # [num_pixels, num_pixels]
 
-    # reflectance_similarities = torch.exp((-1 / len(SIMILARITY_INDICES)) * (reflectance_distances ** 2))  # [num_pixels, num_pixels]
-    # reflectance_similarities = torch.matmul(input_reflectance, torch.transpose(input_reflectance, 0, 1))
-    # Debugging
+    # # reflectance_similarities = torch.exp((-1 / len(SIMILARITY_INDICES)) * (reflectance_distances ** 2))  # [num_pixels, num_pixels]
+    # # reflectance_similarities = torch.matmul(input_reflectance, torch.transpose(input_reflectance, 0, 1))
+    # # Debugging
     # print("=================== Samples ===================")
     # # print("Pixels", input_pixels[0:10])
     # # print("SIFs", sif_pixels[0:10])
@@ -1287,8 +1293,8 @@ def train_model(args, model, dataloaders, criterion, optimizer, device, sif_mean
             num_epochs_no_improvement = 0
         else:
             num_epochs_no_improvement += 1
-            if num_epochs_no_improvement > args.patience:
-                break
+            # if num_epochs_no_improvement > args.patience:
+            #     break
 
     time_elapsed = time.time() - since
     print('Training complete in {:.0f}m {:.0f}s'.format(

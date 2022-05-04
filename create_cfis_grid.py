@@ -1,5 +1,5 @@
 """
-Creates tiles of CFIS points. TODO - add more documentation
+Creates tiles of CFIS SIF pixels from raw CFIS point measurements. 
 """
 import csv
 import math
@@ -36,10 +36,11 @@ CDL_INDICES = list(range(12, 42))
 MIN_SIF_CLIP = 0.1
 MIN_FINE_CFIS_SOUNDINGS_FILTER = 30
 
+# Fraction of tiles to hold out for validation/test
 FRACTION_VAL = 0.2
 FRACTION_TEST = 0.2
 
-# Scaling factors to correct for differing wavelengths
+# Scaling factor to correct for differing wavelengths
 OCO2_SCALING_FACTOR = 1.69 / 1.52
 
 # Number of folds

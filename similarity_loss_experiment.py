@@ -1,3 +1,7 @@
+"""
+Creates plots of input similarity between pixels vs. SIF distances. The expectation is that pixels with high similarity should have smaller differences in SIF.
+"""
+
 import argparse
 import json
 import math
@@ -32,6 +36,10 @@ TRAIN_FOLDS = [0, 1, 2]
 VAL_FOLDS = [3]
 TEST_FOLDS = [4]
 
+# Spread parameter in similarity function. The higher the value, the faster the function decays towards 0 as you get further away.
+TAU = 0.5
+SIMILARITY_RANGES = [(0, 0.25), (0.25, 0.50), (0.50, 0.75), (0.75, 1)]
+
 # Directories
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets/SIF"
 METADATA_DIR = os.path.join(DATA_DIR, "metadata/CFIS_OCO2_dataset")
@@ -43,7 +51,7 @@ CFIS_FINE_METADATA_FILE = os.path.join(METADATA_DIR, 'cfis_metadata_' + str(RESO
 OCO2_METADATA_FILE = os.path.join(METADATA_DIR, 'oco2_metadata.csv')
 BAND_STATISTICS_FILE = os.path.join(METADATA_DIR, 'cfis_band_statistics_train.csv')
 
-PLOT_DIR = os.path.join(DATA_DIR, "exploratory_plots/similarity_euclidean_standardized")
+PLOT_DIR = os.path.join(DATA_DIR, "exploratory_plots/euclidean_std_similarity_tau0.5")
 if not os.path.exists(PLOT_DIR):
     os.makedirs(PLOT_DIR)
 
@@ -80,8 +88,8 @@ MAX_OCO2_CLOUD_COVER = 0.5
 MAX_CFIS_CLOUD_COVER = 0.5
 
 # Clip inputs to this many standard deviations from mean
-MIN_INPUT = -100
-MAX_INPUT = 100
+MIN_INPUT = -3
+MAX_INPUT = 3
 
 # Clip SIF predictions to be within this range, and exclude
 # datapoints whose true SIF is outside this range
@@ -93,7 +101,9 @@ MIN_SIF_PLOT = 0
 MAX_SIF_PLOT = 1.5
 
 
-# Input feature names
+# Input feature names - only include 7 reflectance bands
+INPUT_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7']
+#                'ref_10', 'ref_11']  #, 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg']
 # INPUT_COLUMNS = ['NDVI']
 # INPUT_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
 #                     'ref_10', 'ref_11']
@@ -101,8 +111,7 @@ MAX_SIF_PLOT = 1.5
 
 # INPUT_COLUMNS = ['ref_3', 'ref_4', 'ref_5']
 # INPUT_COLUMNS = ['NDVI']
-INPUT_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
-                 'ref_10', 'ref_11']  #, 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg']
+
 # COLUMNS_TO_STANDARDIZE = ['ref_4', 'ref_5', 'ref_6']
 # INPUT_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
 #                     'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg',
@@ -115,7 +124,7 @@ INPUT_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
 #                           'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg']  #, 'NDVI']
 # COLUMNS_TO_NORMALIZE = list(range(0, 9))
 
-COLUMNS_TO_STANDARDIZE = list(range(0, 9))
+COLUMNS_TO_STANDARDIZE = list(range(0, 7))
 OUTPUT_COLUMN = ["SIF"]
 ALL_COVER_COLUMNS = ['grassland_pasture', 'corn', 'soybean',
                     'deciduous_forest', 'evergreen_forest', 'developed_open_space',
@@ -282,12 +291,16 @@ def angle_similarity(pixel1, pixel2):
 def neg_euclidean_distance(pixel1, pixel2):
     return -np.linalg.norm(pixel1 - pixel2)
 
+def compute_reflectance_similarity(pixel1, pixel2, tau):
+    distance = np.linalg.norm(pixel1 - pixel2)
+    return np.exp(-tau * (distance ** 2))
 
 
 #  Plot SIF distance vs. input similarity for pairs, for each crop type.
 fig, axeslist = plt.subplots(ncols=2, nrows=2, figsize=(12, 12))
 fig.suptitle('SIF distance vs input similarity')
-
+input_similarities_by_crop = dict()
+output_distances_by_crop = dict()
 for idx, crop_type in enumerate(COVER_COLUMN_NAMES):
     print("Crop type", crop_type)
     X_train_crop = X_fine_train[fine_train_set[crop_type] > PURE_THRESHOLD]
@@ -303,7 +316,7 @@ for idx, crop_type in enumerate(COVER_COLUMN_NAMES):
         idx2 = index_pairs[i, 1]
         if i % 500 == 0:
             print("X1", X_train_crop[idx1])
-        similarity_between_inputs = neg_euclidean_distance(X_train_crop[idx1], X_train_crop[idx2])
+        similarity_between_inputs = compute_reflectance_similarity(X_train_crop[idx1], X_train_crop[idx2], TAU)
         # similarity_between_inputs = angle_similarity(X_train_crop[idx1], X_train_crop[idx2])  # np.linalg.norm(X_train_crop[idx1] - X_train_crop[idx2])
         # similarity_between_inputs = spatial.distance.cosine(X_fine_train[idx1], X_fine_train[idx2])
         distance_between_outputs = abs(Y_train_crop[idx1] - Y_train_crop[idx2])
@@ -312,20 +325,47 @@ for idx, crop_type in enumerate(COVER_COLUMN_NAMES):
 
     input_similarities = np.array(input_similarities)
     output_distances = np.array(output_distances)
+    input_similarities_by_crop[crop_type] = input_similarities
+    output_distances_by_crop[crop_type] = output_distances
     print("input distances", input_similarities[0:10])
     print("output distances", output_distances[0:10])
     corr, _ = pearsonr(input_similarities, output_distances)
     ax = axeslist.ravel()[idx]
     ax = density_scatter(input_similarities, output_distances, bins=[40, 40], ax=ax, s=5)
     ax.set(xlabel='Similarity between inputs', ylabel='Distance between SIF')
-    ax.set_title(crop_type + ": corr = " + str(round(corr, 3)))
+    ax.set_title(crop_type)  # + ": corr = " + str(round(corr, 3)))
 
 plt.tight_layout()
 fig.subplots_adjust(top=0.88)
 plt.savefig(os.path.join(PLOT_DIR, "output_vs_input_similarities.png"))
 plt.close()
 
-# ALso plot SIF vs NDVI for each crop type
+
+
+# For each crop type - plot histograms of SIF similarity at different levels of input similarity
+for crop_type in COVER_COLUMN_NAMES:
+    input_similarities = input_similarities_by_crop[crop_type]
+    output_distances = output_distances_by_crop[crop_type]
+    hist_range = (np.min(output_distances), np.max(output_distances))
+    cols = math.ceil(len(SIMILARITY_RANGES) / 2)
+    fig, axeslist = plt.subplots(ncols=cols, nrows=2, figsize=(4*cols, 8))
+    fig.suptitle('SIF vs NDVI')
+    for idx, similarity_range in enumerate(SIMILARITY_RANGES):
+        indices = (input_similarities >= similarity_range[0]) & (input_similarities <= similarity_range[1])
+        output_distances_in_range = output_distances[indices]
+        ax = axeslist.ravel()[idx]
+        ax.hist(output_distances_in_range, range=hist_range, bins=20)
+        ax.set_xlabel("SIF difference")
+        ax.set_title("Similarity score between {} and {}\nMean: {:.3f}, Num datapoints: {}".format(
+                similarity_range[0], similarity_range[1], np.mean(output_distances_in_range), len(output_distances_in_range)))
+    fig.suptitle("SIF differences by input similarity: " + crop_type)
+    fig.tight_layout()
+    fig.subplots_adjust(top=0.9)
+    plt.savefig(os.path.join(PLOT_DIR, "sif_distances_histograms_" + crop_type + ".png"))
+    plt.close()
+
+
+# Also plot SIF vs NDVI for each crop type
 fig, axeslist = plt.subplots(ncols=2, nrows=2, figsize=(12, 12))
 fig.suptitle('SIF vs NDVI')
 

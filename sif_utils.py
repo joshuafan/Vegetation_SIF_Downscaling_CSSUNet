@@ -123,10 +123,13 @@ def lat_long_to_index(lat, lon, dataset_top_bound, dataset_left_bound, resolutio
     return int(height_idx+eps), int(width_idx+eps)
 
 
-# Compute average input features for this subregion, over valid pixels.
-# "input_tile" should be of shape (# channels x height x width).
-# "invalid_mask" should be of shape (height x width).
+
 def compute_band_averages(input_tile, invalid_mask, missing_reflectance_idx=-1):
+    """Compute average input features for this subregion, over valid pixels.
+
+    "input_tile" should be of shape (# channels x height x width).
+    "invalid_mask" should be of shape (height x width).
+    """
     assert input_tile.shape[1] == invalid_mask.shape[0] and input_tile.shape[2] == invalid_mask.shape[1]
 
     input_pixels = np.moveaxis(input_tile, 0, -1)
@@ -283,13 +286,13 @@ def downsample_sif_for_loop(sif_array, valid_sif_mask, soundings_array, resoluti
     return coarse_sifs, fraction_valid, coarse_soundings
 
 
-
-
-# For each datapoint, returns the average of the pixels in "array" where "mask" is 1.
-# "array" and "mask" are assumed to have the same shape.
-# "mask" MUST be a binary 1/0 mask over the pixels.
-# "dim_to_average" are the dimensions to average over (usually, the height/width dimensions if you're averaging across an image)
 def masked_average(array, mask, dims_to_average):
+    """For each datapoint, returns the average of the pixels in "array" where "mask" is 1.
+
+    "array" and "mask" are assumed to have the same shape, and are Pytorch tensors (see masked_average_numpy for the Numpy version)
+    "mask" MUST be a binary 1/0 mask over the pixels.
+    "dim_to_average" are the dimensions to average over (usually, the height/width dimensions if you're averaging across an image)
+    """
     assert(len(array.shape) == len(mask.shape))
 
     # Zero out unwanted pixels
@@ -299,6 +302,8 @@ def masked_average(array, mask, dims_to_average):
     return torch.sum(wanted_values, dim=dims_to_average) / torch.sum(mask, dim=dims_to_average)
 
 def masked_average_numpy(array, mask, dims_to_average):
+    """Same as masked_average, but "array" and "mask" are Numpy arrays (not PyTorch tensors).
+    """
     assert(len(array.shape) == len(mask.shape))
 
     # Zero out unwanted pixels
