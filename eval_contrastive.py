@@ -7,6 +7,7 @@ import numpy as np
 import os
 import pandas as pd
 import random
+import sys
 import time
 import torch
 import torchvision.transforms as transforms
@@ -15,13 +16,17 @@ import torch.optim as optim
 
 import simple_cnn
 from datasets import FineSIFDataset
-from unet.unet_model import UNetContrastive, UNet2Contrastive, UNet, UNetSmall, UNet2, UNet2PixelEmbedding, UNet2Larger, PixelNN, UNet2Spectral
+from unet.unet_model import UNetContrastive, UNet2Contrastive, UNet, UNet2, PixelNN, UNet2Spectral
 import visualization_utils
 import sif_utils
 import tile_transforms
 from sklearn.linear_model import Ridge
 from sklearn.neural_network import MLPRegressor
-
+import segmentation_models_pytorch as smp
+sys.path.append('UNetPlusPlus/pytorch')
+from nnunet.network_architecture.initialization import InitWeights_He
+from nnunet.network_architecture.generic_UNet import Generic_UNet
+from nnunet.network_architecture.generic_UNetPlusPlus import Generic_UNetPlusPlus
 
 
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets/SIF"
@@ -31,9 +36,17 @@ OCO2_METADATA_FILE = os.path.join(METADATA_DIR, 'oco2_metadata.csv')
 
 # Parse command-line arguments
 parser = argparse.ArgumentParser()
-parser.add_argument('-model', "--model", default='unet2', type=str, help='model type')
+parser.add_argument('-model', "--model", default='unet2', choices=['unet2', 'unet2_spectral', 'unet2_contrastive',
+                                                                   'unet', 'unet_contrastive', 'pixel_nn',
+                                                                   'smp_unet', 'smp_unet_plus_plus',
+                                                                   'mrg_unet', 'mrg_unet_plus_plus'], type=str, help='model type')
 parser.add_argument('-model_path', "--model_path", type=str)
 parser.add_argument('-scale_predictions_by', "--scale_predictions_by", type=float, default=1)
+
+# Whether to use batchnorm and dropout
+parser.add_argument('-batch_norm', "--batch_norm",  default=False, action='store_true', help='Whether to use BatchNorm')
+parser.add_argument('-dropout_prob', "--dropout_prob", type=float, default=0, help="Dropout probability (set to 0 to not use dropout)")
+
 parser.add_argument('-use_precomputed_results', "--use_precomputed_results", default=False, action='store_true', help='Whether to use pre-computed results (instead of running dataset through model)')
 parser.add_argument('-plot_examples', "--plot_examples", default=False, action='store_true', help='Whether to plot example tiles')
 parser.add_argument('-seed', "--seed", default=0, type=int)
@@ -46,6 +59,8 @@ parser.add_argument('-match_coarse_1sounding', "--match_coarse_1sounding", actio
 parser.add_argument('-min_sif_clip', "--min_sif_clip", default=0.1, type=float, help="Before computing loss, clip outputs below this to this value.")
 parser.add_argument('-min_input', "--min_input", default=-3, type=float, help="Clip extreme input values to this many standard deviations below mean")
 parser.add_argument('-max_input', "--max_input", default=3, type=float, help="Clip extreme input values to this many standard deviations above mean")
+
+
 args = parser.parse_args()
 print("Model:", args.model_path)
 
@@ -206,11 +221,24 @@ def eval_unet_fast(args, unet_model, dataloader, criterion, device, sif_mean, si
             valid_fine_sif_mask = torch.logical_not(sample['fine_sif_mask']).to(device)
             fine_soundings = sample['fine_soundings'].to(device)
 
-            # Predict fine-resolution SIF using model
-            outputs = unet_model(input_tiles_std)  # predicted_fine_sifs_std: (batch size, 1, H, W)
-            if type(outputs) == tuple:
-                outputs = outputs[0]
-            predicted_fine_sifs_std = torch.squeeze(outputs, dim=1)  # outputs[:, 0, :, :] 
+            # Pass tile through model to obtain fine-resolution SIF predictions
+            if "smp" in args.model or "mrg" in args.model:
+                # If using these pre-built U-Net models, need to pad images to 128x128,
+                # then extract predictions from non-padded pixels.
+                # TODO - this is adhoc and won't be robust to different image sizes
+                batch, channels, height, width = input_tiles_std.shape
+                padded_tiles = torch.zeros((batch, channels, 128, 128)).to(device)  # pad to [batch, channel, 128, 128]
+                padded_tiles[:, :, 0:height, 0:width] = input_tiles_std
+                predicted_fine_sifs_std = unet_model(padded_tiles)  # [batch, 1, 128, 128]
+                predicted_fine_sifs_std = predicted_fine_sifs_std[:, :, 0:height, 0:width]  # [batch, 1, H, W]
+            else:
+                # Otherwise using our implementation, no padding is required
+                outputs = unet_model(input_tiles_std)
+                if type(outputs) == tuple:
+                    predicted_fine_sifs_std = torch.squeeze(outputs[0], dim=1)  # predicted_fine_sifs_std: (batch, 1, H, W)
+                else:
+                    predicted_fine_sifs_std = torch.squeeze(outputs, dim=1)  # predicted_fine_sifs_std: (batch, 1, H, W)
+
             predicted_fine_sifs = predicted_fine_sifs_std * sif_std + sif_mean
             predicted_fine_sifs *= args.scale_predictions_by
 
@@ -606,24 +634,101 @@ def main():
                 mlp_model = MLPRegressor(hidden_layer_sizes=(100, 100, 100), learning_rate_init=1e-3, max_iter=10000).fit(X_coarse_train, Y_coarse_train) 
 
                 # Initialize model
+                if args.batch_norm:
+                    norm_op = nn.BatchNorm2d
+                else:
+                    norm_op = None # nn.Identity
+                if args.dropout_prob != 0:
+                    dropout_op = nn.Dropout2d
+                else:
+                    dropout_op = None #  nn.Identity
+                norm_op_kwargs = {'eps': 1e-5, 'affine': True}
+                dropout_op_kwargs = {'p': args.dropout_prob, 'inplace': True}
+
                 if args.model == 'unet2':
                     unet_model = UNet2(n_channels=INPUT_CHANNELS, n_classes=OUTPUT_CHANNELS,
-                                    reduced_channels=args.reduced_channels, min_output=min_output, max_output=max_output).to(device)
+                                       dropout_op=dropout_op, dropout_op_kwargs=dropout_op_kwargs,
+                                       norm_op=norm_op, norm_op_kwargs=norm_op_kwargs,
+                                       min_output=min_output, max_output=max_output).to(device)
                 elif args.model == 'unet2_contrastive':
-                    unet_model = UNet2Contrastive(n_channels=INPUT_CHANNELS, n_classes=OUTPUT_CHANNELS, min_output=min_output, max_output=max_output).to(device)
+                    unet_model = UNet2Contrastive(n_channels=INPUT_CHANNELS, n_classes=OUTPUT_CHANNELS,
+                                                  dropout_op=dropout_op, dropout_op_kwargs=dropout_op_kwargs,
+                                                  norm_op=norm_op, norm_op_kwargs=norm_op_kwargs,
+                                                  min_output=min_output, max_output=max_output).to(device)
                 elif args.model == 'unet2_spectral':
-                    unet_model = UNet2Spectral(n_channels=INPUT_CHANNELS, n_classes=OUTPUT_CHANNELS, min_output=min_output, max_output=max_output).to(device)
+                    unet_model = UNet2Spectral(n_channels=INPUT_CHANNELS, n_classes=OUTPUT_CHANNELS,
+                                               dropout_op=dropout_op, dropout_op_kwargs=dropout_op_kwargs,
+                                               norm_op=norm_op, norm_op_kwargs=norm_op_kwargs,
+                                               min_output=min_output, max_output=max_output).to(device)
                 elif args.model == 'pixel_nn':
-                    unet_model = PixelNN(input_channels=INPUT_CHANNELS, output_dim=OUTPUT_CHANNELS, min_output=min_output, max_output=max_output).to(device)
+                    unet_model = PixelNN(input_channels=INPUT_CHANNELS, output_dim=OUTPUT_CHANNELS,
+                                         min_output=min_output, max_output=max_output).to(device)
                 elif args.model == 'unet':
                     unet_model = UNet(n_channels=INPUT_CHANNELS, n_classes=OUTPUT_CHANNELS,
-                                    reduced_channels=args.reduced_channels, min_output=min_output, max_output=max_output).to(device)   
+                                    dropout_op=dropout_op, dropout_op_kwargs=dropout_op_kwargs,
+                                    norm_op=norm_op, norm_op_kwargs=norm_op_kwargs,
+                                    min_output=min_output, max_output=max_output).to(device)   
                 elif args.model == 'unet_contrastive':
-                    unet_model = UNetContrastive(n_channels=INPUT_CHANNELS, n_classes=OUTPUT_CHANNELS, min_output=min_output, max_output=max_output).to(device)
+                    unet_model = UNetContrastive(n_channels=INPUT_CHANNELS, n_classes=OUTPUT_CHANNELS,
+                                                dropout_op=dropout_op, dropout_op_kwargs=dropout_op_kwargs,
+                                                norm_op=norm_op, norm_op_kwargs=norm_op_kwargs,
+                                                min_output=min_output, max_output=max_output).to(device)
+                elif args.model == 'mrg_unet' or args.model == 'mrg_unet_plus_plus':  # Experimenting with other existing U-Net and U-Net++ implementations
+                    conv_op = nn.Conv2d
+                    net_nonlin = nn.LeakyReLU
+                    net_nonlin_kwargs = {'negative_slope': 1e-2, 'inplace': True}
+                    base_num_features = 30
+                    num_classes = 1
+                    num_pool = 5
+                    conv_per_stage = 2
+                    feat_map_mul_on_downscale = 2
+                    if args.model == 'mrg_unet':
+                        unet_model = Generic_UNet(INPUT_CHANNELS, base_num_features, num_classes, num_pool, conv_per_stage,
+                                                feat_map_mul_on_downscale, conv_op, norm_op, norm_op_kwargs, dropout_op,
+                                                dropout_op_kwargs, net_nonlin, net_nonlin_kwargs, False, # deep supervision
+                                                False, lambda x: x, InitWeights_He(1e-2),
+                                                None, None, False, True, True).to(device)
+                    elif args.model == 'mrg_unet_plus_plus':
+                        unet_model = Generic_UNetPlusPlus(INPUT_CHANNELS, base_num_features, num_classes, num_pool, conv_per_stage,
+                                                        feat_map_mul_on_downscale, conv_op, norm_op, norm_op_kwargs, dropout_op,
+                                                        dropout_op_kwargs, net_nonlin, net_nonlin_kwargs, False, # deep supervision
+                                                        False, lambda x: x, InitWeights_He(1e-2),
+                                                        None, None, False, True, True).to(device)
+                elif args.model == 'smp_unet':
+                    if args.encoder_depth == 3:
+                        decoder_channels = (64, 32, 16)
+                    elif args.encoder_depth == 4:
+                        decoder_channels = (128, 64, 32, 16)
+                    elif args.encoder_depth == 5:
+                        decoder_channels = (256, 128, 64, 32, 16)
+                    unet_model = smp.Unet(
+                        encoder_name="resnet34",        # Encoder architecture
+                        encoder_depth=args.encoder_depth,   # How many encoder blocks (between 3 and 5)
+                        encoder_weights=None,           # Since our images have more than 3 channels, we cannot use pretrained weights
+                        decoder_use_batchnorm=args.decoder_use_batchnorm,     # Whether decoder should use batchnorm
+                        decoder_channels=decoder_channels,
+                        in_channels=INPUT_CHANNELS,     # model input channels
+                        classes=1,                      # model output channels
+                    ).to(device)
+                elif args.model == 'smp_unet_plus_plus':
+                    if args.encoder_depth == 3:
+                        decoder_channels = (128, 64, 32)
+                    elif args.encoder_depth == 4:
+                        decoder_channels = (128, 64, 32, 16)
+                    elif args.encoder_depth == 5:
+                        decoder_channels = (256, 128, 64, 32, 16)
+                    unet_model = smp.UnetPlusPlus(
+                        encoder_name="resnet34",        # Encoder architecture
+                        encoder_depth=args.encoder_depth,   # How many encoder blocks (between 3 and 5)
+                        encoder_weights=None,           # Since our images have more than 3 channels, we cannot use pretrained weights
+                        decoder_use_batchnorm=args.decoder_use_batchnorm,   # Whether decoder should use batchnorm
+                        decoder_channels=decoder_channels,
+                        in_channels=INPUT_CHANNELS,     # model input channels
+                        classes=1                       # model output channels
+                    ).to(device)
                 else:
                     print('Model type not supported', args.model)
                     exit(1)
-
                 unet_model.load_state_dict(torch.load(args.model_path, map_location=device))
 
                 # Initialize loss and optimizer

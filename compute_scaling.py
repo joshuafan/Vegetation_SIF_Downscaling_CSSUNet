@@ -1,5 +1,7 @@
 """
-Runs pre-built ML methods over the channel averages of each tile (e.g. linear regression or gradient boosted tree)
+Try to compute the optimal scaling factor between OCO-2 and CFIS, by training a model on each dataset,
+computing each model's predictions on CFIS, and running a linear regression to find the best scaling
+factor between the two model's predictions
 """
 import math
 import os

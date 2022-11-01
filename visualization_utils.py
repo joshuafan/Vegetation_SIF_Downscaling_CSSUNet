@@ -240,7 +240,7 @@ def plot_rgb_bands(tile, title, center_lon, center_lat, tile_size_degrees, ax,
     rgb_tile = (array[:, :, rgb_bands] + 2) / 4
     ax.imshow(rgb_tile)
     add_grid_lines(ax, center_lon, center_lat, tile.shape[2], tile.shape[1], tile_size_degrees, num_grid_squares, decimal_places)
-    ax.set_title('RGB bands' + title, fontsize=20)
+    ax.set_title('RGB bands' + title, fontsize=40)
 
 
 def add_grid_lines(ax, center_lon, center_lat, tile_width, tile_height, tile_size_degrees, num_grid_squares, decimal_places):
@@ -423,7 +423,7 @@ def plot_tile_predictions(tile, tile_description, true_sif_tile, predicted_sif_t
     if soundings_tile is not None or augmented_tile is not None:
         num_cols += 1
 
-    fig, axeslist = plt.subplots(ncols=num_cols, nrows=2, figsize=(15*num_cols, 22))
+    fig, axeslist = plt.subplots(ncols=num_cols, nrows=2, figsize=(13*num_cols, 21))
     fig.suptitle(title, fontsize=40)
 
     # Plot the RGB bands
@@ -439,16 +439,16 @@ def plot_tile_predictions(tile, tile_description, true_sif_tile, predicted_sif_t
         sif_difference = sif_tile - true_sif_tile
         ax = axeslist[0, idx+1]
         sif_difference[valid_mask == 0] = np.nan
-        pcm = ax.imshow(sif_difference, cmap=sif_cmap, vmin=-0.5, vmax=0.5)
+        pcm = ax.imshow(sif_difference, cmap=sif_cmap, vmin=-0.6, vmax=0.6)
 
         # outline_masked_areas(non_noisy_mask, ax)
         # ax.scatter(x=non_noisy_indices[:, 1], y=non_noisy_indices[:, 0], c='black', s=0.3)
         add_grid_lines(ax, center_lon, center_lat, sif_difference.shape[1], sif_difference.shape[0], tile_size_degrees, num_grid_squares, decimal_places)
-        ax.set_title(prediction_methods[idx] + ': difference from ground-truth', fontsize=32)
+        ax.set_title(prediction_methods[idx] + ': (Predicted − True)', fontsize=40)
 
     # Plot SIF difference colorbar
     cbar = fig.colorbar(pcm, ax=axeslist[0, :right_idx], cmap=sif_cmap)
-    cbar.ax.tick_params(labelsize=32)
+    cbar.ax.tick_params(labelsize=40)
 
     # Plot ground-truth SIF
     sif_cmap = plt.get_cmap('BuGn')
@@ -459,7 +459,7 @@ def plot_tile_predictions(tile, tile_description, true_sif_tile, predicted_sif_t
     pcm = ax.imshow(true_sif_tile, cmap=sif_cmap, vmin=0, vmax=1)
     # ax.scatter(x=non_noisy_indices[:, 1], y=non_noisy_indices[:, 0], c='black', s=0.5)
     add_grid_lines(ax, center_lon, center_lat, true_sif_tile.shape[1], true_sif_tile.shape[0], tile_size_degrees, num_grid_squares, decimal_places)
-    ax.set_title('Ground truth (average SIF: ' + str(round(sif_mean, 4)) + ')', fontsize=32)
+    ax.set_title('Ground truth (avg SIF: ' + str(round(sif_mean, 4)) + ')', fontsize=40)
 
     # If outline: https://stackoverflow.com/questions/24539296/outline-a-region-in-a-graph
 
@@ -473,11 +473,11 @@ def plot_tile_predictions(tile, tile_description, true_sif_tile, predicted_sif_t
         pcm = ax.imshow(sif_tile, cmap=sif_cmap, vmin=0, vmax=1)
         # ax.scatter(x=non_noisy_indices[:, 1], y=non_noisy_indices[:, 0], c='black', s=0.5)
         add_grid_lines(ax, center_lon, center_lat, sif_tile.shape[1], sif_tile.shape[0], tile_size_degrees, num_grid_squares, decimal_places)
-        ax.set_title(prediction_methods[idx] + ' (average SIF: ' + str(round(sif_mean, 4)) + ')', fontsize=32)
+        ax.set_title(prediction_methods[idx] + ' (avg SIF: ' + str(round(sif_mean, 4)) + ')', fontsize=40)
 
     # Plot SIF colorbar
     cbar = fig.colorbar(pcm, ax=axeslist[1, :right_idx], cmap=sif_cmap)
-    cbar.ax.tick_params(labelsize=32) 
+    cbar.ax.tick_params(labelsize=40) 
 
     # Plot soundings, if soundings tile was given
     if soundings_tile is not None:

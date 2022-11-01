@@ -8,22 +8,44 @@ import torch.nn.functional as F
 class DoubleConv(nn.Module):
     """(convolution => [BN] => ReLU) * 2"""
 
-    def __init__(self, in_channels, out_channels, mid_channels=None):
+    # TODO - add kernel size param
+    def __init__(self, in_channels, out_channels, dropout_op=None, dropout_op_kwargs=None, norm_op=None, norm_op_kwargs=None, mid_channels=None):
         super().__init__()
         if not mid_channels:
             mid_channels = out_channels
-        self.double_conv = nn.Sequential(
-            nn.Conv2d(in_channels, mid_channels, kernel_size=3, padding=1),
-            # nn.Dropout2d(),
-            # nn.BatchNorm2d(mid_channels), # nn.InstanceNorm2d(mid_channels),
-            nn.ReLU(inplace=True),
+        if norm_op is None and dropout_op is None:  # For backward compatibility with existing models. Temporary.
+            print("No dropout or norm")
+            self.double_conv = nn.Sequential(
+                nn.Conv2d(in_channels, mid_channels, kernel_size=3, padding=1),
+                nn.ReLU(inplace=True),
 
-            # ATTENTION!!! Kernel size changed to 1
-            nn.Conv2d(mid_channels, out_channels, kernel_size=1, padding=0),
-            # nn.Dropout2d(),
-            # nn.BatchNorm2d(out_channels), # nn.InstanceNorm2d(out_channels),
-            nn.ReLU(inplace=True)
-        )
+                # ATTENTION!!! Kernel size changed to 1
+                nn.Conv2d(mid_channels, out_channels, kernel_size=1, padding=0),
+                nn.ReLU(inplace=True)
+            )
+        else:
+            print("Dropout or norm being used")
+            if norm_op is None:
+                norm_op = nn.Identity()
+            if dropout_op is None:
+                dropout_op = nn.Identity()
+            if dropout_op_kwargs is None:
+                dropout_op_kwargs = {'p': 0.1, 'inplace': True}
+            if norm_op_kwargs is None:
+                norm_op_kwargs = {'eps': 1e-5, 'affine': True, 'momentum': 0.1}
+
+            self.double_conv = nn.Sequential(
+                nn.Conv2d(in_channels, mid_channels, kernel_size=3, padding=1),
+                dropout_op(**dropout_op_kwargs),
+                norm_op(mid_channels, **norm_op_kwargs),
+                nn.ReLU(inplace=True),
+
+                # ATTENTION!!! Kernel size changed to 1
+                nn.Conv2d(mid_channels, out_channels, kernel_size=1, padding=0),
+                dropout_op(**dropout_op_kwargs),
+                norm_op(out_channels, **norm_op_kwargs),
+                nn.ReLU(inplace=True)
+            )
 
     def forward(self, x):
         return self.double_conv(x)
@@ -32,11 +54,11 @@ class DoubleConv(nn.Module):
 class Down(nn.Module):
     """Downscaling with maxpool then double conv"""
 
-    def __init__(self, in_channels, out_channels):
+    def __init__(self, in_channels, out_channels, dropout_op, dropout_op_kwargs, norm_op, norm_op_kwargs):
         super().__init__()
         self.maxpool_conv = nn.Sequential(
             nn.AvgPool2d(2),
-            DoubleConv(in_channels, out_channels)
+            DoubleConv(in_channels, out_channels, dropout_op, dropout_op_kwargs, norm_op, norm_op_kwargs)
         )
 
     def forward(self, x):
@@ -46,16 +68,16 @@ class Down(nn.Module):
 class Up(nn.Module):
     """Upscaling then double conv"""
 
-    def __init__(self, in_channels, out_channels, bilinear=True):
+    def __init__(self, in_channels, out_channels, dropout_op, dropout_op_kwargs, norm_op, norm_op_kwargs, bilinear=True):
         super().__init__()
 
         # if bilinear, use the normal convolutions to reduce the number of channels
         if bilinear:
             self.up = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
-            self.conv = DoubleConv(in_channels, out_channels, in_channels // 2)
+            self.conv = DoubleConv(in_channels, out_channels, dropout_op, dropout_op_kwargs, norm_op, norm_op_kwargs, in_channels // 2)
         else:
             self.up = nn.ConvTranspose2d(in_channels , in_channels // 2, kernel_size=2, stride=2)
-            self.conv = DoubleConv(in_channels, out_channels)
+            self.conv = DoubleConv(in_channels, out_channels, dropout_op, dropout_op_kwargs, norm_op, norm_op_kwargs)
 
 
     def forward(self, x1, x2):

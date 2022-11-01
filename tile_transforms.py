@@ -53,7 +53,7 @@ class ClipTile(object):
         self._min_input = min_input
         self._max_input = max_input
         self.bands_to_transform = bands_to_transform
-    
+
     def __call__(self, tile):
         if self._min_input is not None and self._max_input is not None:
             tile[self.bands_to_transform, :, :] = np.clip(tile[self.bands_to_transform, :, :], a_min=self._min_input, a_max=self._max_input)
@@ -116,8 +116,7 @@ class MultiplicativeGaussianNoiseRaw(object):
         self.standard_deviation = standard_deviation
 
     def __call__(self, tile):
-        tile_shape = tile.shape[1:3]
-        noise = np.random.normal(loc=0, scale=self.standard_deviation) #, size=tile_shape)
+        noise = np.random.normal(loc=0, scale=self.standard_deviation)
         tile[self.bands_to_transform, :, :] = tile[self.bands_to_transform, :, :] * (1 + noise)
         return tile
 
@@ -132,8 +131,8 @@ class ColorDistortion(object):
         noise = np.random.normal(loc=0, scale=self.standard_deviation, size=(len(self.bands_to_transform)))
         noise = noise[:, np.newaxis, np.newaxis].astype(np.float32)
         tile[self.bands_to_transform, :, :] = tile[self.bands_to_transform, :, :] + noise
-        #print('After noise', tile[self.bands_to_transform, 0:3, 0:3])
         return tile
+
 
 class GaussianNoiseSubtiles(object):
     def __init__(self, bands_to_transform, standard_deviation=0.1):
@@ -349,7 +348,6 @@ class ShrinkTile(object):
 
     # tile is assumed to be CxWxH
     def __call__(self, tile):
-        # print('Original tile shape', tile.shape)
         bands, original_height, original_width = tile.shape
         resized_tile = np.zeros((bands, self.target_dim, self.target_dim))
         

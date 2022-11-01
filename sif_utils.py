@@ -291,7 +291,7 @@ def masked_average(array, mask, dims_to_average):
 
     "array" and "mask" are assumed to have the same shape, and are Pytorch tensors (see masked_average_numpy for the Numpy version)
     "mask" MUST be a binary 1/0 mask over the pixels.
-    "dim_to_average" are the dimensions to average over (usually, the height/width dimensions if you're averaging across an image)
+    "dim_to_average" is a tuple of dimensions to average over (usually, the height/width dimensions if you're averaging across an image)
     """
     assert(len(array.shape) == len(mask.shape))
 

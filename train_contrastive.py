@@ -16,14 +16,18 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch import autograd
 from torch.autograd import grad
-
 from datasets import CombinedDataset, CoarseSIFDataset, FineSIFDataset
-from unet.unet_model import UNetContrastive, UNet2Contrastive, UNet, UNetSmall, UNet2, UNet2PixelEmbedding, UNet2Larger, PixelNN, UNet2Spectral
+from unet.unet_model import UNetContrastive, UNet2Contrastive, UNet, UNet2, PixelNN, UNet2Spectral
 import visualization_utils
 import sif_utils
 import tile_transforms
 import tqdm
 import mtadam
+import segmentation_models_pytorch as smp
+sys.path.append('UNetPlusPlus/pytorch')
+from nnunet.network_architecture.initialization import InitWeights_He
+from nnunet.network_architecture.generic_UNet import Generic_UNet
+from nnunet.network_architecture.generic_UNetPlusPlus import Generic_UNetPlusPlus
 
 # Folds
 TRAIN_FOLDS = [0, 1, 2]
@@ -39,7 +43,7 @@ DATASET_FILES = {'CFIS_2016': os.path.join(METADATA_DIR, 'cfis_coarse_metadata.c
                  'OCO2_2018': os.path.join(DATASET_2018_DIR, 'oco2_metadata.csv'),
                  'TROPOMI_2018': os.path.join(DATASET_2018_DIR, 'tropomi_metadata.csv')}
 COARSE_SIF_DATASETS = {'train': ['CFIS_2016', 'OCO2_2016'],
-                       'val': ['CFIS_2016']} 
+                       'val': ['CFIS_2016']}
 FINE_SIF_DATASETS = {'train': ['CFIS_2016'],
                      'val': ['CFIS_2016']}
 MODEL_SELECTION_DATASET = 'CFIS_2016'
@@ -58,7 +62,18 @@ TILE_SIZE_DEGREES = RES[0] * TILE_PIXELS
 # Command line arguments
 parser = argparse.ArgumentParser()
 parser.add_argument('-prefix', "--prefix", default='10d_', type=str, help='prefix')
-parser.add_argument('-model', "--model", default='unet2', type=str, help='model type')
+parser.add_argument('-model', "--model", default='unet2', choices=['unet2', 'unet2_spectral', 'unet2_contrastive',
+                                                                   'unet', 'unet_contrastive', 'pixel_nn',
+                                                                   'smp_unet', 'smp_unet_plus_plus',
+                                                                   'mrg_unet', 'mrg_unet_plus_plus'], type=str, help='model type')
+
+# Whether to use batchnorm and dropout
+parser.add_argument('-batch_norm', "--batch_norm",  default=False, action='store_true', help='Whether to use BatchNorm')
+parser.add_argument('-dropout_prob', "--dropout_prob", type=float, default=0, help="Dropout probability (set to 0 to not use dropout)")
+
+# Parameters for SMP U-Net
+parser.add_argument('-encoder_depth', "--encoder_depth", type=int, choices=[3, 4, 5], default=3, help="How many encoder blocks to use")
+parser.add_argument('-decoder_use_batchnorm', "--decoder_use_batchnorm", default=False, action='store_true', help='Whether to use batchnorm in decoder')
 
 # Random seed
 parser.add_argument('-seed', "--seed", default=0, type=int)
@@ -116,11 +131,11 @@ parser.add_argument('-fraction_outputs_to_average', "--fraction_outputs_to_avera
 parser.add_argument('-flip_and_rotate', "--flip_and_rotate", action='store_true')
 parser.add_argument('-jigsaw', "--jigsaw", action='store_true')
 parser.add_argument('-compute_vi', "--compute_vi", action='store_true', help="Whether to compute vegetation indices per pixel")
-parser.add_argument('-multiplicative_noise', "--multiplicative_noise", action='store_true')
+parser.add_argument('-multiplicative_noise_start', "--multiplicative_noise_start", action='store_true')
 parser.add_argument('-multiplicative_noise_end', "--multiplicative_noise_end", action='store_true')
 parser.add_argument('-mult_noise_std', "--mult_noise_std", default=0, type=float, help="If the 'multiplicative_noise' augmentation is used, multiply each channel by (1+eps), where eps ~ N(0, mult_noise_std)")
 parser.add_argument('-gaussian_noise', "--gaussian_noise", action='store_true')
-parser.add_argument('-gaussian_noise_std', "--gaussian_noise_std", default=0.2, type=float, help="If the 'multiplicative_noise' augmentation is used, add eps to each pixel, where eps ~ N(0, gaussian_noise_std)")
+parser.add_argument('-gaussian_noise_std', "--gaussian_noise_std", default=0.2, type=float, help="If the 'gaussian_noise' augmentation is used, add eps to each pixel, where eps ~ N(0, gaussian_noise_std)")
 parser.add_argument('-cutout', "--cutout", action='store_true')
 parser.add_argument('-cutout_dim', "--cutout_dim", default=10, type=int, help="If the 'cutout' augmentation is used, this is the dimension of the square to be erased.")
 parser.add_argument('-cutout_prob', "--cutout_prob", default=0.5, type=float, help="If the 'cutout' augmentation is used, this is the probability that a square will be erased.")
@@ -135,10 +150,6 @@ parser.add_argument('-label_noise', "--label_noise", default=0, type=float, help
 args = parser.parse_args()
 
 
-# REMOVE
-if args.lambduh == 0.2 and args.spread == 1:
-    print('alrady did this')
-    exit(1)
 
 # Set random seeds
 np.random.seed(args.seed)
@@ -165,8 +176,8 @@ if args.flip_and_rotate:
     args.special_options += "_fliprotate"
 if args.jigsaw:
     args.special_options += "_jigsaw"
-if args.multiplicative_noise:
-    args.special_options += "_multiplicativenoise-{}".format(args.mult_noise_std)
+if args.multiplicative_noise_start:
+    args.special_options += "_multiplicativenoisestart-{}".format(args.mult_noise_std)
 if args.multiplicative_noise_end:
     args.special_options += "_multiplicativenoiseend-{}".format(args.mult_noise_std)
 if args.gaussian_noise:
@@ -187,6 +198,10 @@ if args.smoothness_loss_contrastive:
     args.special_options += "_smoothnesslosscontrastive-{}".format(args.lambduh)
 if args.pixel_contrastive_loss:
     args.special_options += "_pixelcontrastive-{}".format(args.lambduh)
+if args.batch_norm:
+    args.special_options += "_batchnorm"
+if args.dropout_prob > 0:
+    args.special_options += "_dropout-{}".format(args.dropout_prob)
 PARAM_SETTING += args.special_options
 
 # Model files
@@ -253,7 +268,7 @@ CROP_TYPE_INDICES = list(range(10, 21))  # Indices of crop type bands (within BA
 # CROP_TYPE_INDICES = list(range(12, 23))
 MISSING_REFLECTANCE_IDX = len(BANDS) - 1
 INPUT_CHANNELS = len(BANDS)
-OUTPUT_CHANNELS = 1 
+OUTPUT_CHANNELS = 1
 
 
 
@@ -378,18 +393,18 @@ def calc_gradient_penalty(args, input_tiles_std, predicted_coarse_sifs, return_g
     """
     assert input_tiles_std.shape[0] == predicted_coarse_sifs.shape[0]
     assert len(input_tiles_std.shape) == 4
+    batch, channels, height, width = input_tiles_std.shape
 
     # print("Predicted coarse sifs", predicted_coarse_sifs.shape, "Input tiles std", input_tiles_std.shape)
     raw_gradients = autograd.grad(outputs=predicted_coarse_sifs, inputs=input_tiles_std,
                                   grad_outputs=torch.ones(predicted_coarse_sifs.size()).to(device),
                                   create_graph=True, retain_graph=True, only_inputs=True)[0]
     # print("Gradients shape", gradients.shape)
-    gradients = raw_gradients[:, SIMILARITY_INDICES, :, :] * 10000 #* args.batch_size
+    gradients = raw_gradients[:, SIMILARITY_INDICES, :, :] * height * width
     # print("Gradients", gradients[0, 0, 50:55, 50:55])
 
-    # Reshape gradient such that each pixel is its own row: [# pixels, input features]
-    gradients = gradients.view(gradients.size(0), -1)
-    # print("After view", gradients.shape)
+    # Reshape gradient such that each pixel is its own row
+    gradients = gradients.view(gradients.size(0), -1)  # [pixels, input features]
     gradient_norms = gradients.norm(2, dim=1)
     gradient_penalty = (torch.clamp(gradient_norms - args.norm_penalty_threshold, min=0) ** 2).mean() # (torch.max(torch.zeros_like(gradient_norms), gradient_norms - 1) ** 2).mean() * lambduh
     if return_gradients:
@@ -398,23 +413,7 @@ def calc_gradient_penalty(args, input_tiles_std, predicted_coarse_sifs, return_g
 
 
 
-# # Computes similarity between 0 and 1 between the two given pixel feature vectors.
-# # If the pixels are not of the same crop type, or if one of them is missing, assign
-# # a similarity of 0 (so that they are ignored in the smoothness loss). Otherwise,
-# # the similarity is a function of the distance between the feature vectors.
-# def pixel_similarity(pixel1, pixel2):
-#     if not torch.equal(pixel1[CROP_TYPE_INDICES], pixel2[CROP_TYPE_INDICES]):
-#         return 0
-#     if pixel1[MISSING_REFLECTANCE_IDX] == 1 or pixel2[MISSING_REFLECTANCE_IDX] == 1:
-#         return 0
-#     similarity = torch.exp((-1 / len(SIMILARITY_INDICES)) * (torch.linalg.norm(pixel1[SIMILARITY_INDICES] - pixel2[SIMILARITY_INDICES]) ** 2))
-#     return similarity
-#     # similarity = torch.exp((-1 / len(SIMILARITY_INDICES)) * (torch.linalg.norm(pixel1[SIMILARITY_INDICES] - pixel2[SIMILARITY_INDICES]) ** 2))
-#     # return similarity  
-#     # if similarity > -1: # > 0.5:
-#     #     return similarity
-#     # else:
-#     #     return 0
+
 
 
 def smoothness_loss(args, input_tiles_std, predicted_fine_sifs, device):
@@ -480,13 +479,13 @@ def smoothness_loss(args, input_tiles_std, predicted_fine_sifs, device):
     # # print("Cover distances", cover_distances[0:10, 0:10])
     # print("SIF distances", sif_distances[0:10, 0:10])
 
-    # If two pixels are of different cover types, set their similarity to 0. so that these pairs are
+    # If two pixels are of different cover types, set their similarity to 0, so there is no penalty if their SIF is dif so that these pairs are
     # ignored in the loss function. Same for the similarity of a pixel with itself
     reflectance_similarities[cover_distances > 0.5] = 0  
     reflectance_similarities.fill_diagonal_(0)
 
-    # Compute loss
-    loss = torch.sum(reflectance_similarities * sif_distances) / torch.count_nonzero(reflectance_similarities)  # (cover_distances <= 0.5)
+    # Compute average loss, over pixel pairs that are of the same crop type
+    loss = torch.sum(reflectance_similarities * sif_distances) / torch.count_nonzero(reflectance_similarities)
     return loss
 
     # # Below - naive implementation
@@ -941,7 +940,7 @@ def train_model(args, model, dataloaders, criterion, optimizer, device, sif_mean
                         valid_fine_sif_mask = torch.logical_not(sample['fine_sif_mask']).to(device)
                     else:
                         valid_fine_sif_mask = torch.logical_not(input_tiles_std[:, MISSING_REFLECTANCE_IDX, :, :])
-                    valid_mask_numpy = valid_fine_sif_mask.cpu().detach().numpy() 
+                    valid_mask_numpy = valid_fine_sif_mask.cpu().detach().numpy()
 
                     with torch.set_grad_enabled(phase == 'train' and dataset_name in COARSE_SIF_DATASETS[phase]):
                         # If penalizing gradient of pixel SIF w.r.t inputs, require gradient for input
@@ -955,7 +954,24 @@ def train_model(args, model, dataloaders, criterion, optimizer, device, sif_mean
                             exit(0)
 
                         # Pass tile through model to obtain fine-resolution SIF predictions
-                        predicted_fine_sifs_std, pixel_projections = model(input_tiles_std)  # predicted_fine_sifs_std: (batch size, output dim, H, W)
+                        if "smp" in args.model or "mrg" in args.model:
+                            # If using these pre-built U-Net models, need to pad images to 128x128,
+                            # then extract predictions from non-padded pixels.
+                            # TODO - this is adhoc and won't be robust to different image sizes
+                            batch, channels, height, width = input_tiles_std.shape
+                            padded_tiles = torch.zeros((batch, channels, 128, 128)).to(device)  # pad to [batch, channel, 128, 128]
+                            padded_tiles[:, :, 0:height, 0:width] = input_tiles_std
+                            predicted_fine_sifs_std = model(padded_tiles)  # [batch, 1, 128, 128]
+                            predicted_fine_sifs_std = predicted_fine_sifs_std[:, :, 0:height, 0:width]  # [batch, 1, height, width]
+                        else:
+                            # Otherwise using our implementation, no padding is required
+                            outputs = unet_model(input_tiles_std)
+                            if type(outputs) == tuple:
+                                predicted_fine_sifs_std = torch.squeeze(outputs[0], dim=1)  # predicted_fine_sifs_std: (batch, 1, H, W)
+                                pixel_projections = outputs[1]
+                            else:
+                                predicted_fine_sifs_std = torch.squeeze(outputs, dim=1)  # predicted_fine_sifs_std: (batch, 1, H, W)
+                                pixel_projections = None
                         predicted_fine_sifs_std.requires_grad_(True)
 
                         if torch.isnan(predicted_fine_sifs_std).any():
@@ -985,6 +1001,7 @@ def train_model(args, model, dataloaders, criterion, optimizer, device, sif_mean
                         # For each tile, compute average predicted SIF over all valid pixels
                         predicted_coarse_sifs = sif_utils.masked_average(predicted_fine_sifs, valid_fine_sif_mask, dims_to_average=(1, 2)) # (batch size)
 
+                        # Ensure no predictions are NaN
                         if torch.isnan(predicted_coarse_sifs).any():
                             print('Predicted coarse SIFs', predicted_coarse_sifs)
                             for i in range(valid_fine_sif_mask.shape[0]):
@@ -1018,10 +1035,8 @@ def train_model(args, model, dataloaders, criterion, optimizer, device, sif_mean
                                 loss = other_loss
                             else:
                                 loss = coarse_loss + other_loss * args.lambduh
-                            # loss = coarse_loss + other_loss * args.lambduh
                         elif args.gradient_penalty and phase == 'train':
                             other_loss, gradients = calc_gradient_penalty(args, input_tiles_std, predicted_coarse_sifs, return_gradients=True)
-                            # print("Coarse loss", coarse_loss.item(), "--- Gradient penalty", other_loss.item())
                             loss = coarse_loss + other_loss * args.lambduh
                         else:
                             loss = coarse_loss
@@ -1035,9 +1050,7 @@ def train_model(args, model, dataloaders, criterion, optimizer, device, sif_mean
                                 optimizer.step([coarse_loss, other_loss], ranks, None)
                             else:
                                 loss.backward()
-                                # print('Grad', model.down1.maxpool_conv[1].double_conv[0].weight.grad)
                                 optimizer.step()
-
 
                         # Compute/record losses
                         with torch.set_grad_enabled(args.fine_supervision):
@@ -1377,7 +1390,7 @@ if args.multiplicative_noise_end:
     multiplicative_noise_end_transform = transforms.Compose([multiplicative_noise_end_transform, clip_transform])
 else:
     multiplicative_noise_end_transform = None
-raw_multiplicative_noise_transform = tile_transforms.MultiplicativeGaussianNoiseRaw(bands_to_transform=REFLECTANCE_INDICES, standard_deviation=args.mult_noise_std)
+multiplicative_noise_start_transform = tile_transforms.MultiplicativeGaussianNoiseRaw(bands_to_transform=REFLECTANCE_INDICES, standard_deviation=args.mult_noise_std)
 flip_and_rotate_transform = tile_transforms.RandomFlipAndRotate()
 compute_vi_transform = tile_transforms.ComputeVegetationIndices()
 jigsaw_transform = tile_transforms.RandomJigsaw()
@@ -1401,17 +1414,15 @@ if args.compute_vi:
 if args.cutout:
     transform_list_train.append(cutout_transform)
 
-# Add multiplicative noise at beginning
-if args.multiplicative_noise:
-    transform_list_train.append(raw_multiplicative_noise_transform)
+# Add multiplicative noise, if we're doing it at the start
+if args.multiplicative_noise_start:
+    transform_list_train.append(multiplicative_noise_start_transform)
 
 # If normalize, normalize each pixel at the very beginning
 if args.normalize:
     print("Normalizing")
     transform_list_train.append(normalize_transform)
     transform_list_val.append(normalize_transform)
-else:
-    print("Not normalizing")
 
 # Standardize/clip the continuous variables
 transform_list_train.extend([standardize_transform, clip_transform])
@@ -1441,12 +1452,14 @@ for dataset_name, dataset_file in DATASET_FILES.items():
 
     # Filter tiles
     if 'CFIS' in dataset_name:
-        # Only include CFIS tiles with enough valid pixels
+        # CFIS is the fine-resolution SIF dataset, with a SIF label per pixel.
+        # Only include CFIS tiles with enough valid pixels w/ data (with at least 1 SIF measurement)
         metadata = metadata[(metadata['fraction_valid'] >= MIN_COARSE_FRACTION_VALID_PIXELS) &
                                             (metadata['SIF'] >= args.min_sif_clip) &
                                             (metadata['missing_reflectance'] <= MAX_CFIS_CLOUD_COVER)]
 
     else:
+        # Otherwise, the OCO-2 is the coarse-resolution SIF dataset, with only tile-level SIF labels.
         metadata = metadata[(metadata['num_soundings'] >= MIN_OCO2_SOUNDINGS) &
                                         (metadata['missing_reflectance'] <= MAX_OCO2_CLOUD_COVER) &
                                         (metadata['SIF'] >= args.min_sif_clip)]
@@ -1454,8 +1467,7 @@ for dataset_name, dataset_file in DATASET_FILES.items():
     metadata = metadata[metadata[ALL_COVER_COLUMNS].sum(axis=1) >= MIN_CDL_COVERAGE]
 
     if '2018' in dataset_name:
-        metadata['SIF'] /= 1.52
-        # print(metadata['SIF'].head())
+        metadata['SIF'] /= 1.52  # 2018 datasets were adjusted to match the TROPOMI measurements. Need to divide to match CFIS
 
     # Read dataset splits
     if dataset_name == 'OCO2_2016' or dataset_name == 'CFIS_2016':
@@ -1486,35 +1498,6 @@ for dataset_name, dataset_file in DATASET_FILES.items():
             val_datasets[dataset_name] = CoarseSIFDataset(val_set, val_transform, None)
 
 
-# if 'CFIS' in TRAIN_SOURCES:
-#     cfis_train_metadata = pd.read_csv(CFIS_TILE_METADATA_TRAIN_FILE)
-# else:
-#     cfis_train_metadata = None
-
-# if 'OCO2' in TRAIN_SOURCES:
-#     oco2_train_metadata = pd.read_csv(OCO2_TILE_METADATA_TRAIN_FILE)
-#     # Filter OCO2 sets
-#     oco2_train_metadata = oco2_train_metadata[(oco2_train_metadata['num_soundings'] >= MIN_OCO2_SOUNDINGS) &
-#                                               (oco2_train_metadata['missing_reflectance'] <= MAX_OCO2_CLOUD_COVER) &
-#                                               (oco2_train_metadata['SIF'] >= MIN_SIF_CLIP) &
-#                                               (oco2_train_metadata['date'].isin(TRAIN_DATES))]
-#     oco2_train_metadata['SIF'] = oco2_train_metadata['SIF'] * OCO2_SCALING_FACTOR
-#     print('Number of OCO2 train tiles', len(oco2_train_metadata))
-# else:
-#     oco2_train_metadata = None
-
-# cfis_val_metadata = pd.read_csv(CFIS_TILE_METADATA_VAL_FILE)
-
-# # Filter CFIS sets
-# cfis_train_metadata = cfis_train_metadata[(cfis_train_metadata['fraction_valid'] >= MIN_COARSE_FRACTION_VALID_PIXELS) &
-#                                           (cfis_train_metadata['SIF'] >= MIN_SIF_CLIP) &
-#                                           (cfis_train_metadata['date'].isin(TRAIN_DATES))]
-# cfis_val_metadata = cfis_val_metadata[(cfis_val_metadata['fraction_valid'] >= MIN_COARSE_FRACTION_VALID_PIXELS) &
-#                                       (cfis_val_metadata['SIF'] >= MIN_SIF_CLIP) &
-#                                       (cfis_val_metadata['date'].isin(TRAIN_DATES))]
-# print('Number of CFIS train tiles', len(cfis_train_metadata))
-# print('Number of CFIS val tiles', len(cfis_val_metadata))
-
 # Print params for reference
 print("=========================== PARAMS ===========================")
 PARAM_STRING = ''
@@ -1530,11 +1513,9 @@ PARAM_STRING += ('Test dates: ' + str(TEST_DATES) + '\n')
 PARAM_STRING += ('Min soundings (fine CFIS): ' + str(MIN_FINE_CFIS_SOUNDINGS) + '\n')
 PARAM_STRING += ('Min SIF clip: ' + str(args.min_sif_clip) + '\n')
 PARAM_STRING += ('Max cloud cover (coarse CFIS): ' + str(MAX_CFIS_CLOUD_COVER) + '\n')
-PARAM_STRING += ('Min fraction valid pixels in CFIS tile: ' + str(MIN_COARSE_FRACTION_VALID_PIXELS) + '\n')
+PARAM_STRING += ('Min fraction valid pixels (with SIF data) in CFIS tile: ' + str(MIN_COARSE_FRACTION_VALID_PIXELS) + '\n')
 PARAM_STRING += ('Train features: ' + str(BANDS) + '\n')
 PARAM_STRING += ("Clip input features: " + str(args.min_input) + " to " + str(args.max_input) + " standard deviations from mean\n")
-# if REMOVE_PURE_TRAIN:
-#     PARAM_STRING += ('Removing pure train tiles above ' + str(PURE_THRESHOLD_TRAIN) + '\n')
 PARAM_STRING += ('================= METHOD ===============\n')
 if args.from_pretrained:
     PARAM_STRING += ('From pretrained model: ' + os.path.basename(PRETRAINED_MODEL_FILE) + '\n')
@@ -1550,6 +1531,8 @@ if args.smoothness_loss_contrastive:
     PARAM_STRING += ("Smoothness Loss Contrastive. Lambda: " + str(args.lambduh) + "\n")
 if args.pixel_contrastive_loss:
     PARAM_STRING += ("Pixel contrastive loss. Lambda: " + str(args.lambduh) + ", Temperature: " + str(args.temperature) + "\n")
+if args.gradient_penalty:
+    PARAM_STRING += ("Gradient penalty. Lambda: " + str(args.lambduh) + ", Penalty threshold: " + str(args.norm_penalty_threshold) + "\n")
 
 PARAM_STRING += ("Param string: " + PARAM_SETTING + '\n')
 PARAM_STRING += ("Model type: " + args.model + '\n')
@@ -1568,14 +1551,20 @@ if args.resize:
     PARAM_STRING += ('\tResize images to: ' + str(args.resize_dim) + '\n')
 if args.gaussian_noise:
     PARAM_STRING += ("\tGaussian noise (std deviation): " + str(args.gaussian_noise_std) + '\n')
-if args.multiplicative_noise:
-    PARAM_STRING += ("\tMultiplicative noise: Gaussian (std deviation): " + str(args.mult_noise_std) + '\n')
+if args.multiplicative_noise_start:
+    PARAM_STRING += ("\tMultiplicative noise at START: Gaussian (std deviation): " + str(args.mult_noise_std) + '\n')
+if args.multiplicative_noise_end:
+    PARAM_STRING += ("\tMultiplicative noise at END: Gaussian (std deviation): " + str(args.mult_noise_std) + '\n')
 if args.random_crop:
     PARAM_STRING += ("\tRandom crop size: " + str(args.crop_dim) + '\n')
 if args.cutout:
     PARAM_STRING += ("\tCutout: size " + str(args.cutout_dim) + ", prob " + str(args.cutout_prob) + '\n')
 if args.label_noise != 0:
     PARAM_STRING += ("\tLabel noise: std " + str(args.label_noise) + '\n')
+if args.batch_norm:
+    PARAM_STRING += "Using batch norm\n"
+if args.dropout_prob > 0:
+    PARAM_STRING += ("Dropout prob: " + str(args.dropout_prob) + "\n")
 PARAM_STRING += ("Fraction outputs to average: " + str(args.fraction_outputs_to_average) + '\n')
 PARAM_STRING += ("SIF range: " + str(args.min_sif) + " to " + str(args.max_sif) + '\n')
 PARAM_STRING += ("SIF statistics: mean " + str(sif_mean) + ", std " + str(sif_std) + '\n')
@@ -1583,11 +1572,11 @@ PARAM_STRING += ("==============================================================
 print(PARAM_STRING)
 
 
-# Create dataset/dataloaders
-def seed_worker(worker_id):
-    worker_seed = torch.initial_seed() % 2**32
-    numpy.random.seed(worker_seed)
-    random.seed(worker_seed)
+# # Create dataset/dataloaders
+# def seed_worker(worker_id):
+#     worker_seed = torch.initial_seed() % 2**32
+#     numpy.random.seed(worker_seed)
+#     random.seed(worker_seed)
 
 g = torch.Generator()
 g.manual_seed(args.seed)
@@ -1600,20 +1589,100 @@ dataloaders = {x: torch.utils.data.DataLoader(datasets[x], batch_size=args.batch
                for x in ['train', 'val']}
 
 # Initialize model
+if args.batch_norm:
+    norm_op = nn.BatchNorm2d
+else:
+    norm_op = nn.Identity
+if args.dropout_prob != 0:
+    dropout_op = nn.Dropout2d
+else:
+    dropout_op = nn.Identity
+norm_op_kwargs = {'eps': 1e-5, 'affine': True}
+dropout_op_kwargs = {'p': args.dropout_prob, 'inplace': True}
+print("Dropout op", dropout_op)
+print("Norm op", norm_op, "\n")
+
 if args.model == 'unet2':
     unet_model = UNet2(n_channels=INPUT_CHANNELS, n_classes=OUTPUT_CHANNELS,
-                       reduced_channels=args.reduced_channels, min_output=min_output, max_output=max_output).to(device)
+                       dropout_op=dropout_op, dropout_op_kwargs=dropout_op_kwargs,
+                       norm_op=norm_op, norm_op_kwargs=norm_op_kwargs,
+                       min_output=min_output, max_output=max_output).to(device)
 elif args.model == 'unet2_contrastive':
-    unet_model = UNet2Contrastive(n_channels=INPUT_CHANNELS, n_classes=OUTPUT_CHANNELS, min_output=min_output, max_output=max_output).to(device)
+    unet_model = UNet2Contrastive(n_channels=INPUT_CHANNELS, n_classes=OUTPUT_CHANNELS,
+                                  dropout_op=dropout_op, dropout_op_kwargs=dropout_op_kwargs,
+                                  norm_op=norm_op, norm_op_kwargs=norm_op_kwargs,
+                                  min_output=min_output, max_output=max_output).to(device)
 elif args.model == 'unet2_spectral':
-    unet_model = UNet2Spectral(n_channels=INPUT_CHANNELS, n_classes=OUTPUT_CHANNELS, min_output=min_output, max_output=max_output).to(device)
+    unet_model = UNet2Spectral(n_channels=INPUT_CHANNELS, n_classes=OUTPUT_CHANNELS,
+                               dropout_op=dropout_op, dropout_op_kwargs=dropout_op_kwargs,
+                               norm_op=norm_op, norm_op_kwargs=norm_op_kwargs,
+                               min_output=min_output, max_output=max_output).to(device)
 elif args.model == 'pixel_nn':
-    unet_model = PixelNN(input_channels=INPUT_CHANNELS, output_dim=OUTPUT_CHANNELS, min_output=min_output, max_output=max_output).to(device)
+    unet_model = PixelNN(input_channels=INPUT_CHANNELS, output_dim=OUTPUT_CHANNELS,
+                         min_output=min_output, max_output=max_output).to(device)
 elif args.model == 'unet':
     unet_model = UNet(n_channels=INPUT_CHANNELS, n_classes=OUTPUT_CHANNELS,
-                      reduced_channels=args.reduced_channels, min_output=min_output, max_output=max_output).to(device)   
+                      dropout_op=dropout_op, dropout_op_kwargs=dropout_op_kwargs,
+                      norm_op=norm_op, norm_op_kwargs=norm_op_kwargs,
+                      min_output=min_output, max_output=max_output).to(device)   
 elif args.model == 'unet_contrastive':
-    unet_model = UNetContrastive(n_channels=INPUT_CHANNELS, n_classes=OUTPUT_CHANNELS, min_output=min_output, max_output=max_output).to(device)
+    unet_model = UNetContrastive(n_channels=INPUT_CHANNELS, n_classes=OUTPUT_CHANNELS,
+                                 dropout_op=dropout_op, dropout_op_kwargs=dropout_op_kwargs,
+                                 norm_op=norm_op, norm_op_kwargs=norm_op_kwargs,
+                                 min_output=min_output, max_output=max_output).to(device)
+elif args.model == 'mrg_unet' or args.model == 'mrg_unet_plus_plus':  # Experimenting with other existing U-Net and U-Net++ implementations
+    conv_op = nn.Conv2d
+    net_nonlin = nn.LeakyReLU
+    net_nonlin_kwargs = {'negative_slope': 1e-2, 'inplace': True}
+    base_num_features = 30
+    num_classes = 1
+    num_pool = 5
+    conv_per_stage = 2
+    feat_map_mul_on_downscale = 2
+    if args.model == 'mrg_unet':
+        unet_model = Generic_UNet(INPUT_CHANNELS, base_num_features, num_classes, num_pool, conv_per_stage,
+                                  feat_map_mul_on_downscale, conv_op, norm_op, norm_op_kwargs, dropout_op,
+                                  dropout_op_kwargs, net_nonlin, net_nonlin_kwargs, False, # deep supervision
+                                  False, lambda x: x, InitWeights_He(1e-2),
+                                  None, None, False, True, True).to(device)
+    elif args.model == 'mrg_unet_plus_plus':
+        unet_model = Generic_UNetPlusPlus(INPUT_CHANNELS, base_num_features, num_classes, num_pool, conv_per_stage,
+                                          feat_map_mul_on_downscale, conv_op, norm_op, norm_op_kwargs, dropout_op,
+                                          dropout_op_kwargs, net_nonlin, net_nonlin_kwargs, False, # deep supervision
+                                          False, lambda x: x, InitWeights_He(1e-2),
+                                          None, None, False, True, True).to(device)
+elif args.model == 'smp_unet':
+    if args.encoder_depth == 3:
+        decoder_channels = (64, 32, 16)
+    elif args.encoder_depth == 4:
+        decoder_channels = (128, 64, 32, 16)
+    elif args.encoder_depth == 5:
+        decoder_channels = (256, 128, 64, 32, 16)
+    unet_model = smp.Unet(
+        encoder_name="resnet34",        # Encoder architecture
+        encoder_depth=args.encoder_depth,   # How many encoder blocks (between 3 and 5)
+        encoder_weights=None,           # Since our images have more than 3 channels, we cannot use pretrained weights
+        decoder_use_batchnorm=args.decoder_use_batchnorm,     # Whether decoder should use batchnorm
+        decoder_channels=decoder_channels,
+        in_channels=INPUT_CHANNELS,     # model input channels
+        classes=1,                      # model output channels
+    ).to(device)
+elif args.model == 'smp_unet_plus_plus':
+    if args.encoder_depth == 3:
+        decoder_channels = (128, 64, 32)
+    elif args.encoder_depth == 4:
+        decoder_channels = (128, 64, 32, 16)
+    elif args.encoder_depth == 5:
+        decoder_channels = (256, 128, 64, 32, 16)
+    unet_model = smp.UnetPlusPlus(
+        encoder_name="resnet34",        # Encoder architecture
+        encoder_depth=args.encoder_depth,   # How many encoder blocks (between 3 and 5)
+        encoder_weights=None,           # Since our images have more than 3 channels, we cannot use pretrained weights
+        decoder_use_batchnorm=args.decoder_use_batchnorm,   # Whether decoder should use batchnorm
+        decoder_channels=decoder_channels,
+        in_channels=INPUT_CHANNELS,     # model input channels
+        classes=1                       # model output channels
+    ).to(device)
 else:
     print('Model type not supported', args.model)
     exit(1)
