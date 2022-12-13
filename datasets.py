@@ -24,10 +24,11 @@ class CombinedDataset(Dataset):
     def __init__(self, datasets):
         self.datasets = datasets
     
-    """
-    Length is equal to the length of the longest dataset
-    """
+
     def __len__(self):
+        """
+        Length is equal to the length of the longest dataset
+        """
         max_len = 0
         for dataset in self.datasets.values():
             if len(dataset) > max_len:
@@ -169,19 +170,16 @@ class FineSIFDataset(Dataset):
             # is covered by clouds)
             fine_sif_mask = np.logical_or(fine_sif_mask, input_tile[-1])
 
-
-
-
         sample = {'fine_sif': torch.tensor(fine_sif_tile, dtype=torch.float),
-                'fine_sif_mask': torch.tensor(fine_sif_mask, dtype=torch.bool),
-                'fine_soundings': torch.tensor(fine_soundings_tile, dtype=torch.float),
-                'coarse_sif': torch.tensor(current_tile_info[self.coarse_sif_column], dtype=torch.float),  #torch.tensor(cfis_coarse_sif, dtype=torch.float),
-                'coarse_soundings': current_tile_info[self.coarse_soundings_column],
-                'tile_file': current_tile_info.loc[self.tile_file_column],
-                'lon': current_tile_info.loc['lon'],
-                'lat': current_tile_info.loc['lat'],
-                'date': current_tile_info.loc['date'],
-                'fraction_valid': current_tile_info.loc['fraction_valid']}
+                  'fine_sif_mask': torch.tensor(fine_sif_mask, dtype=torch.bool),
+                  'fine_soundings': torch.tensor(fine_soundings_tile, dtype=torch.float),
+                  'coarse_sif': torch.tensor(current_tile_info[self.coarse_sif_column], dtype=torch.float),  #torch.tensor(cfis_coarse_sif, dtype=torch.float),
+                  'coarse_soundings': current_tile_info[self.coarse_soundings_column],
+                  'tile_file': current_tile_info.loc[self.tile_file_column],
+                  'lon': current_tile_info.loc['lon'],
+                  'lat': current_tile_info.loc['lat'],
+                  'date': current_tile_info.loc['date'],
+                  'fraction_valid': current_tile_info.loc['fraction_valid']}
 
         sample['input_tile_without_mult_noise'] = torch.tensor(input_tile, dtype=torch.float)
         if self.multiplicative_noise_end_transform is not None:

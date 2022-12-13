@@ -1,3 +1,6 @@
+# NOT NEEDED ANYMORE. This script was initially intended to download many files from Google Drive onto a server. However Google Drive started 
+# making this tricky, and now it's much easier to use rclone.
+
 # To obtain the DOCUMENT_IDS, for each Google Drive file, click "Get sharable link". Make sure the
 # permissions are set to "Anyone with the link can edit." Copy the link, eg:
 # 1tYsp4aVW1bLD3gvwMdRxMG_xW2kdasjw

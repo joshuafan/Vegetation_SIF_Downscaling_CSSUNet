@@ -1,3 +1,7 @@
+"""
+Evaluates performance of a pretrained Coarsely-Supervised Smooth U-Net model
+on fine-resolution (pixel-level) labels.
+"""
 import argparse
 import copy
 import csv
@@ -29,6 +33,7 @@ from nnunet.network_architecture.generic_UNet import Generic_UNet
 from nnunet.network_architecture.generic_UNetPlusPlus import Generic_UNetPlusPlus
 
 
+# Data directories
 DATA_DIR = "/mnt/beegfs/bulk/mirror/jyf6/datasets/SIF"
 METADATA_DIR = os.path.join(DATA_DIR, "metadata/CFIS_OCO2_dataset")
 CFIS_COARSE_METADATA_FILE = os.path.join(METADATA_DIR, 'cfis_coarse_metadata.csv')

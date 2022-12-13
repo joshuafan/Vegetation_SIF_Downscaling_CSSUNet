@@ -1,3 +1,9 @@
+"""
+Trains U-Net based models to map from an input tile (satellite images, land cover, etc) to a
+SIF prediction for each pixel. The model is trained in a coarsely-supervised way
+(where the label is only available at the tile level), unless `--fine_supervision` is set.
+"""
+
 import argparse
 import copy
 import csv
@@ -947,7 +953,6 @@ def train_model(args, model, dataloaders, criterion, optimizer, device, sif_mean
                         if args.gradient_penalty:
                             input_tiles_std.requires_grad_(True)
 
-                        # TODO check why extreme values occur
                         if torch.isnan(input_tiles_std).any():
                             print("input_tiles_std contained nan")
                             print(input_tiles_std)
@@ -967,10 +972,10 @@ def train_model(args, model, dataloaders, criterion, optimizer, device, sif_mean
                             # Otherwise using our implementation, no padding is required
                             outputs = unet_model(input_tiles_std)
                             if type(outputs) == tuple:
-                                predicted_fine_sifs_std = torch.squeeze(outputs[0], dim=1)  # predicted_fine_sifs_std: (batch, 1, H, W)
+                                predicted_fine_sifs_std = torch.squeeze(outputs[0], dim=1)  # predicted_fine_sifs_std: [batch, 1, H, W]
                                 pixel_projections = outputs[1]
                             else:
-                                predicted_fine_sifs_std = torch.squeeze(outputs, dim=1)  # predicted_fine_sifs_std: (batch, 1, H, W)
+                                predicted_fine_sifs_std = torch.squeeze(outputs, dim=1)  # predicted_fine_sifs_std: [batch, 1, H, W]
                                 pixel_projections = None
                         predicted_fine_sifs_std.requires_grad_(True)
 
@@ -979,7 +984,7 @@ def train_model(args, model, dataloaders, criterion, optimizer, device, sif_mean
                             print(predicted_fine_sifs_std)
                             exit(0)
 
-                        predicted_fine_sifs_std = torch.squeeze(predicted_fine_sifs_std, dim=1)
+                        predicted_fine_sifs_std = torch.squeeze(predicted_fine_sifs_std, dim=1)  # [batch, H, W]
                         predicted_fine_sifs = predicted_fine_sifs_std * sif_std + sif_mean
                         predicted_fine_sifs.requires_grad_(True)
                         # print("Predicted fine sifs", predicted_fine_sifs[0, 0:10, 0:10])

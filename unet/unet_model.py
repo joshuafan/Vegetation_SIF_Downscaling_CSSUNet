@@ -9,13 +9,19 @@ import torch.nn as nn
 from .unet_parts import *
 from torch.nn.utils.parametrizations import spectral_norm
 
-# Smaller version of U-Net with 2 blocks going up and down. This version is used for the paper's results.
 class UNet2(nn.Module):
-    # If "reduced_channels" is set, add another 1x1 convolution (basically a pixel-wise nonlinear
-    # transform) to the start, to reduce the dimensionality of each pixel.
-    # If "min_output" and "max_output" are set, the model's prediction will be constrained by the
-    # Tanh function to fall within the range (min_output, max_output).
+    """
+    Smaller version of U-Net with 2 blocks going up and down.
+    This reduces the receptive field of each pixel compared to 
+    a standard U-Net.
+    """
     def __init__(self, n_channels, n_classes, dropout_op, dropout_op_kwargs, norm_op, norm_op_kwargs, min_output=None, max_output=None):
+        """
+        If "reduced_channels" is set, add another 1x1 convolution (basically a pixel-wise nonlinear 
+        transform) to the start, to reduce the dimensionality of each pixel.
+        If "min_output" and "max_output" are set, the model's prediction will be constrained by the
+        Tanh function to fall within the range (min_output, max_output).
+        """
         super(UNet2, self).__init__()
         self.n_channels = n_channels
         self.n_classes = n_classes
@@ -135,10 +141,13 @@ class UNet2Spectral(nn.Module):
 
 
 class UNet2WithReconstruction(nn.Module):
-    # If "reduced_channels" is set, add another 1x1 convolution (basically a pixel-wise nonlinear
-    # transform) to the start, to reduce the dimensionality of each pixel.
-    # If "min_output" and "max_output" are set, the model's prediction will be constrained by the
-    # Tanh function to fall within the range (min_output, max_output).
+    """ (NOT USED CURRENTLY)
+
+    If "reduced_channels" is set, add another 1x1 convolution (basically a pixel-wise nonlinear
+    transform) to the start, to reduce the dimensionality of each pixel.
+    If "min_output" and "max_output" are set, the model's prediction will be constrained by the
+    Tanh function to fall within the range (min_output, max_output).
+    """
     def __init__(self, n_channels, n_classes, recon_channels, dropout_op, dropout_op_kwargs, norm_op, norm_op_kwargs, min_output=None, max_output=None):
         super(UNet2WithReconstruction, self).__init__()
         self.n_channels = n_channels
@@ -186,6 +195,9 @@ class UNet2WithReconstruction(nn.Module):
 
 
 class UNet(nn.Module):
+    """
+    Vanilla U-Net, code drawn from https://github.com/milesial/Pytorch-UNet
+    """
     def __init__(self, n_channels, n_classes, dropout_op, dropout_op_kwargs, norm_op, norm_op_kwargs,
                  min_output=None, max_output=None, bilinear=True, crop_type_start_idx=12, crop_type_embedding_dim=10):
         super(UNet, self).__init__()
@@ -480,6 +492,9 @@ class UNet2CoarseFeatures(nn.Module):
 
 
 class PixelNN(nn.Module):
+    """
+    Pixel-wise MLP
+    """
     def __init__(self, input_channels, output_dim, min_output=None, max_output=None):
         super(PixelNN, self).__init__()
         self.conv1 = nn.Conv2d(input_channels, 100, kernel_size=1, stride=1, padding=0)
