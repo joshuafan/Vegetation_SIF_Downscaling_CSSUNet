@@ -15,8 +15,10 @@ To train averaging-based baselines and test them at a fine resolution, see `trai
 
 # Installation instructions (not complete, TODO)
 
-conda create --name sif
-conda activate sif
-conda install numpy pandas matplotlib
-conda install pytorch torchvision torchaudio pytorch-cuda=11.7 -c pytorch -c nvidia
-conda install -c conda-forge tqdm
+You need to install PyTorch/Torchvision, Numpy, Pandas, Matplotlib, Scikit-Learn, and maybe others. TODO - make this reproducible
+
+    conda create --name sif
+    conda activate sif
+    conda install numpy pandas matplotlib scikit-learn
+    conda install pytorch torchvision torchaudio pytorch-cuda=11.7 -c pytorch -c nvidia
+    conda install -c conda-forge tqdm
