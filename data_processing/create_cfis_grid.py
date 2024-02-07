@@ -141,10 +141,6 @@ for date_idx, DATE in enumerate(DATES):
     oco2_grid_top_idx, oco2_grid_left_idx = sif_utils.lat_long_to_index(oco2_grid_top_degrees, oco2_grid_left_degrees, TOP_BOUND, LEFT_BOUND, RES)
     OCO2_LON_OFFSET = oco2_grid_left_idx % TILE_SIZE_PIXELS
     OCO2_LAT_OFFSET = oco2_grid_top_idx % TILE_SIZE_PIXELS
-    # print('OCO2 upper-left degrees', oco2_grid_top_degrees, oco2_grid_left_degrees)
-    # print('OCO2 upper-left idx', oco2_grid_top_idx, oco2_grid_left_idx)
-    # print('OCO2 upper-left idx offset', OCO2_LAT_OFFSET, OCO2_LON_OFFSET)
-    # exit(0)
 
     # We divide the region into 1x1 grid squares. We keep track of which grid squares contained
     # CFIS points for this date, so that we can remove OCO-2 points that are in those grid 
@@ -174,9 +170,9 @@ for date_idx, DATE in enumerate(DATES):
     tile_to_oco2_soundings = dict()
 
     # Read CFIS data
-    lons = np.load(os.path.join(CFIS_DIR, "lons_" + MONTH + ".npy"), allow_pickle=True)
-    lats = np.load(os.path.join(CFIS_DIR, "lats_" + MONTH + ".npy"), allow_pickle=True)
-    sifs = np.load(os.path.join(CFIS_DIR, "dcsif_" + MONTH + ".npy"), allow_pickle=True)
+    lons = np.load(os.path.join(RAW_CFIS_DIR, "lons_" + MONTH + ".npy"), allow_pickle=True)
+    lats = np.load(os.path.join(RAW_CFIS_DIR, "lats_" + MONTH + ".npy"), allow_pickle=True)
+    sifs = np.load(os.path.join(RAW_CFIS_DIR, "dcsif_" + MONTH + ".npy"), allow_pickle=True)
     print('Lons shape', lons.shape)
     print('Lats shape', lats.shape)
     print('Sifs shape', sifs.shape)

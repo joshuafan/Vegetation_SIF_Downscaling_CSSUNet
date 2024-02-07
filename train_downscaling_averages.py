@@ -164,31 +164,6 @@ OUTPUT_COLUMN = ['SIF']
 COVER_COLUMNS_TO_PLOT = ['grassland_pasture', 'corn', 'soybean', 'deciduous_forest'] 
 
 
-# # Other options - out of date
-# INPUT_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
-#                     'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg',
-#                     'grassland_pasture', 'corn', 'soybean', 'shrubland',
-#                     'deciduous_forest', 'evergreen_forest', 'spring_wheat', 'developed_open_space',
-#                     'other_hay_non_alfalfa', 'winter_wheat', 'herbaceous_wetlands',
-#                     'woody_wetlands', 'open_water', 'alfalfa', 'fallow_idle_cropland',
-#                     'sorghum', 'developed_low_intensity', 'barren', 'durum_wheat',
-#                     'canola', 'sunflower', 'dry_beans', 'developed_med_intensity',
-#                     'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
-#                     'lentils', 'missing_reflectance']
-# INPUT_COLUMNS = ['ref_1', 'ref_2', 'ref_3', 'ref_4', 'ref_5', 'ref_6', 'ref_7',
-#                     'ref_10', 'ref_11', 'Rainf_f_tavg', 'SWdown_f_tavg', 'Tair_f_tavg']
-# COVER_COLUMNS_TO_PLOT = ['grassland_pasture', 'corn', 'soybean', 'shrubland',
-#                     'deciduous_forest', 'evergreen_forest', 'spring_wheat', 'developed_open_space',
-#                     'other_hay_non_alfalfa', 'winter_wheat', 'herbaceous_wetlands',
-#                     'woody_wetlands', 'open_water', 'alfalfa', 'fallow_idle_cropland',
-#                     'sorghum', 'developed_low_intensity', 'barren', 'durum_wheat',
-#                     'canola', 'sunflower', 'dry_beans', 'developed_med_intensity',
-#                     'millet', 'sugarbeets', 'oats', 'mixed_forest', 'peas', 'barley',
-#                     'lentils']
-
-
-
-
 
 for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
     # Different ways of filtering fine pixels
@@ -602,13 +577,6 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
 
                     PLOT_PREFIX = CFIS_TRUE_VS_PREDICTED_PLOT + '_res' + str(resolution) + '_finesoundings' + str(min_fine_cfis_soundings)  #+ '_finefractionvalid' + str(min_fraction_valid_pixels)
 
-                    # # Check distributions
-                    # print('Coarse Train set means', train_set.mean(axis=0))
-                    # print('Fine train set means', fine_train_set.mean(axis=0))
-                    # print('Coarse val set means', coarse_val_set.mean(axis=0))
-                    # print('Fine val set means', fine_val_set.mean(axis=0))
-                    # print('Fine test set means', fine_test_set.mean(axis=0))
-
                     # Now generate predictions using trained model
                     predictions_fine_train_all = model.predict(X_fine_train)
                     predictions_fine_val_filtered = model.predict(X_fine_val_filtered)
@@ -680,8 +648,6 @@ for min_coarse_fraction_valid in MIN_COARSE_FRACTION_VALID_PIXELS:
                     for idx, crop_type in enumerate(COVER_COLUMNS_TO_PLOT):
                         predicted = predictions_fine_train_filtered[fine_train_set_filtered[crop_type] > PURE_THRESHOLD]
                         true = Y_fine_train_filtered[fine_train_set_filtered[crop_type] > PURE_THRESHOLD]
-                        # predicted = predictions_fine_test_filtered[fine_test_set_filtered[crop_type] > PURE_THRESHOLD]
-                        # true = Y_fine_test_filtered[fine_test_set_filtered[crop_type] > PURE_THRESHOLD]                        
                         if len(predicted) >= 2:
                             if is_best_model:
                                 print('======================= (CFIS fine) CROP: ', crop_type, '==============================')

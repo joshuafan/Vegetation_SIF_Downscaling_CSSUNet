@@ -1,7 +1,7 @@
 # Final run with additional seeds
-for s in 1 2
+for s in 0 1 2
 do
-    python3 train_contrastive.py --prefix 10g_FULL_SUPERVISION --model unet2_contrastive --optimizer AdamW -lr 1e-3 -wd 1e-3 \
+    python3 train.py --prefix 10g_FULL_SUPERVISION --model unet2_contrastive --optimizer AdamW -lr 1e-3 -wd 1e-3 \
         -epoch 100 -bs 128 --flip_and_rotate --visualize --fine_supervision --seed $s
 done
 

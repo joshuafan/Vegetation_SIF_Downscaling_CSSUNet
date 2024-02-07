@@ -221,7 +221,6 @@ sif_std = train_stds[-1]
 #     fine_train_set.loc[idx, REFLECTANCE_COLUMNS] = fine_train_set.loc[idx, REFLECTANCE_COLUMNS] * noise
 
 
-
 # ================= Standardize ===================
 # OPTION 1: Standardize data based on pre-computed means/stds
 for column in COLUMNS_TO_STANDARDIZE:
@@ -334,7 +333,6 @@ for i in range(100):
     distant_diff_cover_differences = np.abs(distant_diff_cover_rows['SIF'] - anchor_sif)
     distant_diff_cover.append(distant_diff_cover_differences)
 
-
     # Plot histograms with common range, for single anchor pixel
     if i % 20 == 0:
         hist_range = (np.min(distant_diff_cover_differences), np.max(distant_diff_cover_differences))
@@ -357,7 +355,6 @@ for i in range(100):
         plt.savefig(os.path.join(PLOT_DIR, "contrastive_test_" + os.path.basename(anchor_tile_file) + ".png"))
         plt.close()
 
-
 # Plot histograms
 nearby_same_cover = np.concatenate(nearby_same_cover)
 nearby_diff_cover = np.concatenate(nearby_diff_cover)
@@ -366,6 +363,7 @@ distant_same_cover_different_reflectance = np.concatenate(distant_same_cover_dif
 distant_diff_cover = np.concatenate(distant_diff_cover)
 print("Distant diff cover", distant_diff_cover)
 print("Min", np.min(distant_diff_cover))
+
 # Plot histograms with common range - for all anchor pixels
 hist_range = (np.min(distant_diff_cover), np.max(distant_diff_cover))
 fig, ((ax0, ax1, ax2), (ax3, ax4, ax5)) = plt.subplots(nrows=2, ncols=3, figsize=(15, 11))

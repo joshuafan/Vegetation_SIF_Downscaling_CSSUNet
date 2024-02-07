@@ -102,12 +102,6 @@ class MultiplicativeGaussianNoise(object):
         return tile
 
 
-    # def __call__(self, tile):
-    #     tile_shape = tile.shape[1:3]
-    #     noise = np.random.normal(loc=0, scale=self.standard_deviation) #, size=tile_shape)
-    #     tile[self.continuous_bands, :, :] = tile[self.continuous_bands, :, :] * (1 + noise)
-    #     return tile
-
 class MultiplicativeGaussianNoiseRaw(object):
     """Assumes input is NOT standardized
     """

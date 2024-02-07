@@ -134,13 +134,9 @@ Y_oco2_train = oco2_train_set[OUTPUT_COLUMN].values.ravel()
 X_cfis_coarse_val = cfis_coarse_val_set[INPUT_COLUMNS]
 Y_cfis_coarse_val = cfis_coarse_val_set[OUTPUT_COLUMN].values.ravel()
 
-# cfis_model = Ridge().fit(X_cfis_coarse_train, Y_cfis_coarse_train)
-# oco2_model = Ridge().fit(X_oco2_train, Y_oco2_train)
+
 cfis_model = MLPRegressor().fit(X_cfis_coarse_train, Y_cfis_coarse_train)
 oco2_model = MLPRegressor().fit(X_oco2_train, Y_oco2_train)
-# cfis_model = MLPRegressor(hidden_layer_sizes=(100, 100, 100), learning_rate_init=1e-3, max_iter=1000).fit(X_cfis_coarse_train, Y_cfis_coarse_train)
-# oco2_model = MLPRegressor(hidden_layer_sizes=(100, 100, 100), learning_rate_init=1e-3, max_iter=1000).fit(X_oco2_train, Y_oco2_train)
-
 cfis_model_predictions = cfis_model.predict(X_cfis_coarse_val)
 oco2_model_predictions = oco2_model.predict(X_cfis_coarse_val)
 
