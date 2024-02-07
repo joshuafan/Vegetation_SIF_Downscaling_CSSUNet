@@ -1,4 +1,4 @@
-# Code for paper "Monitoring Vegetation at Extremely Fine Resolutions via Coarsely-Supervised Smooth U-Net Regression"
+# "Monitoring Vegetation at Extremely Fine Resolutions via Coarsely-Supervised Smooth U-Net Regression"
 
 ![CS-SUNet diagram](diagrams/CS-SUNet.png)
 
