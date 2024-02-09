@@ -1,4 +1,4 @@
-# "Monitoring Vegetation at Extremely Fine Resolutions via Coarsely-Supervised Smooth U-Net Regression"
+# Code for paper "Monitoring Vegetation at Extremely Fine Resolutions via Coarsely-Supervised Smooth U-Net Regression" (IJCAI 2022)
 
 ![CS-SUNet diagram](diagrams/CS-SUNet.png)
 
